@@ -1,90 +1,152 @@
-# Karnataka State Police Portal (KSPP)
+# 🚨 Karnataka-State-Police-Portal
 
-Secure React portal for FIR registration, case search, operational dashboards,
-reports, officer notification settings, and an AI-assisted case query workflow.
+<div align="center">
 
-## Requirements
+### **AI-Powered Law Enforcement Workspace & FIR Management System**
 
-- Node.js 20
-- Google service-account access to the configured master and consolidated sheets
-- Firebase project settings if Firebase sign-in fallback is used
-- At least one Gemini or Groq key for Copilot
-- Twilio credentials for OTP and SMS alerts
+[![React](https://img.shields.io/badge/REACT-18.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
+[![Google Gemini API](https://img.shields.io/badge/GOOGLE_GEMINI-2.0_FLASH-886FBF?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev)
+[![Groq API](https://img.shields.io/badge/GROQ-LLAMA_3.3_70B-F05032?style=for-the-badge&logo=groq&logoColor=white)](https://groq.com)
+[![Node.js](https://img.shields.io/badge/NODE.JS-API_LAYER-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![Tailwind CSS](https://img.shields.io/badge/TAILWIND_CSS-DESIGN-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![Google Sheets API](https://img.shields.io/badge/DATABASE-GOOGLE_SHEETS_MASTER-34A853?style=for-the-badge&logo=googlesheets&logoColor=white)](https://developers.google.com/sheets/api)
 
-## Local setup
+**Transforming Police Operations & FIR Drafting with Autonomous Dual-Engine AI Intelligence**
 
-1. Copy `.env.example` to `.env`.
-2. Fill all required values. Never commit `.env` or a service-account key.
-3. Install dependencies with `npm ci`.
-4. Start the portal with `npm run dev`.
+---
 
-The local address is `http://localhost:5173`.
+</div>
 
-## Verification
+## 📌 Executive Summary
 
-Run the complete local quality gate:
+The **Karnataka State Police Portal** is an enterprise-grade digital law enforcement platform designed to modernize case registration, investigation workflows, and administrative tracking across police units.
 
-```text
-npm run verify
-```
+By integrating an autonomous **AI Copilot Engine** (powered by dual-engine **Google Gemini** and **Groq Llama-3.3** LLMs), police officers can auto-fill multi-step FIR registration forms directly from unstructured incident notes, export PDF case reports, perform flexible normalized searches on crime records, and generate real-time operational analytics.
 
-This checks TypeScript, server security/OTP/SMS tests, and the production build.
+---
 
-## Authentication and authorization
+## ✨ Core Key Features
 
-- Login is validated by the server against the Employee sheet.
-- The browser receives a signed, HTTP-only session cookie; browser storage is
-  not trusted as proof of identity.
-- New passwords are stored as salted scrypt hashes. The temporary `FirstAuth`
-  value is cleared after a successful change.
-- Constables can only read or update cases assigned to them or their station.
-  Inspectors and SP users can access the wider case set.
-- The server derives the employee, role, and station from the signed session.
-  Values sent by the browser are never trusted for access control.
-- Login, OTP, and Copilot routes are rate limited.
+### 🤖 1. Autonomous AI Copilot Assistant & PDF Exporter
+* **Instant FIR Auto-Fill:** Converts raw, unstructured narrative notes (e.g., CCTV reports, verbal victim statements) into structured 7-tab FIR entries instantly.
+* **Smart Crime Number Normalization:** Intelligently parses search inputs like `0011/2026`, `CR-0011/2026`, or `11/2026` to locate exact database records without manual data reformatting.
+* **PDF Report Generation:** Embedded PDF export capabilities directly within the AI assistant for instant official case downloads.
+* **Multilingual Intelligence:** Full bilingual query engine supporting both **English** and **Kannada (ಕನ್ನಡ)** responses tailored to state police protocols.
 
-## FIR drafts
+### 📋 2. Comprehensive Case & FIR Management
+* **7-Step Registration Workflow:** Structured step-by-step FIR recording covering Case Basics, Incident Details, Complainants, Victims, Accused Profiles, Legal Acts/Sections, and Master Review.
+* **Live Google Sheets Master Sync:** Acts as a real-time relational persistence layer syncing records dynamically across `CaseMaster`, `Accused`, `ComplainantDetails`, and `Consolidated_Cases`.
+* **Dynamic Status Tracking:** Track FIR progress through statuses such as *Under Investigation*, *Untraced*, *Closed*, and *Charge Sheeted*.
 
-New FIR steps are kept in `sessionStorage`, scoped to the signed-in employee and
-browser tab. A draft survives a page refresh in that tab and is removed after
-submission or logout. Only **Submit FIR** writes the case and its related rows to
-Google Sheets. Failed submissions remain visibly failed and retain the draft.
+### 🔍 3. Reference Data & Jurisdictional Management
+* **Station Directory:** Operational mapping across Law & Order, Traffic, Crime, and Special Units.
+* **Employee & IO Assignment:** Multi-tier officer assignment tracking with employee IDs, ranks, and court jurisdictions.
+* **Interactive Timeline:** Built-in milestone view tracking FIR registration, IO assignment, evidence uploads, and statement entries.
 
-## Production and Zoho Catalyst AppSail
+### 📊 4. Insights & Analytics Dashboard
+* Visual graphs summarizing total cases registered, heinous vs. non-heinous offence ratios, station-level activity metrics, and monthly registration trends.
 
-The production server is `catalyst-server.mjs`. It serves the built SPA and API
-from one process, listens on `X_ZOHO_CATALYST_LISTEN_PORT`, and exposes:
+---
 
-- `/healthz` for platform health checks
-- `/api/health` for application health checks
+## 🏗️ Screenshots
 
-`app-config.json` uses a relative `./appsail-build` build path. Its pre-deploy
-script builds the frontend and copies only the runtime files into that folder,
-so local `.env` and service-account files are not bundled.
 
-Before deployment, configure all values from `.env.example` in the AppSail
-environment settings, especially:
+---
 
-- `SESSION_SECRET`
-- Google Sheet IDs and `GOOGLE_SERVICE_ACCOUNT_JSON`
-- Firebase settings
-- Copilot provider keys
-- Twilio and OTP settings
+## 🛠️ Tech Stack & Technologies
 
-To prepare the bundle locally:
+* **Frontend:** React 18, Vite, Tailwind CSS, Lucide React Icons, React Router DOM
+* **Backend Runtime:** Node.js (with IPv4 priority DNS resolution)
+* **AI Engine (Primary):** Google Gen AI SDK (`@google/genai` - Gemini 2.0 Flash / 1.5 Flash)
+* **AI Engine (Fallback):** Groq API (`llama-3.3-70b-versatile`, `llama-3.1-8b-instant`)
+* **Database & Persistence Layer:** Google Sheets API v4 Integration & Local DB Backup
+* **Middleware Extensions:** Custom Vite Server Plugins (`chatPlugin.mjs`, `localDbPlugin.mjs`)
+
+---
+
+## 📁 Repository Structure
+
+Based on the official repository source layout:
 
 ```text
-npm run appsail:prepare
+Karnataka-State-Police-Portal/
+├── local_db/                 # Local offline database buffer & sync scripts
+├── server/                   # Backend API handlers & plugins
+│   ├── chatPlugin.mjs        # Vite middleware intercepting /api/chat
+│   ├── geminiService.mjs     # AI Copilot engine logic & JSON draft extractor
+│   ├── sheetsStore.mjs       # Google Sheets database connector & RBAC wrapper
+│   └── rbac.mjs              # Role-Based Access Control logic
+├── src/                      # React Frontend Source Code
+│   ├── components/           # Reusable UI components (Sidebar, Timeline, etc.)
+│   ├── context/              # React Contexts (LanguageContext, AuthContext)
+│   ├── lib/                  # Helper utilities, PDF exporter, and API callers
+│   └── pages/                # Application Views (NewFIR.tsx, CaseDetail, Dashboard)
+├── .gitignore                # Git exclusion rules
+├── index.html                # Entry HTML
+├── package.json              # Project dependencies & scripts
+├── postcss.config.js         # PostCSS configuration
+├── tailwind.config.js        # Tailwind CSS styling configuration
+├── tsconfig.json             # TypeScript configuration
+└── vite.config.ts            # Vite bundler & middleware server configuration
 ```
 
-The generated `appsail-build` directory is intentionally ignored by Git.
+---
 
-## Important operational notes
+## 🚀 Getting Started
 
-- Google Sheet IDs have no built-in production fallback; missing configuration
-  fails clearly instead of connecting to an unintended sheet.
-- Copilot receives a small allowlisted case context after server-side role
-  filtering. Users should still verify AI output against the source record.
-- CSV and report output follows the selected date range.
-- SMS alerts only target verified, opted-in officers selected by the routing
-  rules.
+### Prerequisites
+
+Ensure you have the following installed on your machine:
+
+* Node.js: `v18.x` or higher
+* npm: `v9.x` or higher
+
+### 1. Repository Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/Mohammad-Arshad-24/Karnataka-State-Police-Portal.git
+
+# Navigate into the project directory
+cd Karnataka-State-Police-Portal
+
+# Install required npm dependencies
+npm install
+```
+
+### 2. Environment Configuration
+
+Create a `.env` file in the root directory and specify your API credentials:
+
+```env
+# Gemini API Key(s) - Comma-separated for quota failover
+GEMINI_API_KEYS=your_gemini_api_key_1,your_gemini_api_key_2
+
+# Groq API Key(s) - Fallback AI Engine
+GROQ_API_KEYS=your_groq_api_key
+
+# Google Sheets Integration
+GOOGLE_CONSOLIDATED_SHEET_ID=your_google_sheet_id
+GOOGLE_CONSOLIDATED_TAB=Consolidated_Cases
+```
+
+### 3. Running the Application
+
+```bash
+# Start the local development server with Vite API middlewares
+npm run dev
+```
+
+Open your browser and navigate to `http://localhost:5173`.
+
+---
+
+## 🔒 Security & RBAC Compliance
+
+The portal enforces Role-Based Access Control (RBAC) across officers, inspectors, and administrators. Confidential case files, sensitive complainant records, and restricted station data are strictly scoped based on authorization privileges and station IDs before being passed to AI models or client screens.
+
+---
+
+## 📄 License
+
+Distributed under the Internal Government & Hackathon Software License. Confidential and proprietary to the Karnataka State Police Department.
