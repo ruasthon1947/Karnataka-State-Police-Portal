@@ -4,6 +4,28 @@ import { promisify } from "node:util";
 import path from "node:path";
 import fs from "node:fs";
 import { parse } from "csv-parse/sync";
+import { OtpError, normalizeIndianPhoneNumber, otpService } from "./otpService.mjs";
+import {
+  caseAlertService,
+  getSmsProviderStatus,
+  parseNotificationPreferences,
+  serializeNotificationPreferences,
+} from "./smsService.mjs";
+import {
+  canAccessCase,
+  checkLoginRateLimit,
+  clearLoginRateLimit,
+  clearSessionCookie,
+  filterCasesForSession,
+  hashPassword,
+  profileFromEmployee,
+  readSession,
+  requireSession,
+  sessionUser,
+  setSessionCookie,
+  verifyFirebaseIdToken,
+  verifyPassword,
+} from "./security.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -47,32 +69,50 @@ const OPTION_FIELDS = [
   "CaseCategory", "Gravity", "Acts", "Sections", "ChargesheetStatus"
 ];
 
-function buildOptions(records) {
+function cleanOption(value) {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function optionKey(value) {
+  return cleanOption(value).toLocaleLowerCase();
+}
+
+export function buildOptions(records) {
   const options = {};
   for (const field of OPTION_FIELDS) {
-    const values = new Set();
+    const values = new Map();
     for (const record of records) {
       for (const value of splitList(record[field])) {
-        values.add(value);
-      }
-      if (!String(record[field] || "").includes(";") && record[field]) {
-        values.add(record[field]);
+        const cleaned = cleanOption(value);
+        const key = optionKey(cleaned);
+        if (key && !values.has(key)) values.set(key, cleaned);
       }
     }
-    options[field] = Array.from(values).sort((a, b) => a.localeCompare(b));
+    options[field] = Array.from(values.values()).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
   }
 
-  const crimeSubHeadsByHead = {};
+  const heads = new Map();
   for (const record of records) {
-    const head = record.CrimeHead || "";
-    const subHead = record.CrimeSubHead || "";
-    if (!head || !subHead) continue;
-    crimeSubHeadsByHead[head] = crimeSubHeadsByHead[head] || [];
-    if (!crimeSubHeadsByHead[head].includes(subHead)) {
-      crimeSubHeadsByHead[head].push(subHead);
+    const head = cleanOption(record.CrimeHead);
+    if (!head) continue;
+    const headKey = optionKey(head);
+    if (!heads.has(headKey)) heads.set(headKey, { label: head, values: new Map() });
+    for (const subHead of splitList(record.CrimeSubHead)) {
+      const cleaned = cleanOption(subHead);
+      const key = optionKey(cleaned);
+      if (key && !heads.get(headKey).values.has(key)) {
+        heads.get(headKey).values.set(key, cleaned);
+      }
     }
   }
-  Object.values(crimeSubHeadsByHead).forEach((values) => values.sort((a, b) => a.localeCompare(b)));
+  const crimeSubHeadsByHead = {};
+  for (const { label, values } of heads.values()) {
+    crimeSubHeadsByHead[label] = Array.from(values.values()).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
+  }
   options.crimeSubHeadsByHead = crimeSubHeadsByHead;
 
   return options;
@@ -140,8 +180,8 @@ function readBody(req) {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 10_000_000) {
-        reject(new Error("Request body is too large."));
+      if (body.length > 250_000) {
+        reject(Object.assign(new Error("Request body is too large."), { status: 413 }));
         req.destroy();
       }
     });
@@ -163,14 +203,38 @@ function readBody(req) {
 function sendJson(res, status, data) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
   res.end(JSON.stringify(data));
 }
 
 function sendError(res, status, error) {
-  sendJson(res, status, { ok: false, error: error instanceof Error ? error.message : String(error) });
+  const payload = {
+    ok: false,
+    error: error instanceof Error ? error.message : String(error),
+  };
+  if (error?.code) payload.code = error.code;
+  if (Number.isFinite(error?.retryAfterSeconds)) {
+    payload.retryAfterSeconds = error.retryAfterSeconds;
+    res.setHeader("Retry-After", String(error.retryAfterSeconds));
+  }
+  if (Number.isFinite(error?.attemptsRemaining)) {
+    payload.attemptsRemaining = error.attemptsRemaining;
+  }
+  sendJson(res, status, payload);
 }
 
-async function handleApi(req, res, next) {
+function clientKey(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "")
+    .split(",")[0]
+    .trim();
+  return forwarded || req.socket?.remoteAddress || "unknown";
+}
+
+function employeeSubject(employeeId) {
+  return String(employeeId || "").trim().toLowerCase();
+}
+
+export async function handleApi(req, res, next) {
   const url = new URL(req.url || "/", "http://local-db");
   
   // 🚀 Pass /api/chat directly to chatPlugin.mjs so localDbPlugin doesn't block it with a 404
@@ -186,105 +250,288 @@ async function handleApi(req, res, next) {
 
   try {
     if (req.method === "POST" && url.pathname === "/api/login") {
-      const { employeeId, password, firebaseAuth } = await readBody(req);
-      if (!employeeId || (!password && !firebaseAuth)) {
+      const { employeeId, password, firebaseIdToken } = await readBody(req);
+      if (!employeeId || !password) {
         sendError(res, 400, "Employee ID and password are required.");
         return;
       }
-      const { row } = await employeeById(employeeId);
-      if (!row) {
-        if (firebaseAuth) {
-          sendJson(res, 200, { ok: true, employeeId, name: `Officer ${employeeId}`, isFirstLogin: false });
-          return;
-        }
-        sendError(res, 401, "Invalid credentials. Employee ID not found.");
+
+      const rate = checkLoginRateLimit(clientKey(req), employeeId);
+      if (!rate.ok) {
+        res.setHeader("Retry-After", String(rate.retryAfterSeconds));
+        sendError(
+          res,
+          429,
+          `Too many sign-in attempts. Try again in ${rate.retryAfterSeconds} seconds.`,
+        );
         return;
       }
-      if (!firebaseAuth && row.FirstAuth !== password) {
+
+      const { row } = await employeeById(employeeId);
+      if (!row) {
         sendError(res, 401, "Invalid credentials.");
         return;
       }
-      const officerName = row.Name || (row.FirstName ? `Officer ${row.FirstName}` : `Officer ${employeeId}`);
-      sendJson(res, 200, { ok: true, employeeId, name: officerName, isFirstLogin: row.HasLoggedIn !== "TRUE" });
+
+      const firstLogin =
+        String(row.HasLoggedIn || "").trim().toUpperCase() !== "TRUE";
+      let firebaseVerified = false;
+      if (firebaseIdToken) {
+        try {
+          firebaseVerified = await verifyFirebaseIdToken(
+            firebaseIdToken,
+            employeeId,
+          );
+        } catch {
+          firebaseVerified = false;
+        }
+      }
+
+      const passwordHashVerified = row.PasswordHash
+        ? await verifyPassword(password, row.PasswordHash)
+        : false;
+      const temporaryPasswordVerified =
+        firstLogin &&
+        Boolean(row.FirstAuth) &&
+        String(row.FirstAuth) === String(password);
+
+      const firebaseFallbackVerified = !row.PasswordHash && firebaseVerified;
+      if (!firebaseFallbackVerified && !passwordHashVerified && !temporaryPasswordVerified) {
+        sendError(res, 401, "Invalid credentials.");
+        return;
+      }
+
+      clearLoginRateLimit(clientKey(req), employeeId);
+      const user = profileFromEmployee(row, employeeId);
+      const createdSession = setSessionCookie(req, res, user);
+      sendJson(res, 200, {
+        ok: true,
+        user,
+        sessionExpiresAt: createdSession.expiresAt,
+      });
       return;
     }
 
-    if (req.method === "POST" && url.pathname === "/api/employee/password") {
-      const { employeeId, password, notificationPref, hasLoggedIn } = await readBody(req);
-      if (!employeeId) {
-        sendError(res, 400, "Employee ID is required.");
+    if (req.method === "GET" && url.pathname === "/api/session") {
+      const current = readSession(req);
+      if (!current) {
+        sendError(res, 401, "Your session has expired. Please sign in again.");
         return;
       }
-      const updates = {};
-      if (password) {
-        updates.FirstAuth = password;
-        updates.HasLoggedIn = "TRUE";
-      }
-      if (hasLoggedIn) {
-        updates.HasLoggedIn = "TRUE";
-      }
-      if (notificationPref !== undefined) updates.NotificationPref = String(notificationPref);
-      
-      // Only update if there are changes (don't modify schema unnecessarily)
-      if (Object.keys(updates).length > 0) {
-        await updateEmployee(employeeId, updates);
-      }
+      sendJson(res, 200, {
+        ok: true,
+        user: sessionUser(current),
+        sessionExpiresAt: current.exp,
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/logout") {
+      clearSessionCookie(req, res);
       sendJson(res, 200, { ok: true });
       return;
     }
 
-    if (req.method === "POST" && url.pathname === "/api/phone") {
-      const { employeeId, phoneNumber } = await readBody(req);
-      if (!employeeId) {
-        sendError(res, 400, "Employee ID is required.");
+    if (req.method === "GET" && url.pathname === "/api/health") {
+      sendJson(res, 200, { ok: true, service: "kspp-portal" });
+      return;
+    }
+
+    const session = requireSession(req, res);
+    if (!session) return;
+
+    if (req.method === "POST" && url.pathname === "/api/session/extend") {
+      const extended = setSessionCookie(req, res, sessionUser(session));
+      sendJson(res, 200, {
+        ok: true,
+        user: sessionUser(extended.payload),
+        sessionExpiresAt: extended.expiresAt,
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/employee/password") {
+      const { currentPassword, newPassword, firebaseIdToken } = await readBody(req);
+      const { row } = await employeeById(session.employeeId);
+      if (!row) {
+        sendError(res, 404, "Employee was not found.");
         return;
       }
-      if (!phoneNumber) {
-        sendError(res, 400, "Phone number is required.");
-        return;
-      }
-      
-      try {
-        // Save to Consolidated sheet only, not to Employee sheet
-        const CONSOLIDATED_SHEET_ID = process.env.GOOGLE_CONSOLIDATED_SHEET_ID || "1uyzVgCAPZW9CkzkNHFKH0QOJm_nbn5Sr4ul9ngv0ZoM";
-        const CONSOLIDATED_TAB = process.env.GOOGLE_CONSOLIDATED_TAB || "Consolidated_Cases";
-        
-        const { headers, rows } = await readTable(CONSOLIDATED_SHEET_ID, CONSOLIDATED_TAB);
-        
-        // Find row with matching employee ID
-        const existingRowIndex = rows.findIndex(row => 
-          String(row.EmployeeID || "").trim().toLowerCase() === String(employeeId).trim().toLowerCase() ||
-          String(row.AssignedOfficer || "").includes(String(employeeId).trim())
-        );
-        
-        if (existingRowIndex !== -1) {
-          // Update existing row
-          rows[existingRowIndex].PhoneNumber = phoneNumber;
-          rows[existingRowIndex].PhoneUpdatedAt = new Date().toISOString();
-        } else {
-          // Create new row with phone info (edge case: employee with no cases yet)
-          const newRow = Object.fromEntries(headers.map(h => [h, ""]));
-          newRow.EmployeeID = employeeId;
-          newRow.PhoneNumber = phoneNumber;
-          newRow.PhoneUpdatedAt = new Date().toISOString();
-          rows.push(newRow);
+      const firstLogin =
+        String(row.HasLoggedIn || "").trim().toUpperCase() !== "TRUE";
+      const hashVerified = row.PasswordHash
+        ? await verifyPassword(currentPassword, row.PasswordHash)
+        : false;
+      const temporaryPasswordVerified =
+        firstLogin &&
+        Boolean(row.FirstAuth) &&
+        String(row.FirstAuth) === String(currentPassword);
+      let firebaseVerified = false;
+      if (!row.PasswordHash && firebaseIdToken) {
+        try {
+          firebaseVerified = await verifyFirebaseIdToken(
+            firebaseIdToken,
+            session.employeeId,
+          );
+        } catch {
+          firebaseVerified = false;
         }
-        
-        // Ensure headers include PhoneNumber and PhoneUpdatedAt
-        if (!headers.includes("PhoneNumber")) headers.push("PhoneNumber");
-        if (!headers.includes("PhoneUpdatedAt")) headers.push("PhoneUpdatedAt");
-        
-        await writeTable(CONSOLIDATED_SHEET_ID, CONSOLIDATED_TAB, headers, rows);
-        sendJson(res, 200, { ok: true });
-      } catch (err) {
-        sendError(res, 500, `Failed to save phone number: ${err.message}`);
       }
+      if (!hashVerified && !temporaryPasswordVerified && !firebaseVerified) {
+        sendError(res, 401, "Incorrect current password.");
+        return;
+      }
+      const passwordHash = await hashPassword(newPassword || "");
+      await updateEmployee(session.employeeId, {
+        FirstAuth: "",
+        PasswordHash: passwordHash,
+        HasLoggedIn: "TRUE",
+      });
+      const user = { ...sessionUser(session), isFirstLogin: false };
+      const updatedSession = setSessionCookie(req, res, user);
+      sendJson(res, 200, {
+        ok: true,
+        user,
+        sessionExpiresAt: updatedSession.expiresAt,
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/send-otp") {
+      const { phoneNumber } = await readBody(req);
+      const { row } = await employeeById(session.employeeId);
+      if (!row) {
+        sendError(res, 404, "Employee was not found.");
+        return;
+      }
+
+      try {
+        const result = await otpService.request({
+          subject: employeeSubject(session.employeeId),
+          phoneNumber,
+          clientKey: clientKey(req),
+        });
+        sendJson(res, 200, {
+          ok: true,
+          message: "OTP sent successfully.",
+          expiresInSeconds: result.expiresInSeconds,
+          retryAfterSeconds: result.retryAfterSeconds,
+        });
+      } catch (err) {
+        const status = err instanceof OtpError ? err.status : 500;
+        sendError(res, status, err);
+      }
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/verify-otp") {
+      const { phoneNumber, otp } = await readBody(req);
+
+      try {
+        const result = await otpService.verifyAndRun(
+          {
+            subject: employeeSubject(session.employeeId),
+            phoneNumber,
+            code: otp,
+          },
+          async ({ phoneNumber: verifiedPhoneNumber }) => {
+            try {
+              await updateEmployee(session.employeeId, {
+                PhoneNumber: verifiedPhoneNumber,
+                PhoneVerifiedAt: new Date().toISOString(),
+              });
+            } catch (error) {
+              console.error("[OTP] Verified phone could not be saved", {
+                employeeId: session.employeeId,
+                error: error?.message || String(error),
+              });
+              throw new OtpError(
+                "The OTP is correct, but the phone number could not be saved. Please try verifying again.",
+                "PHONE_SAVE_FAILED",
+                502,
+              );
+            }
+          },
+        );
+        sendJson(res, 200, {
+          ok: true,
+          message: "Phone number verified and saved.",
+          phoneNumber: result.phoneNumber,
+        });
+      } catch (err) {
+        const status = err instanceof OtpError ? err.status : 500;
+        sendError(res, status, err);
+      }
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/phone") {
+      const { row } = await employeeById(session.employeeId);
+      if (!row) {
+        sendError(res, 404, "Employee was not found.");
+        return;
+      }
+
+      let phoneNumber = "";
+      try {
+        if (row.PhoneNumber) {
+          phoneNumber = normalizeIndianPhoneNumber(row.PhoneNumber);
+        }
+      } catch {
+        phoneNumber = "";
+      }
+      sendJson(res, 200, {
+        ok: true,
+        phoneNumber,
+        verified: Boolean(phoneNumber && row.PhoneVerifiedAt),
+        verifiedAt: row.PhoneVerifiedAt || null,
+        preferences: parseNotificationPreferences(row.NotificationPref),
+        sms: getSmsProviderStatus(),
+      });
+      return;
+    }
+
+    if (
+      (req.method === "PUT" || req.method === "POST") &&
+      url.pathname === "/api/notification-preferences"
+    ) {
+      const { newFir, statusUpdates } = await readBody(req);
+      const { row } = await employeeById(session.employeeId);
+      if (!row) {
+        sendError(res, 404, "Employee was not found.");
+        return;
+      }
+      const current = parseNotificationPreferences(row.NotificationPref);
+      const preferences = {
+        newFir: typeof newFir === "boolean" ? newFir : current.newFir,
+        statusUpdates:
+          typeof statusUpdates === "boolean" ? statusUpdates : current.statusUpdates,
+      };
+      await updateEmployee(session.employeeId, {
+        NotificationPref: serializeNotificationPreferences(preferences),
+      });
+      sendJson(res, 200, { ok: true, preferences });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/phone") {
+      sendError(
+        res,
+        405,
+        "Phone numbers can only be saved after OTP verification.",
+      );
       return;
     }
 
     if (req.method === "GET" && url.pathname === "/api/cases") {
       const { headers, rows } = await casesFromGoogle();
-      sendJson(res, 200, { ok: true, headers, cases: rows, options: buildOptions(rows) });
+      const accessibleRows = filterCasesForSession(session, rows);
+      sendJson(res, 200, {
+        ok: true,
+        headers,
+        cases: accessibleRows,
+        options: buildOptions(accessibleRows),
+      });
       return;
     }
 
@@ -298,33 +545,44 @@ async function handleApi(req, res, next) {
         const tempCsv = path.join(process.cwd(), "scratch", "temp_sync.csv");
         const exportScript = path.join(process.cwd(), "local_db", "export_data.py");
         const env = { ...process.env, GOOGLE_SERVICE_ACCOUNT_JSON: process.env.CATALYST_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON };
+        const consolidatedSheetId = String(
+          process.env.GOOGLE_CONSOLIDATED_SHEET_ID || "",
+        ).trim();
+        if (!consolidatedSheetId) {
+          throw new Error("GOOGLE_CONSOLIDATED_SHEET_ID is not configured.");
+        }
         
-        await execFileAsync("python", [exportScript, "--output", tempCsv], { env });
+        await execFileAsync(
+          process.env.PYTHON_EXECUTABLE || "python",
+          [exportScript, "--output", tempCsv],
+          { env },
+        );
         
         if (fs.existsSync(tempCsv)) {
           const csvData = fs.readFileSync(tempCsv, "utf8");
           const records = parse(csvData, { columns: true, skip_empty_lines: true });
           if (records.length > 0) {
             const headers = Object.keys(records[0]);
-            const CONSOLIDATED_SHEET_ID = process.env.GOOGLE_CONSOLIDATED_SHEET_ID || "1uyzVgCAPZW9CkzkNHFKH0QOJm_nbn5Sr4ul9ngv0ZoM";
             const tab = process.env.GOOGLE_CONSOLIDATED_TAB || "Consolidated_Cases";
             
-            await writeTable(CONSOLIDATED_SHEET_ID, tab, headers, records);
+            await writeTable(consolidatedSheetId, tab, headers, records);
           }
           fs.unlinkSync(tempCsv); // Cleanup
         }
         
         const { headers, rows } = await casesFromGoogle();
+        const accessibleRows = filterCasesForSession(session, rows);
         sendJson(res, 200, {
           ok: true,
           pull: { ok: true },
           writeResult: { pending: false },
           headers,
-          cases: rows,
-          options: buildOptions(rows),
+          cases: accessibleRows,
+          options: buildOptions(accessibleRows),
         });
       } catch (err) {
-        sendError(res, 500, `Sync failed: ${err.message}`);
+        console.error("[Case Sync] Pull failed.", err);
+        sendError(res, 500, "Case sync failed. Please try again or contact support.");
       }
       return;
     }
@@ -333,11 +591,17 @@ async function handleApi(req, res, next) {
     if (req.method === "GET" && caseMatch) {
       const { headers, rows } = await casesFromGoogle();
       const record = rows.find((item) => caseMatches(item, caseMatch[1]));
-      if (!record) {
+      if (!record || !canAccessCase(session, record)) {
         sendError(res, 404, "Case was not found.");
         return;
       }
-      sendJson(res, 200, { ok: true, headers, case: record, options: buildOptions(rows) });
+      const accessibleRows = filterCasesForSession(session, rows);
+      sendJson(res, 200, {
+        ok: true,
+        headers,
+        case: record,
+        options: buildOptions(accessibleRows),
+      });
       return;
     }
 
@@ -355,12 +619,25 @@ async function handleApi(req, res, next) {
 
       let index = records.findIndex((record) => caseMatches(record, key || knownFields.CrimeNo || knownFields.CaseNo || knownFields.CaseMasterID));
       const created = index === -1;
+      const previousRecord = created ? null : { ...records[index] };
+      if (!created && !canAccessCase(session, previousRecord)) {
+        sendError(res, 403, "You do not have permission to update this case.");
+        return;
+      }
       
       const record = {};
       headers.forEach((header) => {
         record[header] = created ? "" : records[index][header] || "";
       });
       Object.assign(record, knownFields);
+      if (created) record.FiledBy = session.employeeId;
+      if (session.role === "Constable" && !record.PoliceStation && session.policeStation) {
+        record.PoliceStation = session.policeStation;
+      }
+      if (!canAccessCase(session, record)) {
+        sendError(res, 403, "You can only save cases assigned to you or your police station.");
+        return;
+      }
 
       // 🚀 Safe Auto-ID Generation if missing or invalid
       if (!record.CaseMasterID || record.CaseMasterID === "Assigned on save") {
@@ -374,6 +651,18 @@ async function handleApi(req, res, next) {
         record.CrimeNo = generateCrimeNo(records);
       }
       recalcDerivedFields(record);
+
+      const optionRecords = filterCasesForSession(
+        session,
+        created
+          ? [...records, record]
+          : records.map((item, itemIndex) => (itemIndex === index ? record : item)),
+      );
+
+      if (payload.skipSync) {
+        sendError(res, 400, "Drafts are saved securely in the browser. Remove skipSync to submit the FIR.");
+        return;
+      }
       
       // 🚀 Direct Google Sheets Upsert with explicit logging
       console.log(`[Google Sheets Write] Upserting record for CaseMasterID: ${record.CaseMasterID}...`);
@@ -385,34 +674,55 @@ async function handleApi(req, res, next) {
         throw new Error(`Google Sheets API write error: ${googleErr.message || String(googleErr)}`);
       }
       
-      // Simulate Push Notification
-      try {
-        const MASTER_SHEET_ID = process.env.GOOGLE_MASTER_SHEET_ID || process.env.GOOGLE_SHEET_ID || "1sExCOOVJDT6J68DM93E_QPbZGs_-RzPOlfXACYd8mS4";
-        const employeesTab = await readTable(MASTER_SHEET_ID, "Employee");
-        const unitsTab = await readTable(MASTER_SHEET_ID, "Unit");
-        
-        const station = record.PoliceStation || record.Station;
-        if (station) {
-          let targetUnitId = String(station);
-          const unitMatch = unitsTab.rows.find(u => u.UnitName && u.UnitName.trim().toLowerCase() === station.trim().toLowerCase());
-          if (unitMatch) {
-            targetUnitId = String(unitMatch.UnitID);
-          }
+      const statusChanged =
+        previousRecord &&
+        normalizeValue(previousRecord.Status).toLocaleLowerCase() !==
+          normalizeValue(record.Status).toLocaleLowerCase();
+      const notificationEvent = created
+        ? "new_fir"
+        : statusChanged
+          ? "status_update"
+          : "";
+      let notifications = null;
 
-          const matchingEmployees = employeesTab.rows.filter(e => 
-            String(e.UnitID) === targetUnitId && e.PhoneNumber && e.PhoneNumber.trim() !== ""
-          );
-          if (matchingEmployees.length > 0) {
-            console.log(`\n[PUSH NOTIFICATION TRIGGER]`);
-            console.log(`Case Update: ${record.CrimeNo || record.CaseNo} at ${station}`);
-            matchingEmployees.forEach(emp => {
-              console.log(` -> Sending SMS/Push to Officer ${emp.Name} at ${emp.PhoneNumber}`);
-            });
-            console.log(`---------------------------\n`);
+      if (notificationEvent) {
+        try {
+          const masterSheetId = String(
+            process.env.GOOGLE_MASTER_SHEET_ID || process.env.GOOGLE_SHEET_ID || "",
+          ).trim();
+          if (!masterSheetId) {
+            throw new Error("GOOGLE_MASTER_SHEET_ID is not configured.");
           }
+          const employeesTab = await readTable(masterSheetId, "Employee");
+          const unitsTab = await readTable(masterSheetId, "Unit");
+          notifications = await caseAlertService.notify({
+            event: notificationEvent,
+            record,
+            previousRecord: previousRecord || {},
+            employees: employeesTab.rows,
+            units: unitsTab.rows,
+          });
+          console.log("[SMS Alerts] FIR notification result", {
+            event: notifications.event,
+            matched: notifications.matched,
+            eligible: notifications.eligible,
+            sent: notifications.sent,
+            failed: notifications.failed,
+          });
+        } catch (error) {
+          console.error("[SMS Alerts] Notification routing failed", {
+            event: notificationEvent,
+            error: error?.message || String(error),
+          });
+          notifications = {
+            event: notificationEvent,
+            matched: 0,
+            eligible: 0,
+            sent: 0,
+            failed: 1,
+            systemError: true,
+          };
         }
-      } catch (err) {
-        console.error("Failed to simulate push notification:", err);
       }
 
       sendJson(res, 200, {
@@ -420,7 +730,8 @@ async function handleApi(req, res, next) {
         created,
         headers,
         case: record,
-        options: buildOptions(records),
+        options: buildOptions(optionRecords),
+        notifications,
         sync: { ok: true, skipped: false, message: "Directly saved to Google Sheets" },
       });
       return;
@@ -429,7 +740,14 @@ async function handleApi(req, res, next) {
     sendError(res, 404, "Unknown API endpoint.");
   } catch (error) {
     console.error("[Local DB Handler Exception]:", error);
-    sendError(res, 500, error);
+    const status = error?.status || 500;
+    sendError(
+      res,
+      status,
+      status >= 500
+        ? "The service could not complete this request. Please try again."
+        : error,
+    );
   }
 }
 

@@ -2,9 +2,9 @@ import dns from "node:dns";
 dns.setDefaultResultOrder("ipv4first");
 
 import { GoogleGenAI } from "@google/genai";
-import { queryCasesInMemory, readExplicitTabRecords } from "./sheetsStore.mjs";
+import { readExplicitTabRecords } from "./sheetsStore.mjs";
 import { casesFromGoogle } from "./googleSheets.mjs";
-import { applyAccessControl } from "./rbac.mjs";
+import { filterCasesForSession } from "./security.mjs";
 
 const GEMINI_KEYS = (process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || "")
   .split(",")
@@ -16,8 +16,8 @@ const GROQ_KEYS = (process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || "")
   .map((k) => k.trim())
   .filter(Boolean);
 
-const FALLBACK_GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash"];
-const FALLBACK_GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
+const FALLBACK_GEMINI_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash-lite"];
+const FALLBACK_GROQ_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
 
 const STOP_WORDS = new Set([
   "give", "details", "complete", "about", "this", "case", "cases", "bearing",
@@ -55,7 +55,7 @@ export function normalizeCrimeNo(str) {
   return cleaned;
 }
 
-async function generateWithGroq(prompt, apiKey) {
+async function generateWithGroq(prompt, apiKey, maxTokens = 350) {
   for (const model of FALLBACK_GROQ_MODELS) {
     try {
       console.log(`[Copilot Engine] Calling Groq model '${model}'...`);
@@ -69,7 +69,7 @@ async function generateWithGroq(prompt, apiKey) {
           model: model,
           messages: [{ role: "user", content: prompt }],
           temperature: 0.0,
-          max_tokens: 350
+          max_tokens: maxTokens
         })
       });
 
@@ -88,7 +88,7 @@ async function generateWithGroq(prompt, apiKey) {
   throw new Error("All Groq models failed.");
 }
 
-async function generateWithFallback(fullPrompt) {
+async function generateWithFallback(fullPrompt, maxTokens = 350, isJson = false) {
   let lastError = null;
 
   // 1. Try Gemini API keys
@@ -97,13 +97,18 @@ async function generateWithFallback(fullPrompt) {
       const key = GEMINI_KEYS[i];
       try {
         const ai = new GoogleGenAI({ apiKey: key });
+        const config = { maxOutputTokens: maxTokens };
+        if (isJson) {
+          config.responseMimeType = "application/json";
+        }
+
         const response = await ai.models.generateContent(
           {
             model: modelName,
             contents: fullPrompt,
-            config: { temperature: 0.0, maxOutputTokens: 350 }
+            config: config
           },
-          { timeout: 15000 }
+          { timeout: 30000 }
         );
         return response.text.trim();
       } catch (err) {
@@ -119,7 +124,7 @@ async function generateWithFallback(fullPrompt) {
     const key = GROQ_KEYS[i];
     try {
       console.log(`[Copilot Engine] 🚀 Executing request via Groq Engine Key #${i + 1}...`);
-      return await generateWithGroq(fullPrompt, key);
+      return await generateWithGroq(fullPrompt, key, maxTokens);
     } catch (err) {
       console.warn(`[Copilot Engine] ⚠️ Groq Key #${i + 1} failed:`, err.message);
       lastError = err;
@@ -286,10 +291,57 @@ export function findMatchingCases(question, allCases) {
   return [];
 }
 
-export async function handleChatQuery({ question, role, stationId, language }) {
-  console.log(`[Copilot Engine] Processing query: "${question}"`);
-  
+/**
+ * Dedicated FIR Auto-Fill Exporter for NewFIR
+ */
+export async function generateFirDraft(unstructuredText) {
+  const prompt = `
+Extract structured FIR details from the following police incident description and output strictly a valid JSON object matching key names below. Do NOT use markdown code blocks or additional text.
+
+JSON Keys Required:
+{
+  "CrimeHead": "string",
+  "CrimeSubHead": "string",
+  "PoliceStation": "string",
+  "District": "Bangalore Urban",
+  "Court": "string",
+  "Officer": "string",
+  "Gravity": "Non-Heinous",
+  "Acts": "string",
+  "Sections": "string",
+  "ComplainantName": "string",
+  "ComplainantAge": "string",
+  "ComplainantAddress": "string",
+  "VictimNames": "string",
+  "AccusedNames": "string",
+  "IncidentFromDate": "YYYY-MM-DD",
+  "IncidentToDate": "YYYY-MM-DD",
+  "InformationReceivedDate": "YYYY-MM-DD",
+  "Summary": "1-2 sentence brief facts of the case"
+}
+
+Incident facts:
+"""
+${unstructuredText}
+"""
+`;
+
+  return await generateWithFallback(prompt, 1500, true);
+}
+
+export async function handleChatQuery({
+  question,
+  role,
+  stationId,
+  employeeId,
+  language,
+}) {
   try {
+    // Check if the query is an FIR draft auto-fill request
+    if (String(question || "").toLowerCase().includes("extract fir details into json format")) {
+      return await generateFirDraft(question);
+    }
+
     // 1. Fetch tables simultaneously
     const [caseMasterRows, accusedRows, complainantRows, consolidatedData] = await Promise.all([
       readExplicitTabRecords("CaseMaster").catch(() => []),
@@ -299,9 +351,18 @@ export async function handleChatQuery({ question, role, stationId, language }) {
     ]);
 
     // Use consolidated rows as primary case records since it merges CaseMaster and full details
-    const allCases = consolidatedData.rows && consolidatedData.rows.length > 0
+    const sourceCases = consolidatedData.rows && consolidatedData.rows.length > 0
       ? consolidatedData.rows
       : caseMasterRows;
+    const allCases = filterCasesForSession(
+      {
+        employeeId,
+        name: "",
+        role,
+        policeStation: stationId,
+      },
+      sourceCases,
+    );
 
     let contextualRows = findMatchingCases(question, allCases);
 
@@ -342,9 +403,7 @@ export async function handleChatQuery({ question, role, stationId, language }) {
       };
     });
 
-    // Apply Role-Based Access Control filters
-    const headers = allCases.length > 0 ? Object.keys(allCases[0]) : [];
-    const finalFilteredRows = queryCasesInMemory(contextualRows, [...headers, "LinkedAccusedProfiles", "TargetComplainantDetails"], applyAccessControl({}, role, stationId));
+    const finalFilteredRows = contextualRows;
 
     if (finalFilteredRows.length === 0) {
       return language === "kn"
@@ -357,9 +416,8 @@ export async function handleChatQuery({ question, role, stationId, language }) {
 
     const IMPORTANT_KEYS = [
       "CaseNo", "CrimeNo", "CrimeHead", "CrimeSubHead", "Gravity",
-      "PoliceStation", "Officer", "EmployeeID", "Complainant",
-      "AccusedNames", "Status", "Court", "ChargesheetStatus",
-      "IncidentFromDate", "CrimeRegisteredDate", "Summary"
+      "PoliceStation", "Status", "Court", "ChargesheetStatus",
+      "IncidentFromDate", "CrimeRegisteredDate"
     ];
 
     const formattedContext = finalFilteredRows.map((row, i) => {
@@ -374,14 +432,6 @@ export async function handleChatQuery({ question, role, stationId, language }) {
           parts.push(`${k}: ${v}`);
           usedKeys.add(k);
         }
-      }
-
-      for (const [k, v] of Object.entries(row)) {
-        if (usedKeys.has(k) || k.endsWith("ID") || k.endsWith("MasterID")) continue;
-        let strVal = String(v ?? "").trim();
-        if (!strVal || strVal === "N/A" || strVal === "None listed.") continue;
-        strVal = strVal.replace(/\s+/g, " ");
-        parts.push(`${k}: ${strVal}`);
       }
 
       return `[Case ${i + 1}] ${parts.join(" | ")}`;
@@ -405,6 +455,8 @@ Response Layout:
 📅 **ಸಮಯಾವಧಿ:** ನೋಂದಣಿ: [CrimeRegisteredDate]
 📝 **ಸಂಕ್ಷಿಪ್ತ ಸಾರಾಂಶ:** [1-2 ವಾಕ್ಯಗಳಲ್ಲಿ ಸಾರಾಂಶ]
 
+Privacy rule: personal names, employee IDs, and free-text narratives are intentionally excluded. Never infer or invent them; state that they are unavailable in Copilot when asked.
+
 Context:
 ${formattedContext}
 
@@ -423,15 +475,17 @@ Response Layout:
 📅 **Timeline:** Registered: [CrimeRegisteredDate]
 📝 **Summary:** [1-2 sentences concise summary]
 
+Privacy rule: personal names, employee IDs, and free-text narratives are intentionally excluded. Never infer or invent them; state that they are unavailable in Copilot when asked.
+
 Context:
 ${formattedContext}
 
 User Query: "${question}"
 `;
 
-    return await generateWithFallback(prompt);
+    return await generateWithFallback(prompt, 350, false);
   } catch (err) {
-    console.error(`[Copilot Engine Critical Exception Error State]:`, err);
-    return "Error: Backend generation cycle interrupted due to rate constraints or database network issues. Please try again.";
+    console.error("[Copilot Engine] Generation failed.", err);
+    throw new Error("Copilot could not complete this request.");
   }
 }

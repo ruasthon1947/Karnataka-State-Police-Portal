@@ -7,26 +7,47 @@ import {
 } from "react-router-dom";
 import AppShell from "./components/layout/AppShell";
 import { RequireAuth } from "./components/layout/RequireAuth";
-import { Chat } from "./components/chat/Chat";
-import Login from "./pages/Login";
-import ChangePassword from "./pages/ChangePassword";
-import NewFIR from "./pages/NewFIR";
-import {
-  Dashboard,
-  FIRList,
-  FIRDetail,
-  AdvancedSearch,
-  Employees,
-  MasterData,
-  Units,
-  Courts,
-  Reports,
-  Settings,
-} from "./pages/pages";
+
+const Chat = React.lazy(() =>
+  import("./components/chat/Chat").then((module) => ({ default: module.Chat })),
+);
+const Login = React.lazy(() => import("./pages/Login"));
+const ChangePassword = React.lazy(() => import("./pages/ChangePassword"));
+const NewFIR = React.lazy(() => import("./pages/NewFIR"));
+const Dashboard = React.lazy(() =>
+  import("./pages/pages").then((module) => ({ default: module.Dashboard })),
+);
+const FIRList = React.lazy(() =>
+  import("./pages/pages").then((module) => ({ default: module.FIRList })),
+);
+const FIRDetail = React.lazy(() =>
+  import("./pages/pages").then((module) => ({ default: module.FIRDetail })),
+);
+const AdvancedSearch = React.lazy(() =>
+  import("./pages/pages").then((module) => ({ default: module.AdvancedSearch })),
+);
+const Employees = React.lazy(() =>
+  import("./pages/pages").then((module) => ({ default: module.Employees })),
+);
+const MasterData = React.lazy(() =>
+  import("./pages/pages").then((module) => ({ default: module.MasterData })),
+);
+const Units = React.lazy(() =>
+  import("./pages/pages").then((module) => ({ default: module.Units })),
+);
+const Courts = React.lazy(() =>
+  import("./pages/pages").then((module) => ({ default: module.Courts })),
+);
+const Reports = React.lazy(() =>
+  import("./pages/pages").then((module) => ({ default: module.Reports })),
+);
+const Settings = React.lazy(() =>
+  import("./pages/pages").then((module) => ({ default: module.Settings })),
+);
 
 /**
  * Top-level routes.
- * - /login + /change-password are the only public screens.
+ * - /login is public; password changes require a verified session.
  * - Everything else is gated by RequireAuth; first-time users see a modal
  *   that pushes them to /change-password.
  */
@@ -38,10 +59,24 @@ const App: React.FC = () => {
     location.pathname.startsWith("/change-password");
 
   return (
-    <Routes>
+    <React.Suspense
+      fallback={
+        <div className="grid min-h-[100dvh] place-items-center bg-ink text-sm text-muted" role="status">
+          Loading portal…
+        </div>
+      }
+    >
+      <Routes>
       {/* Auth screens (standalone layout) */}
       <Route path="/login" element={<Login />} />
-      <Route path="/change-password" element={<ChangePassword />} />
+      <Route
+        path="/change-password"
+        element={
+          <RequireAuth>
+            <ChangePassword />
+          </RequireAuth>
+        }
+      />
 
       {/* Protected app */}
       <Route
@@ -74,7 +109,8 @@ const App: React.FC = () => {
         path="*"
         element={<Navigate to={isAuthScreen ? "/login" : "/"} replace />}
       />
-    </Routes>
+      </Routes>
+    </React.Suspense>
   );
 };
 

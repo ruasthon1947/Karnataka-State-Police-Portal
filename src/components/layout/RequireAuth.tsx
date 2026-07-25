@@ -11,9 +11,21 @@ import { FirstLoginModal } from "./FirstLoginModal";
 export const RequireAuth: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const location = useLocation();
   const onChangePwd = location.pathname.startsWith("/change-password");
+
+  if (isLoading) {
+    return (
+      <div
+        className="grid min-h-[100dvh] place-items-center bg-ink text-sm text-muted"
+        role="status"
+        aria-live="polite"
+      >
+        Verifying secure session…
+      </div>
+    );
+  }
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location }} />;

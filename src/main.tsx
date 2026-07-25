@@ -17,3 +17,13 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </BrowserRouter>
   </React.StrictMode>
 );
+
+const bootScreen = document.getElementById("kspp-boot");
+if (bootScreen) {
+  window.requestAnimationFrame(() => {
+    window.setTimeout(() => {
+      bootScreen.classList.add("is-ready");
+      window.setTimeout(() => bootScreen.remove(), 450);
+    }, 650);
+  });
+}

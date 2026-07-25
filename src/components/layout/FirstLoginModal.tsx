@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { KSPPBrandMark, KSPP_SHORT_NAME } from "../brand/KSPPBrand";
 
 /**
  * Modal that fires after a successful first-time login.
@@ -10,15 +11,13 @@ import { useNavigate } from "react-router-dom";
 export const FirstLoginModal: React.FC<{ employeeId: string }> = ({ employeeId }) => {
   const navigate = useNavigate();
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center modal-backdrop px-4">
-      <div className="w-full max-w-md bg-shell border border-line rounded-2xl shadow-soft p-6">
+    <div className="modal-backdrop fixed inset-0 z-50 grid place-items-center overflow-y-auto px-3 py-5 sm:px-4" role="dialog" aria-modal="true" aria-labelledby="first-login-title">
+      <div className="w-full max-w-md rounded-2xl border border-line bg-shell p-4 shadow-soft sm:p-6">
         <div className="flex items-start gap-3">
-          <div className="h-10 w-10 grid place-items-center rounded-lg bg-amber/15 text-amber border border-amber/30">
-            <WarnIcon />
-          </div>
+          <KSPPBrandMark size="md" decorative />
           <div className="flex-1">
-            <h2 className="text-white font-schibsted text-lg font-semibold">
-              First-time login detected
+            <h2 id="first-login-title" className="text-white font-schibsted text-lg font-semibold">
+              {KSPP_SHORT_NAME} first-time login
             </h2>
             <p className="text-muted text-sm mt-1">
               Welcome, <span className="text-white">{employeeId}</span>. For your
@@ -55,10 +54,3 @@ export const FirstLoginModal: React.FC<{ employeeId: string }> = ({ employeeId }
     </div>
   );
 };
-
-const WarnIcon: React.FC = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-    <path d="M12 3 2 21h20L12 3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-    <path d="M12 10v5M12 18v.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-  </svg>
-);

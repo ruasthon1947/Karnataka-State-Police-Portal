@@ -32,6 +32,14 @@ export type CaseSaveResponse = {
   case: CaseRecord;
   options: CaseOptions;
   sync: SyncResult;
+  notifications?: {
+    event: "new_fir" | "status_update";
+    matched: number;
+    eligible: number;
+    sent: number;
+    failed: number;
+    systemError?: boolean;
+  } | null;
   error?: string;
 };
 
@@ -73,7 +81,7 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export async function fetchCases(): Promise<CasesResponse> {
-  return readJson<CasesResponse>(await fetch(api("/cases")));
+  return readJson<CasesResponse>(await fetch(api("/cases"), { cache: "no-store" }));
 }
 
 export async function saveCase(
@@ -129,7 +137,7 @@ export function useCases() {
     const refresh = () => {
       if (document.visibilityState === "visible") void reload(true);
     };
-    const interval = window.setInterval(refresh, 15000);
+    const interval = window.setInterval(refresh, 60000);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
     return () => {
@@ -173,13 +181,35 @@ export function joinNames(values: string[]): string {
   return values.map((value) => value.trim()).filter(Boolean).join("; ");
 }
 
+export function dedupeOptionValues(values: string[]): string[] {
+  const unique = new Map<string, string>();
+  for (const rawValue of values) {
+    const value = String(rawValue || "").trim().replace(/\s+/g, " ");
+    if (!value) continue;
+    const key = value.toLocaleLowerCase();
+    if (!unique.has(key)) unique.set(key, value);
+  }
+  return Array.from(unique.values()).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" }),
+  );
+}
+
 export function optionList(options: CaseOptions, field: string): string[] {
   const value = options[field];
-  return Array.isArray(value) ? value : [];
+  return Array.isArray(value) ? dedupeOptionValues(value) : [];
 }
 
 export function subHeadOptions(options: CaseOptions, crimeHead: string): string[] {
-  return options.crimeSubHeadsByHead?.[crimeHead] || optionList(options, "CrimeSubHead");
+  const byHead = options.crimeSubHeadsByHead;
+  if (!byHead || !crimeHead.trim()) return optionList(options, "CrimeSubHead");
+
+  const wanted = crimeHead.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  const matchingHead = Object.keys(byHead).find(
+    (head) => head.trim().replace(/\s+/g, " ").toLocaleLowerCase() === wanted,
+  );
+  return matchingHead
+    ? dedupeOptionValues(byHead[matchingHead] || [])
+    : optionList(options, "CrimeSubHead");
 }
 
 export function findCase(records: CaseRecord[], id: string | undefined): CaseRecord | undefined {

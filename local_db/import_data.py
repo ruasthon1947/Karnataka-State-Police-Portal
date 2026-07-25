@@ -27,7 +27,6 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_CSV_PATH = ROOT / "Consolidated_Cases.csv"
-DEFAULT_SPREADSHEET_ID = "1sExCOOVJDT6J68DM93E_QPbZGs_-RzPOlfXACYd8mS4"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 SYNC_TABS = [
@@ -1088,7 +1087,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--spreadsheet-id",
-        default=os.getenv("GOOGLE_SHEET_ID", DEFAULT_SPREADSHEET_ID),
+        default=os.getenv("GOOGLE_MASTER_SHEET_ID") or os.getenv("GOOGLE_SHEET_ID", ""),
         help="Google Sheets spreadsheet ID",
     )
     parser.add_argument("--dry-run", action="store_true", help="Build the payload without writing to Google Sheets.")
@@ -1101,6 +1100,10 @@ def main() -> int:
         raise RuntimeError("GOOGLE_SHEETS_WEBHOOK_URL is not supported for normalized multi-tab sync.")
 
     args = parse_args()
+    if not args.spreadsheet_id:
+        raise RuntimeError(
+            "GOOGLE_MASTER_SHEET_ID is required (or pass --spreadsheet-id)."
+        )
     dry_run = args.dry_run or os.getenv("GOOGLE_SHEETS_DRY_RUN", "").strip() == "1"
     cases = read_local_cases(Path(args.csv))
     if args.limit > 0:

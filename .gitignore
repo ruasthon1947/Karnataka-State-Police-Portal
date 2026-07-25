@@ -4,3 +4,9 @@ dist/
 .env.local
 local_db/service_account.json
 service-account.json
+.catalyst-deployment-work/
+.pnpm-store/
+catalyst-debug.log
+appsail-build/
+vite.config.ts.timestamp-*.mjs
+local_db/__pycache__/

@@ -1,14 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { auth } from "../firebase";
-import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth";
-import { getMessaging, getToken } from "firebase/messaging";
-
-declare global {
-  interface Window {
-    recaptchaVerifier: any;
-  }
-}
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import {
   Bar,
@@ -512,7 +503,7 @@ export const Dashboard: React.FC = () => {
       record.label,
       record.status || record.gravity || record.category,
     ]);
-  const attentionRows = liveAttention.length ? liveAttention : attention;
+  const attentionRows = liveAttention;
   const metricFooters = [
     "loaded from Consolidated_Cases",
     "currently under investigation",
@@ -672,6 +663,11 @@ export const Dashboard: React.FC = () => {
           </div>
 
           <div className="mt-4 space-y-2">
+            {!loading && attentionRows.length === 0 && (
+              <p className="rounded-lg border border-line p-3 text-sm text-muted">
+                No cases currently require attention.
+              </p>
+            )}
             {attentionRows.map((x) => (
               <button
                 key={x[0]}
@@ -776,6 +772,24 @@ export const FIRList: React.FC = () => {
   const t = useT();
   const nav = useNavigate();
   const { records, loading, error } = useFirRecords();
+  const [searchParams] = useSearchParams();
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+  const statusFilter = searchParams.get("status") || "";
+  const gravityFilter = searchParams.get("gravity") || "";
+  const visibleRecords = useMemo(
+    () =>
+      records.filter(
+        (record) =>
+          (!statusFilter || record.status === statusFilter) &&
+          (!gravityFilter || record.gravity === gravityFilter),
+      ),
+    [records, statusFilter, gravityFilter],
+  );
+  const pageCount = Math.max(1, Math.ceil(visibleRecords.length / pageSize));
+  const pageRecords = visibleRecords.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => setPage(1), [statusFilter, gravityFilter]);
 
   return (
     <div className="p-5">
@@ -809,6 +823,22 @@ export const FIRList: React.FC = () => {
           </button>
         </div>
 
+        {loading && (
+          <div className="mt-5 rounded-lg border border-line p-4 text-sm text-muted" role="status">
+            Loading FIR records…
+          </div>
+        )}
+        {error && (
+          <div className="mt-5 rounded-lg border border-rose/30 bg-rose/10 p-4 text-sm text-rose" role="alert">
+            {error}
+          </div>
+        )}
+        {!loading && !error && visibleRecords.length === 0 && (
+          <div className="mt-5 rounded-lg border border-line p-4 text-sm text-muted">
+            No FIR records match the selected filters.
+          </div>
+        )}
+
         <div className="overflow-x-auto mt-5">
           <table className="w-full text-sm">
             <thead>
@@ -840,10 +870,18 @@ export const FIRList: React.FC = () => {
             </thead>
 
             <tbody>
-              {records.map((r) => (
+              {pageRecords.map((r) => (
                 <tr
                   key={r.id}
                   onClick={() => nav(`/fir/${caseRoute(r.raw)}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      nav(`/fir/${caseRoute(r.raw)}`);
+                    }
+                  }}
+                  role="link"
+                  tabIndex={0}
                   className="border-b border-line hover:bg-panel cursor-pointer"
                 >
                   <td className="py-3">
@@ -875,6 +913,32 @@ export const FIRList: React.FC = () => {
             </tbody>
           </table>
         </div>
+        {!loading && !error && visibleRecords.length > pageSize && (
+          <div className="mt-4 flex items-center justify-between gap-3 text-xs text-muted">
+            <span>
+              Showing {(page - 1) * pageSize + 1}–
+              {Math.min(page * pageSize, visibleRecords.length)} of {visibleRecords.length}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page === 1}
+                className="rounded-lg border border-line px-3 py-2 disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                disabled={page === pageCount}
+                className="rounded-lg border border-line px-3 py-2 disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -890,7 +954,7 @@ export const FIRDetail: React.FC = () => {
   const nav = useNavigate();
   const { cases, loading, error } = useFirRecords();
 
-  const matchedCase = findCase(cases, id) || cases[0];
+  const matchedCase = findCase(cases, id);
   const r = matchedCase ? toFirRecord(matchedCase) : undefined;
 
   if (loading) {
@@ -959,6 +1023,43 @@ export const FIRDetail: React.FC = () => {
       ),
     ],
   ];
+  const liveTimeline = [
+    r.raw.CrimeRegisteredDate
+      ? [
+          t("FIR Registered", "FIR Registered"),
+          r.raw.CrimeRegisteredDate,
+          r.raw.FiledBy ? `Filed by ${r.raw.FiledBy}` : "Registration recorded",
+        ]
+      : null,
+    r.raw.InfoReceivedPSDate
+      ? [
+          t("Information received", "Information received"),
+          r.raw.InfoReceivedPSDate,
+          r.station || "Police station",
+        ]
+      : null,
+    r.raw.IncidentFromDate
+      ? [
+          t("Incident period", "Incident period"),
+          [r.raw.IncidentFromDate, r.raw.IncidentToDate].filter(Boolean).join(" – "),
+          r.raw.BriefFacts || "Incident details recorded",
+        ]
+      : null,
+    r.io
+      ? [
+          t("Investigating officer assigned", "Investigating officer assigned"),
+          r.raw.CrimeRegisteredDate || "Date not recorded",
+          r.io,
+        ]
+      : null,
+    r.raw.LatestChargesheetDate || r.raw.ChargesheetStatus
+      ? [
+          t("Chargesheet status", "Chargesheet status"),
+          r.raw.LatestChargesheetDate || "Date not recorded",
+          r.raw.ChargesheetStatus || "Status not recorded",
+        ]
+      : null,
+  ].filter((item): item is string[] => Boolean(item));
 
   return (
     <div className="p-5 space-y-4">
@@ -1050,14 +1151,17 @@ export const FIRDetail: React.FC = () => {
           </div>
 
           <div className="mt-5">
-            {timeline.map((x, i) => (
+            {liveTimeline.length === 0 && (
+              <p className="text-sm text-muted">No dated case events are recorded.</p>
+            )}
+            {liveTimeline.map((x, i) => (
               <div
                 className="relative pl-7 pb-5"
                 key={x[0]}
               >
                 <span className="absolute left-0 top-1 h-3 w-3 rounded-full bg-brand border-2 border-shell" />
 
-                {i < timeline.length - 1 && (
+                {i < liveTimeline.length - 1 && (
                   <span className="absolute left-[5px] top-4 bottom-0 w-px bg-line" />
                 )}
 
@@ -1088,10 +1192,11 @@ export const FIRDetail: React.FC = () => {
 
 export const AdvancedSearch: React.FC = () => {
   const t = useT();
+  const [searchParams] = useSearchParams();
 
-  const [q, setQ] = useState("");
-  const [station, setStation] = useState("");
-  const [status, setStatus] = useState("");
+  const [q, setQ] = useState(() => searchParams.get("q") || "");
+  const [station, setStation] = useState(() => searchParams.get("station") || "");
+  const [status, setStatus] = useState(() => searchParams.get("status") || "");
 
   const [saved, setSaved] = useState<string[]>(() =>
     JSON.parse(
@@ -1477,7 +1582,7 @@ export const Reports: React.FC = () => {
   const csv = () => {
     const rows = [
       "Case,FIR,Category,Station,Status,Gravity,Registered,Officer,Complainant,Accused,Sections",
-      ...records.map(
+      ...filteredRecords.map(
         (r) =>
           [
             r.label,
@@ -1537,7 +1642,7 @@ export const Reports: React.FC = () => {
             className="h-9 px-3 border border-line rounded-lg text-xs"
           >
             {t(
-              "Generate PDF",
+              "Print / Save PDF",
               "ಪಿಡಿಎಫ್ ರಚಿಸಿ"
             )}
           </button>
@@ -2057,79 +2162,245 @@ export const Settings: React.FC = () => {
     message: string;
   }>({ status: "idle", message: "" });
 
-  const [phoneNumber, setPhoneNumber] = useState(
-    () => localStorage.getItem(`kpfir.phoneNumber.${user?.employeeId}`)?.replace("+91", "") || ""
-  );
-  const [phoneVerified, setPhoneVerified] = useState(
-    () => localStorage.getItem(`kpfir.phoneVerified.${user?.employeeId}`) === "true"
-  );
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [phoneRecordLoading, setPhoneRecordLoading] = useState(true);
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [resendSeconds, setResendSeconds] = useState(0);
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneError, setPhoneError] = useState("");
   const [phoneSuccess, setPhoneSuccess] = useState("");
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [smsConfigured, setSmsConfigured] = useState<boolean | null>(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
 
   useEffect(() => {
-    if (window.recaptchaVerifier) {
-      try {
-        window.recaptchaVerifier.clear();
-      } catch (e) {}
-      window.recaptchaVerifier = undefined;
+    let cancelled = false;
+    const employeeId = user?.employeeId;
+    setPhoneRecordLoading(true);
+    setPhoneVerified(false);
+    setPhoneNumber("");
+    setOtp("");
+    setOtpSent(false);
+    setResendSeconds(0);
+    setPhoneError("");
+    setPhoneSuccess("");
+    setSmsConfigured(null);
+
+    if (!employeeId) {
+      setPhoneRecordLoading(false);
+      return () => {
+        cancelled = true;
+      };
     }
-  }, []);
+
+    void fetch(`/api/phone?employeeId=${encodeURIComponent(employeeId)}`, {
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data?.ok) {
+          throw new Error(data?.error || "Unable to load the saved phone number.");
+        }
+        if (cancelled) return;
+
+        const digits = String(data.phoneNumber || "").replace(/\D/g, "").slice(-10);
+        const verified = Boolean(data.verified && /^[6-9]\d{9}$/.test(digits));
+        if (data.preferences) {
+          const savedNewFir = Boolean(data.preferences.newFir);
+          const savedStatusUpdates = Boolean(data.preferences.statusUpdates);
+          setNewFir(savedNewFir);
+          setStatusUpdates(savedStatusUpdates);
+          localStorage.setItem("kpfir.notify.newFir", String(savedNewFir));
+          localStorage.setItem("kpfir.notify.status", String(savedStatusUpdates));
+        }
+        setSmsConfigured(Boolean(data.sms?.configured));
+        setPhoneNumber(verified ? digits : "");
+        setPhoneVerified(verified);
+        if (verified) {
+          localStorage.setItem(`kpfir.phoneNumber.${employeeId}`, `+91${digits}`);
+          localStorage.setItem(`kpfir.phoneVerified.${employeeId}`, "true");
+        } else {
+          localStorage.removeItem(`kpfir.phoneNumber.${employeeId}`);
+          localStorage.removeItem(`kpfir.phoneVerified.${employeeId}`);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setPhoneError(error instanceof Error ? error.message : "Unable to load the saved phone number.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPhoneRecordLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.employeeId]);
+
+  useEffect(() => {
+    if (resendSeconds <= 0) return;
+    const timer = window.setInterval(
+      () => setResendSeconds((seconds) => Math.max(0, seconds - 1)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [resendSeconds > 0]);
+
+  const handlePhoneNumberChange = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 10);
+    if (digits !== phoneNumber && otpSent) {
+      setOtp("");
+      setOtpSent(false);
+      setResendSeconds(0);
+      setPhoneSuccess("");
+    }
+    setPhoneNumber(digits);
+    setPhoneError("");
+  };
 
   const sendOtp = async () => {
     setPhoneError("");
     setPhoneSuccess("");
+
+    if (!user?.employeeId) {
+      setPhoneError(t("Please sign in again.", "ದಯವಿಟ್ಟು ಮತ್ತೆ ಸೈನ್ ಇನ್ ಮಾಡಿ."));
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(phoneNumber)) {
+      setPhoneError(
+        t(
+          "Enter a valid 10-digit Indian mobile number.",
+          "ಮಾನ್ಯವಾದ 10 ಅಂಕಿಯ ಭಾರತೀಯ ಮೊಬೈಲ್ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸಿ.",
+        ),
+      );
+      return;
+    }
+
     setPhoneLoading(true);
-    
-    // Mock sending OTP
-    setTimeout(() => {
+    try {
+      const res = await fetch("/api/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: user.employeeId,
+          phoneNumber: `+91${phoneNumber}`,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.ok) {
+        if (Number.isFinite(data?.retryAfterSeconds)) {
+          setResendSeconds(data.retryAfterSeconds);
+        }
+        throw new Error(
+          data?.error || t("Failed to send OTP.", "OTP ಕಳುಹಿಸಲು ವಿಫಲವಾಗಿದೆ."),
+        );
+      }
+
+      setOtp("");
       setOtpSent(true);
-      setPhoneSuccess(t("OTP sent successfully. (Use 1968)", "OTP ಯಶಸ್ವಿಯಾಗಿ ಕಳುಹಿಸಲಾಗಿದೆ. (Use 1968)"));
+      setResendSeconds(Number(data.retryAfterSeconds) || 60);
+      setPhoneSuccess(
+        t(
+          `A 6-digit OTP was sent. It expires in ${Math.max(1, Math.ceil(Number(data.expiresInSeconds || 300) / 60))} minutes.`,
+          "6 ಅಂಕಿಯ OTP ಕಳುಹಿಸಲಾಗಿದೆ. ಇದು 5 ನಿಮಿಷಗಳಲ್ಲಿ ಅವಧಿ ಮೀರುತ್ತದೆ.",
+        ),
+      );
+    } catch (err) {
+      setPhoneError(
+        err instanceof Error
+          ? err.message
+          : t("Failed to send OTP.", "OTP ಕಳುಹಿಸಲು ವಿಫಲವಾಗಿದೆ."),
+      );
+    } finally {
       setPhoneLoading(false);
-    }, 500);
+    }
   };
 
   const verifyOtp = async () => {
     setPhoneError("");
     setPhoneSuccess("");
+
+    if (!user?.employeeId) {
+      setPhoneError(t("Please sign in again.", "ದಯವಿಟ್ಟು ಮತ್ತೆ ಸೈನ್ ಇನ್ ಮಾಡಿ."));
+      return;
+    }
+    if (!/^\d{6}$/.test(otp)) {
+      setPhoneError(t("Enter the 6-digit OTP.", "6 ಅಂಕಿಯ OTP ನಮೂದಿಸಿ."));
+      return;
+    }
+
     setPhoneLoading(true);
-    
-    setTimeout(() => {
-      if (otp === "1968") {
-        setOtpSent(false);
-        setPhoneSuccess(t("Phone number verified!", "ಫೋನ್ ಸಂಖ್ಯೆಯನ್ನು ದೃಢೀಕರಿಸಲಾಗಿದೆ!"));
-        const verifiedNumber = "+91" + phoneNumber;
-        localStorage.setItem(`kpfir.phoneNumber.${user?.employeeId}`, verifiedNumber);
-        localStorage.setItem(`kpfir.phoneVerified.${user?.employeeId}`, "true");
-        setPhoneVerified(true);
-        
-        // Save to backend - only to Consolidated sheet, not Employee sheet
-        fetch("/api/phone", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ employeeId: user?.employeeId, phoneNumber: verifiedNumber })
-        }).catch(console.error);
-      } else {
-        setPhoneError("Invalid OTP. Try again. (Use 1968)");
+    try {
+      const verifiedNumber = `+91${phoneNumber}`;
+      const res = await fetch("/api/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: user.employeeId,
+          phoneNumber: verifiedNumber,
+          otp,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.ok) {
+        if (
+          ["OTP_EXPIRED", "OTP_NOT_FOUND", "OTP_ATTEMPTS_EXHAUSTED"].includes(
+            String(data?.code || ""),
+          )
+        ) {
+          setOtpSent(false);
+          setOtp("");
+        }
+        throw new Error(
+          data?.error ||
+            t("Failed to verify OTP.", "OTP ದೃಢೀಕರಿಸಲು ವಿಫಲವಾಗಿದೆ."),
+        );
       }
+
+      setOtp("");
+      setOtpSent(false);
+      setResendSeconds(0);
+      setPhoneSuccess(
+        t(
+          "Phone number verified and saved.",
+          "ಫೋನ್ ಸಂಖ್ಯೆಯನ್ನು ದೃಢೀಕರಿಸಿ ಉಳಿಸಲಾಗಿದೆ.",
+        ),
+      );
+      localStorage.setItem(
+        `kpfir.phoneNumber.${user.employeeId}`,
+        verifiedNumber,
+      );
+      localStorage.setItem(`kpfir.phoneVerified.${user.employeeId}`, "true");
+      setPhoneVerified(true);
+    } catch (err) {
+      setPhoneError(
+        err instanceof Error
+          ? err.message
+          : t("Failed to verify OTP.", "OTP ದೃಢೀಕರಿಸಲು ವಿಫಲವಾಗಿದೆ."),
+      );
+    } finally {
       setPhoneLoading(false);
-    }, 500);
+    }
   };
 
-  const requestNotificationPermission = async () => {
-    try {
-      const messaging = getMessaging();
-      const token = await getToken(messaging, { vapidKey: "YOUR_VAPID_KEY_HERE" });
-      if (token) {
-        console.log("FCM Token:", token);
-        // We would save the token to backend here
-      }
-    } catch (err) {
-      console.warn("FCM permission denied or failed", err);
+  const changePhoneNumber = () => {
+    if (user?.employeeId) {
+      localStorage.removeItem(`kpfir.phoneNumber.${user.employeeId}`);
+      localStorage.removeItem(`kpfir.phoneVerified.${user.employeeId}`);
     }
+    localStorage.removeItem("kpfir.phoneNumber");
+    setPhoneNumber("");
+    setOtp("");
+    setOtpSent(false);
+    setResendSeconds(0);
+    setPhoneError("");
+    setPhoneSuccess("");
+    setPhoneVerified(false);
   };
 
   const pullFromMaster = async () => {
@@ -2156,44 +2427,48 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const save = () => {
-    localStorage.setItem(
-      "kpfir.defaultStation",
-      station
-    );
-
-    localStorage.setItem(
-      "kpfir.notify.newFir",
-      String(newFir)
-    );
-
-    localStorage.setItem(
-      "kpfir.notify.status",
-      String(statusUpdates)
-    );
-
-    setSavedMessage(
-      t(
-        "Changes saved",
-        "ಬದಲಾವಣೆಗಳನ್ನು ಉಳಿಸಲಾಗಿದೆ"
-      )
-    );
-
-    // Save preferences to backend
-    fetch("/api/employee/password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ employeeId: user?.employeeId, notificationPref: newFir })
-    }).catch(console.error);
-
-    if (newFir) {
-      requestNotificationPermission();
+  const save = async () => {
+    setSettingsError("");
+    setSavedMessage("");
+    if (!user?.employeeId) {
+      setSettingsError(t("Please sign in again.", "ದಯವಿಟ್ಟು ಮತ್ತೆ ಸೈನ್ ಇನ್ ಮಾಡಿ."));
+      return;
     }
 
-    window.setTimeout(
-      () => setSavedMessage(""),
-      2200
-    );
+    setSettingsSaving(true);
+    try {
+      const response = await fetch("/api/notification-preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: user.employeeId,
+          newFir,
+          statusUpdates,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || "Unable to save notification preferences.");
+      }
+
+      const savedNewFir = Boolean(data.preferences?.newFir);
+      const savedStatusUpdates = Boolean(data.preferences?.statusUpdates);
+      setNewFir(savedNewFir);
+      setStatusUpdates(savedStatusUpdates);
+      localStorage.setItem("kpfir.defaultStation", station);
+      localStorage.setItem("kpfir.notify.newFir", String(savedNewFir));
+      localStorage.setItem("kpfir.notify.status", String(savedStatusUpdates));
+      setSavedMessage(t("Changes saved", "ಬದಲಾವಣೆಗಳನ್ನು ಉಳಿಸಲಾಗಿದೆ"));
+      window.setTimeout(() => setSavedMessage(""), 2200);
+    } catch (error) {
+      setSettingsError(
+        error instanceof Error
+          ? error.message
+          : t("Unable to save changes.", "ಬದಲಾವಣೆಗಳನ್ನು ಉಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ."),
+      );
+    } finally {
+      setSettingsSaving(false);
+    }
   };
 
 
@@ -2232,25 +2507,24 @@ export const Settings: React.FC = () => {
           </p>
 
           <div className="mt-3">
-            <div id="recaptcha-container"></div>
-            
             <SettingRow
               title={t("Phone Number", "ಫೋನ್ ಸಂಖ್ಯೆ")}
-              desc={t("Used for SMS alerts and verification.", "SMS ಎಚ್ಚರಿಕೆಗಳು ಮತ್ತು ದೃಢೀಕರಣಕ್ಕಾಗಿ ಬಳಸಲಾಗುತ್ತದೆ.")}
+              desc={t(
+                "Used for SMS alerts and verification.",
+                "SMS ಎಚ್ಚರಿಕೆಗಳು ಮತ್ತು ದೃಢೀಕರಣಕ್ಕಾಗಿ ಬಳಸಲಾಗುತ್ತದೆ.",
+              )}
               control={
                 <div className="flex flex-col gap-2 min-w-[240px]">
-                  {phoneVerified ? (
+                  {phoneRecordLoading ? (
+                    <div className="text-xs text-muted">
+                      {t("Loading phone number…", "ಫೋನ್ ಸಂಖ್ಯೆಯನ್ನು ಲೋಡ್ ಮಾಡಲಾಗುತ್ತಿದೆ…")}
+                    </div>
+                  ) : phoneVerified ? (
                     <div className="flex items-center gap-2 text-sage text-sm font-medium">
                       ✓ +91 {phoneNumber} {t("Verified", "ದೃಢೀಕರಿಸಲಾಗಿದೆ")}
-                      <button 
-                        onClick={() => {
-                          localStorage.removeItem(`kpfir.phoneNumber.${user?.employeeId}`);
-                          localStorage.removeItem(`kpfir.phoneVerified.${user?.employeeId}`);
-                          localStorage.removeItem("kpfir.phoneNumber"); // Old global key
-                          setPhoneNumber("");
-                          setPhoneSuccess("");
-                          setPhoneVerified(false);
-                        }} 
+                      <button
+                        type="button"
+                        onClick={changePhoneNumber}
                         className="text-muted text-xs ml-4 hover:text-white underline"
                       >
                         {t("Change", "ಬದಲಾಯಿಸಿ")}
@@ -2261,41 +2535,120 @@ export const Settings: React.FC = () => {
                       <div className="flex gap-2">
                         <div className="flex items-center gap-2 flex-1 h-9 bg-panel border border-line rounded-lg px-3 focus-within:border-brand transition">
                           <span className="text-xs text-muted font-medium">+91</span>
-                          <input 
-                            type="text" 
-                            value={phoneNumber} 
-                            onChange={e => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                          <input
+                            type="tel"
+                            inputMode="numeric"
+                            autoComplete="tel-national"
+                            aria-label={t("Mobile number", "ಮೊಬೈಲ್ ಸಂಖ್ಯೆ")}
+                            value={phoneNumber}
+                            disabled={otpSent || phoneLoading}
+                            onChange={(event) => handlePhoneNumberChange(event.target.value)}
                             placeholder="9876543210"
-                            className="flex-1 bg-transparent text-xs outline-none"
+                            className="flex-1 bg-transparent text-xs outline-none disabled:opacity-70"
                           />
                         </div>
                         {!otpSent && (
-                          <button onClick={sendOtp} disabled={phoneLoading || phoneNumber.length !== 10} className="h-9 px-3 bg-brand rounded-lg text-xs font-medium disabled:opacity-60 whitespace-nowrap">
-                            {phoneLoading ? "..." : t("Send OTP", "OTP ಕಳುಹಿಸಿ")}
+                          <button
+                            type="button"
+                            onClick={sendOtp}
+                            disabled={
+                              phoneLoading ||
+                              resendSeconds > 0 ||
+                              !/^[6-9]\d{9}$/.test(phoneNumber)
+                            }
+                            className="h-9 px-3 bg-brand rounded-lg text-xs font-medium disabled:opacity-60 whitespace-nowrap"
+                          >
+                            {phoneLoading
+                              ? t("Sending…", "ಕಳುಹಿಸಲಾಗುತ್ತಿದೆ…")
+                              : resendSeconds > 0
+                                ? `${t("Retry in", "ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ")} ${resendSeconds}s`
+                                : t("Send OTP", "OTP ಕಳುಹಿಸಿ")}
                           </button>
                         )}
                       </div>
                       {otpSent && (
-                        <div className="flex gap-2">
-                          <input 
-                            type="text" 
-                            value={otp} 
-                            onChange={e => setOtp(e.target.value)}
-                            placeholder="123456"
-                            className="flex-1 h-9 bg-panel border border-line rounded-lg px-3 text-xs outline-none"
-                          />
-                          <button onClick={verifyOtp} disabled={phoneLoading || !otp} className="h-9 px-3 bg-sage text-white rounded-lg text-xs font-medium disabled:opacity-60 whitespace-nowrap">
-                            {phoneLoading ? "..." : t("Verify", "ದೃಢೀಕರಿಸಿ")}
+                        <>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              autoComplete="one-time-code"
+                              aria-label={t("6-digit OTP", "6 ಅಂಕಿಯ OTP")}
+                              value={otp}
+                              onChange={(event) =>
+                                setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" && /^\d{6}$/.test(otp)) {
+                                  void verifyOtp();
+                                }
+                              }}
+                              placeholder="123456"
+                              className="flex-1 h-9 bg-panel border border-line rounded-lg px-3 text-xs tracking-[0.25em] outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={verifyOtp}
+                              disabled={phoneLoading || !/^\d{6}$/.test(otp)}
+                              className="h-9 px-3 bg-sage text-white rounded-lg text-xs font-medium disabled:opacity-60 whitespace-nowrap"
+                            >
+                              {phoneLoading
+                                ? t("Verifying…", "ದೃಢೀಕರಿಸಲಾಗುತ್ತಿದೆ…")
+                                : t("Verify", "ದೃಢೀಕರಿಸಿ")}
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={sendOtp}
+                            disabled={phoneLoading || resendSeconds > 0}
+                            className="self-start text-[10px] text-muted underline disabled:no-underline disabled:opacity-60"
+                          >
+                            {resendSeconds > 0
+                              ? `${t("Resend available in", "ಮರುಕಳುಹಿಸಲು ಲಭ್ಯ")} ${resendSeconds}s`
+                              : t("Resend OTP", "OTP ಮರುಕಳುಹಿಸಿ")}
                           </button>
-                        </div>
+                        </>
                       )}
-                      {phoneError && <div className="text-rose text-[10px]">{phoneError}</div>}
-                      {phoneSuccess && <div className="text-sage text-[10px]">{phoneSuccess}</div>}
                     </>
+                  )}
+                  {phoneError && (
+                    <div role="alert" className="text-rose text-[10px]">
+                      {phoneError}
+                    </div>
+                  )}
+                  {phoneSuccess && (
+                    <div role="status" className="text-sage text-[10px]">
+                      {phoneSuccess}
+                    </div>
                   )}
                 </div>
               }
             />
+            {smsConfigured !== null && (
+              <div
+                role={smsConfigured ? "status" : "alert"}
+                className={`my-3 rounded-lg border px-3 py-2 text-[11px] ${
+                  smsConfigured
+                    ? "border-sage/30 bg-sage/10 text-sage"
+                    : "border-rose/30 bg-rose/10 text-rose"
+                }`}
+              >
+                {smsConfigured
+                  ? phoneVerified
+                    ? t(
+                        "SMS delivery is connected and your verified number can receive enabled alerts.",
+                        "SMS ವಿತರಣೆ ಸಂಪರ್ಕಗೊಂಡಿದೆ ಮತ್ತು ನಿಮ್ಮ ದೃಢೀಕೃತ ಸಂಖ್ಯೆ ಸಕ್ರಿಯ ಎಚ್ಚರಿಕೆಗಳನ್ನು ಸ್ವೀಕರಿಸಬಹುದು.",
+                      )
+                    : t(
+                        "SMS delivery is connected. Verify a phone number to receive alerts.",
+                        "SMS ವಿತರಣೆ ಸಂಪರ್ಕಗೊಂಡಿದೆ. ಎಚ್ಚರಿಕೆಗಳನ್ನು ಪಡೆಯಲು ಫೋನ್ ಸಂಖ್ಯೆಯನ್ನು ದೃಢೀಕರಿಸಿ.",
+                      )
+                  : t(
+                      "SMS delivery is not configured on the server.",
+                      "ಸರ್ವರ್‌ನಲ್ಲಿ SMS ವಿತರಣೆಯನ್ನು ಕಾನ್ಫಿಗರ್ ಮಾಡಲಾಗಿಲ್ಲ.",
+                    )}
+              </div>
+            )}
             <SettingRow
               title={t(
                 "New FIR Alerts",
@@ -2410,6 +2763,11 @@ export const Settings: React.FC = () => {
       </div>
 
       <div className="flex items-center justify-end gap-3">
+        {settingsError && (
+          <span role="alert" className="text-sm text-rose">
+            {settingsError}
+          </span>
+        )}
         {savedMessage && (
           <span className="text-sm text-brand">
             ✓ {savedMessage}
@@ -2417,13 +2775,13 @@ export const Settings: React.FC = () => {
         )}
 
         <button
-          onClick={save}
-          className="h-10 px-5 rounded-lg bg-brand text-white text-sm font-semibold"
+          onClick={() => void save()}
+          disabled={settingsSaving}
+          className="h-10 px-5 rounded-lg bg-brand text-white text-sm font-semibold disabled:opacity-60"
         >
-          {t(
-            "Save changes",
-            "ಬದಲಾವಣೆಗಳನ್ನು ಉಳಿಸಿ"
-          )}
+          {settingsSaving
+            ? t("Saving…", "ಉಳಿಸಲಾಗುತ್ತಿದೆ…")
+            : t("Save changes", "ಬದಲಾವಣೆಗಳನ್ನು ಉಳಿಸಿ")}
         </button>
       </div>
     </div>

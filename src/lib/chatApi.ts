@@ -1,13 +1,14 @@
 export async function askCopilot(params: {
   question: string;
-  role: string;
-  stationId?: string;
   language: "en" | "kn";
 }): Promise<string> {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+    body: JSON.stringify({
+      question: params.question,
+      language: params.language,
+    }),
   });
 
   const data = await res.json().catch(() => null);

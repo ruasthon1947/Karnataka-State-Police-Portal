@@ -23,6 +23,10 @@ export default defineConfig({
         }
       }
     }
-  }
+  },
+  build: {
+    // The PDF exporter is loaded only when a user explicitly exports a chat.
+    chunkSizeWarningLimit: 1100,
+  },
 });
 

@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 // @ts-ignore - html2pdf fallback import for environments without strict type declarations
-import html2pdf from "html2pdf.js";
+import { KSPPBrandMark } from "../brand/KSPPBrand";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { askCopilot } from "../../lib/chatApi";
@@ -30,7 +30,7 @@ export const Chat: React.FC = () => {
   useEffect(() => { const id = setInterval(() => force((n) => n + 1), 60_000); return () => clearInterval(id); }, []);
 
   // 🚀 PDF Export Handler
-  const exportChatToPDF = () => {
+  const exportChatToPDF = async () => {
     const element = chatListRef.current;
     if (!element) {
       console.warn("Chat container element not found for export.");
@@ -46,8 +46,9 @@ export const Chat: React.FC = () => {
     };
 
     try {
+      const { default: html2pdf } = await import("html2pdf.js");
       const exporter = typeof html2pdf === "function" ? html2pdf : (html2pdf as any).default;
-      exporter().from(element).set(opt).save();
+      await exporter().from(element).set(opt).save();
     } catch (err) {
       console.error("PDF Export Execution Failed:", err);
     }
@@ -57,25 +58,32 @@ export const Chat: React.FC = () => {
     const trimmed = (text ?? input).trim();
     if (!trimmed || isChatBusy) return;
 
-    setChatHistory((m: any) => [...m, { id: crypto.randomUUID(), role: "user", content: trimmed, ts: Date.now() }]);
+    setChatHistory((messages) => [
+      ...messages,
+      { id: crypto.randomUUID(), role: "user", content: trimmed, ts: Date.now() },
+    ]);
     setInput("");
     setIsChatBusy(true);
 
     try {
       const reply = await askCopilot({
         question: trimmed,
-        role: (user as any)?.role ?? "Constable",
-        stationId: (user as any)?.policeStation,
         language: language === "kn" ? "kn" : "en",
       });
-      setChatHistory((m: any) => [...m, { id: crypto.randomUUID(), role: "assistant", content: reply, ts: Date.now() }]);
+      setChatHistory((messages) => [
+        ...messages,
+        { id: crypto.randomUUID(), role: "assistant", content: reply, ts: Date.now() },
+      ]);
     } catch (err) {
       console.error(err);
       const errorMsg = tr(
         "Sorry, I couldn't process that request. Please try again.",
         "ಕ್ಷಮಿಸಿ, ಆ ವಿನಂತಿಯನ್ನು ಪ್ರಕ್ರಿಯೆಗೊಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
       );
-      setChatHistory((m: any) => [...m, { id: crypto.randomUUID(), role: "assistant", content: errorMsg, ts: Date.now() }]);
+      setChatHistory((messages) => [
+        ...messages,
+        { id: crypto.randomUUID(), role: "assistant", content: errorMsg, ts: Date.now() },
+      ]);
     } finally {
       setIsChatBusy(false);
     }
@@ -88,14 +96,14 @@ export const Chat: React.FC = () => {
     : (tod === "morning" ? `Good morning, ${firstName}.` : tod === "afternoon" ? `Good afternoon, ${firstName}.` : `Good evening, ${firstName}.`);
 
   return (
-    <div className="min-h-full bg-ink text-white flex flex-col">
-      <div className="px-6 py-3 border-b border-line bg-ink flex items-center gap-3">
+    <div className="flex h-full min-h-0 flex-col bg-ink text-white">
+      <div className="flex items-center gap-3 border-b border-line bg-ink px-3 py-3 sm:px-6">
         <div className="flex items-center gap-2 text-sm">
-          <span className="h-2 w-2 rounded-full bg-sage" />
-          <span className="text-white font-medium">{tr("Karnataka Police Copilot", "ಕರ್ನಾಟಕ ಪೊಲೀಸ್ ಕೋಪೈಲಟ್")}</span>
+          <KSPPBrandMark size="sm" decorative />
+          <span className="text-white font-medium">{tr("KSPP Assistant", "KSPP ಸಹಾಯಕ")}</span>
         </div>
         <div className="flex-1" />
-        <button onClick={() => { setChatHistory([]); setIsChatBusy(false); }} className="text-xs text-white bg-brand/15 border border-brand/30 px-3 py-1.5 rounded-md hover:bg-brand/25">
+        <button onClick={() => { setChatHistory([]); setIsChatBusy(false); }} className="min-h-9 rounded-md border border-brand/30 bg-brand/15 px-3 py-1.5 text-xs text-white transition hover:bg-brand/25">
           {tr("New session", "ಹೊಸ ಸೆಷನ್")}
         </button>
       </div>
@@ -103,11 +111,11 @@ export const Chat: React.FC = () => {
       {chatHistory.length === 0 ? (
         <EmptyCanvas greeting={greeting} help={tr("How can I help you today?", "ಇಂದು ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?")} />
       ) : (
-        <MessageList ref={chatListRef} messages={chatHistory as any} busy={isChatBusy} tr={tr} />
+        <MessageList ref={chatListRef} messages={chatHistory} busy={isChatBusy} tr={tr} />
       )}
       <div ref={endRef} />
 
-      <div className="px-6 pb-8 pt-4">
+      <div className="shrink-0 px-3 pb-4 pt-3 sm:px-6 sm:pb-7 sm:pt-4">
         <div className="max-w-3xl mx-auto">
           <Composer
             value={input}
@@ -136,11 +144,9 @@ export const Chat: React.FC = () => {
 
 const EmptyCanvas: React.FC<{ greeting: string; help: string }> = ({ greeting, help }) => (
   <div className="flex-1 flex items-center justify-center dotted-bg">
-    <div className="text-center px-6">
-      <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-brand/15 border border-brand/30 mb-4">
-        <span className="text-brand font-semibold text-lg">AI</span>
-      </div>
-      <h1 className="text-3xl md:text-4xl font-schibsted font-semibold text-white">{greeting}</h1>
+    <div className="px-4 text-center sm:px-6">
+      <KSPPBrandMark size="lg" className="mb-4" decorative />
+      <h1 className="font-schibsted text-2xl font-semibold text-white sm:text-3xl md:text-4xl">{greeting}</h1>
       <p className="text-muted text-sm mt-2 max-w-md mx-auto">{help}</p>
     </div>
   </div>
@@ -148,11 +154,11 @@ const EmptyCanvas: React.FC<{ greeting: string; help: string }> = ({ greeting, h
 
 const MessageList = React.forwardRef<HTMLDivElement, { messages: Msg[]; busy: boolean; tr: (en: string, kn: string) => string }>(
   ({ messages, busy, tr }, ref) => (
-    <div ref={ref} className="flex-1 overflow-y-auto px-6 py-8 bg-ink">
-      <div className="max-w-3xl mx-auto space-y-6">
+    <div ref={ref} className="min-h-0 flex-1 overflow-y-auto bg-ink px-3 py-5 sm:px-6 sm:py-8">
+      <div className="mx-auto max-w-3xl space-y-5 sm:space-y-6">
         {/* PDF Document Header (Renders inside exported PDF) */}
         <div className="hidden print:block pb-4 mb-6 border-b border-line text-white">
-          <h1 className="text-xl font-bold">{tr("Karnataka Police Copilot", "ಕರ್ನಾಟಕ ಪೊಲೀಸ್ ಕೋಪೈಲಟ್")}</h1>
+          <h1 className="text-xl font-bold">{tr("KSPP Assistant", "KSPP ಸಹಾಯಕ")}</h1>
           <p className="text-xs text-muted">{tr("Official Chat Conversation Transcript", "ಅಧಿಕೃತ ಸಂಭಾಷಣೆ ಪ್ರತಿ")}</p>
           <p className="text-[10px] text-muted mt-1">{tr("Generated on:", "ರಚಿಸಿದ ದಿನಾಂಕ:")} {new Date().toLocaleString()}</p>
         </div>
@@ -170,7 +176,7 @@ const Bubble: React.FC<{ msg: Msg }> = ({ msg }) => {
   return (
     <div className={`flex items-start gap-3 ${isUser ? "justify-end" : ""}`}>
       {!isUser && <div className="h-8 w-8 rounded-full bg-brand grid place-items-center text-white text-xs font-semibold shrink-0">AI</div>}
-      <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${isUser ? "bg-brand text-white" : "bg-shell text-white border border-line"}`}>
+      <div className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap sm:max-w-[80%] sm:px-4 sm:py-3 ${isUser ? "bg-brand text-white" : "bg-shell text-white border border-line"}`}>
         <Formatted text={msg.content} />
       </div>
       {isUser && <div className="h-8 w-8 rounded-full bg-panel border border-line grid place-items-center text-xs text-muted shrink-0">U</div>}
@@ -210,7 +216,6 @@ const Composer: React.FC<{
   hasMessages: boolean;
 }> = ({ value, onChange, onSend, onVoiceResult, onNavigateToFir, onExportPdf, busy, tr, language, hasMessages }) => {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const ta = taRef.current;
@@ -219,15 +224,8 @@ const Composer: React.FC<{
     ta.style.height = Math.min(180, ta.scrollHeight) + "px";
   }, [value]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      console.log(`[File System] Selected file for upload: ${file.name}`);
-    }
-  };
-
   return (
-    <div className="bg-shell border border-line rounded-2xl px-4 py-3 focus-within:border-brand/50 focus-within:ring-2 focus-within:ring-brand/15 shadow-soft">
+    <div className="rounded-2xl border border-line bg-shell px-3 py-2.5 shadow-soft focus-within:border-brand/50 focus-within:ring-2 focus-within:ring-brand/15 sm:px-4 sm:py-3">
       <textarea
         ref={taRef}
         value={value}
@@ -241,16 +239,9 @@ const Composer: React.FC<{
         className="w-full bg-transparent text-white placeholder-muted outline-none resize-none text-sm leading-relaxed"
       />
       <div className="flex items-center gap-1 mt-1">
-        {/* Functional File Upload Panel Context */}
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          onChange={handleFileChange} 
-          className="hidden" 
-          accept="image/*,.pdf,.doc,.docx"
-        />
         <button 
-          onClick={() => fileInputRef.current?.click()} 
+          hidden
+          onClick={() => undefined}
           className="h-8 w-8 grid place-items-center rounded-md text-muted hover:text-white hover:bg-panel transition" 
           title={tr("Attach a file or picture", "ಫೈಲ್ ಅಥವಾ ಚಿತ್ರವನ್ನು ಲಗತ್ತಿಸಿ")}
         >

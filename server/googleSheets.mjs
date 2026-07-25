@@ -7,8 +7,12 @@ import "dotenv/config";
 // cannot authenticate to Google; set CATALYST_SERVICE_ACCOUNT_JSON to the JSON
 // key (or a path to it) for catalyst-sync@karnatakastatepolice.iam.gserviceaccount.com.
 const SCOPES = "https://www.googleapis.com/auth/spreadsheets";
-const MASTER_SHEET_ID = process.env.GOOGLE_MASTER_SHEET_ID || process.env.GOOGLE_SHEET_ID || "1sExCOOVJDT6J68DM93E_QPbZGs_-RzPOlfXACYd8mS4";
-const CONSOLIDATED_SHEET_ID = process.env.GOOGLE_CONSOLIDATED_SHEET_ID || "1uyzVgCAPZW9CkzkNHFKH0QOJm_nbn5Sr4ul9ngv0ZoM";
+const MASTER_SHEET_ID = String(
+  process.env.GOOGLE_MASTER_SHEET_ID || process.env.GOOGLE_SHEET_ID || "",
+).trim();
+const CONSOLIDATED_SHEET_ID = String(
+  process.env.GOOGLE_CONSOLIDATED_SHEET_ID || "",
+).trim();
 
 const b64url = (value) => Buffer.from(value).toString("base64url");
 const quoteRange = (tab, range = "A:ZZ") => encodeURIComponent(`'${tab.replace(/'/g, "''")}'!${range}`);
@@ -84,6 +88,9 @@ async function request(url, options = {}) {
 }
 
 async function ensureTab(sheetId, tab) {
+  if (!String(sheetId || "").trim()) {
+    throw new Error("Google Sheets ID is not configured.");
+  }
   const meta = await request(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}`);
   const exists = meta.sheets?.some((s) => s.properties.title === tab);
   if (!exists) {
@@ -96,6 +103,9 @@ async function ensureTab(sheetId, tab) {
 }
 
 export async function readTable(sheetId, tab) {
+  if (!String(sheetId || "").trim()) {
+    throw new Error("Google Sheets ID is not configured.");
+  }
   try {
     const data = await request(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${quoteRange(tab)}`);
     const values = data.values || [];
@@ -419,14 +429,25 @@ export async function updateEmployee(employeeId, changes) {
   const { table, row } = await employeeById(employeeId);
   if (!row) throw new Error("Employee was not found in the Employee sheet.");
   const index = table.rows.indexOf(row);
-  table.rows[index] = { ...row, ...changes };
-  
+  const updatedRow = { ...row, ...changes };
+  const headers = [...table.headers];
+  let headersChanged = false;
+
   for (const key of Object.keys(changes)) {
-    if (!table.headers.includes(key)) {
-      table.headers.push(key);
+    if (!headers.includes(key)) {
+      headers.push(key);
+      headersChanged = true;
     }
   }
 
-  await writeTable(MASTER_SHEET_ID, "Employee", table.headers, table.rows);
-  return table.rows[index];
+  if (headersChanged) {
+    await updateRow(MASTER_SHEET_ID, "Employee", 1, headers);
+  }
+  await updateRow(
+    MASTER_SHEET_ID,
+    "Employee",
+    index + 2,
+    headers.map((header) => String(updatedRow[header] ?? "")),
+  );
+  return updatedRow;
 }

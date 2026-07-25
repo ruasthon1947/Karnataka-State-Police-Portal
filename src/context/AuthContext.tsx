@@ -1,6 +1,6 @@
-// src/context/AuthContext.tsx
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -10,31 +10,38 @@ import React, {
 export type AuthUser = {
   employeeId: string;
   name: string;
+  role: "Constable" | "Inspector" | "SP";
+  policeStation: string;
   isFirstLogin: boolean;
 };
 
 type Theme = "dark" | "light";
 
-// Define a structural shape for messages to keep the state strongly typed
 export type ChatMessage = {
   id: string;
-  sender: "user" | "ai";
-  text: string;
-  timestamp: string;
+  role: "user" | "assistant";
+  content: string;
+  ts: number;
 };
+
+type OperationResult = { ok: boolean; error?: string };
 
 type AuthContextValue = {
   user: AuthUser | null;
-  login: (employeeId: string, password: string) => Promise<{ ok: boolean; error?: string }>;
-  changePassword: (newPassword: string) => Promise<void>;
+  isLoading: boolean;
+  login: (employeeId: string, password: string) => Promise<OperationResult>;
+  changePassword: (
+    currentPassword: string,
+    newPassword: string,
+    firebaseIdToken?: string,
+  ) => Promise<OperationResult>;
   logout: () => void;
   theme: Theme;
-  setTheme: (t: Theme) => void;
+  setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
   sessionExpiresAt: number | null;
-  extendSession: () => void;
+  extendSession: () => Promise<OperationResult>;
   lastLogin: string | null;
-  // Plan Two additions: Persistent chat memory access fields
   chatHistory: ChatMessage[];
   setChatHistory: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   isChatBusy: boolean;
@@ -42,165 +49,231 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-const LS_USER = "kpfir.user";
 const LS_THEME = "kpfir.theme";
+const LS_LAST_LOGIN = "kpfir.lastLogin";
+
+async function responseData(response: Response) {
+  return response.json().catch(() => null);
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    try {
-      const raw = localStorage.getItem(LS_USER);
-      return raw ? (JSON.parse(raw) as AuthUser) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  const [lastLogin, setLastLogin] = useState<string | null>(() => localStorage.getItem("kpfir.lastLogin"));
-  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(() => localStorage.getItem(LS_USER) ? Date.now() + 30 * 60 * 1000 : null);
-
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [lastLogin, setLastLogin] = useState<string | null>(() =>
+    localStorage.getItem(LS_LAST_LOGIN),
+  );
+  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
   const [theme, setThemeState] = useState<Theme>(() => {
-    try {
-      const stored = localStorage.getItem(LS_THEME) as Theme | null;
-      if (stored === "light" || stored === "dark") return stored;
-    } catch {
-      /* ignore */
-    }
-    return "light";
+    const stored = localStorage.getItem(LS_THEME);
+    return stored === "dark" ? "dark" : "light";
   });
-
-  // Global React state for your AI Copilot chat records and busy indicator
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const [isChatBusy, setIsChatBusy] = useState<boolean>(false);
+  const [isChatBusy, setIsChatBusy] = useState(false);
+
+  const clearLocalSession = useCallback(() => {
+    setUser(null);
+    setSessionExpiresAt(null);
+    setChatHistory([]);
+    setIsChatBusy(false);
+  }, []);
 
   useEffect(() => {
-    const root = document.documentElement;
-    root.classList.remove("light", "dark");
-    root.classList.add(theme);
+    let active = true;
+    void fetch("/api/session", {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    })
+      .then(async (response) => {
+        const data = await responseData(response);
+        if (!active || !response.ok || !data?.ok) return;
+        setUser(data.user as AuthUser);
+        setSessionExpiresAt(Number(data.sessionExpiresAt) || null);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.remove("light", "dark");
+    document.documentElement.classList.add(theme);
     localStorage.setItem(LS_THEME, theme);
   }, [theme]);
 
-  const login: AuthContextValue["login"] = async (employeeId, password) => {
-    setThemeState("light");
-    localStorage.setItem(LS_THEME, "light");
+  const login = useCallback<AuthContextValue["login"]>(
+    async (employeeId, password) => {
+      setThemeState("light");
+      const id = employeeId.trim();
+      if (!id) return { ok: false, error: "Employee ID is required." };
+      if (!password) return { ok: false, error: "Password is required." };
 
-    const id = employeeId.trim();
-    if (!id) return { ok: false, error: "Employee ID is required." };
-    if (!password) return { ok: false, error: "Password is required." };
-
-    console.log(`[Auth Diagnostic] Attempting login initialization sequence for Employee ID: ${id}`);
-
-    let firebaseAuthSuccess = false;
-    try {
-      const { auth } = await import("../firebase");
-      const { signInWithEmailAndPassword } = await import("firebase/auth");
-      const email = `${id}@ksph.gov.in`.toLowerCase();
-      
-      console.log(`[Auth Diagnostic] Contacting Firebase Auth Gateway with formatted email alias: ${email}`);
-      await signInWithEmailAndPassword(auth, email, password);
-      firebaseAuthSuccess = true;
-      console.log("[Auth Diagnostic] Firebase standard identity verification completed successfully.");
-    } catch (fbErr: any) {
-      console.warn("[Auth Diagnostic] Firebase pipeline bypassed or rejected validation context:", fbErr.message);
-    }
-
-    try {
-      console.log("[Auth Diagnostic] Despatching verification parameters downstream to local server endpoint: /api/login");
-      
-      const response = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ employeeId: id, password, firebaseAuth: firebaseAuthSuccess })
-      });
-      
-      const data = await response.json().catch(() => null);
-      
-      if (!response.ok || !data || !data.ok) {
-        const errorMsg = data?.error || `Server responded with HTTP status code ${response.status}`;
-        console.error("[Auth Diagnostic] Validation failed on backend endpoint verification:", errorMsg);
-        return { ok: false, error: errorMsg };
+      let firebaseIdToken = "";
+      try {
+        const [{ auth }, { signInWithEmailAndPassword }] = await Promise.all([
+          import("../firebase"),
+          import("firebase/auth"),
+        ]);
+        const credential = await signInWithEmailAndPassword(
+          auth,
+          `${id}@ksph.gov.in`.toLowerCase(),
+          password,
+        );
+        firebaseIdToken = await credential.user.getIdToken();
+      } catch {
+        // Temporary and migrated passwords are verified by the application server.
       }
-      
-      console.log("[Auth Diagnostic] Server login session successfully generated. Finalizing user profiles structure.");
-      const u: AuthUser = {
-        employeeId: id,
-        name: data.name || deriveName(id),
-        isFirstLogin: !!data.isFirstLogin,
-      };
-      
-      setUser(u);
-      localStorage.setItem(LS_USER, JSON.stringify(u));
-      const now = new Date().toISOString(); 
-      setLastLogin(now); 
-      localStorage.setItem("kpfir.lastLogin", now); 
-      setSessionExpiresAt(Date.now() + 30 * 60 * 1000);
-      return { ok: true };
-    } catch (err: any) {
-      console.error("[Auth Diagnostic] Critical unhandled internal runtime connection breakdown:", err);
-      return { ok: false, error: `Connection breakdown during login sequence: ${err.message || "Network Timeout"}` };
-    }
-  };
 
-  const changePassword = async (newPassword: string) => {
-    if (!user) return;
-    const updated: AuthUser = { ...user, isFirstLogin: false };
-    setUser(updated);
-    localStorage.setItem(LS_USER, JSON.stringify(updated));
-  };
+      try {
+        const response = await fetch("/api/login", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ employeeId: id, password, firebaseIdToken }),
+        });
+        const data = await responseData(response);
+        if (!response.ok || !data?.ok) {
+          return {
+            ok: false,
+            error: data?.error || "Sign-in could not be completed.",
+          };
+        }
 
-  const logout = () => {
-    // Clear employee-specific phone number and verification flag if it exists
+        setUser(data.user as AuthUser);
+        setSessionExpiresAt(Number(data.sessionExpiresAt) || null);
+        const now = new Date().toISOString();
+        setLastLogin(now);
+        localStorage.setItem(LS_LAST_LOGIN, now);
+        return { ok: true };
+      } catch {
+        return {
+          ok: false,
+          error: "The sign-in service is unavailable. Please try again.",
+        };
+      }
+    },
+    [],
+  );
+
+  const changePassword = useCallback<AuthContextValue["changePassword"]>(
+    async (currentPassword, newPassword, firebaseIdToken = "") => {
+      try {
+        const response = await fetch("/api/employee/password", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            currentPassword,
+            newPassword,
+            firebaseIdToken,
+          }),
+        });
+        const data = await responseData(response);
+        if (!response.ok || !data?.ok) {
+          if (response.status === 401 && data?.error?.includes("session")) {
+            clearLocalSession();
+          }
+          return {
+            ok: false,
+            error: data?.error || "Password could not be updated.",
+          };
+        }
+        setUser(data.user as AuthUser);
+        setSessionExpiresAt(Number(data.sessionExpiresAt) || null);
+        return { ok: true };
+      } catch {
+        return {
+          ok: false,
+          error: "The password service is unavailable. Please try again.",
+        };
+      }
+    },
+    [clearLocalSession],
+  );
+
+  const logout = useCallback(() => {
     if (user?.employeeId) {
-      localStorage.removeItem(`kpfir.phoneNumber.${user.employeeId}`);
-      localStorage.removeItem(`kpfir.phoneVerified.${user.employeeId}`);
+      const prefix = `kpfir.firDraft.${user.employeeId}.`;
+      for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+        const key = sessionStorage.key(index);
+        if (key?.startsWith(prefix)) sessionStorage.removeItem(key);
+      }
     }
-    
-    setUser(null);
-    setChatHistory([]); // Wipes active conversation securely from internal state memory upon logouts
-    setIsChatBusy(false); // Resets the active loader flag layout safely
-    localStorage.removeItem(LS_USER);
-    localStorage.removeItem("kpfir.phoneNumber"); // Remove old global key for backward compatibility
-    setSessionExpiresAt(null);
-  };
+    clearLocalSession();
+    void fetch("/api/logout", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    }).catch(() => undefined);
+  }, [clearLocalSession, user?.employeeId]);
 
-  const extendSession = () => setSessionExpiresAt(Date.now() + 30 * 60 * 1000);
-
-  const setTheme = (t: Theme) => setThemeState(t);
-  const toggleTheme = () => setThemeState((t) => (t === "dark" ? "light" : "dark"));
+  const extendSession = useCallback(async (): Promise<OperationResult> => {
+    try {
+      const response = await fetch("/api/session/extend", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await responseData(response);
+      if (!response.ok || !data?.ok) {
+        clearLocalSession();
+        return { ok: false, error: data?.error || "Session expired." };
+      }
+      setUser(data.user as AuthUser);
+      setSessionExpiresAt(Number(data.sessionExpiresAt) || null);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Session could not be extended." };
+    }
+  }, [clearLocalSession]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ 
-      user, 
-      login, 
-      changePassword, 
-      logout, 
-      theme, 
-      setTheme, 
-      toggleTheme, 
-      sessionExpiresAt, 
-      extendSession, 
+    () => ({
+      user,
+      isLoading,
+      login,
+      changePassword,
+      logout,
+      theme,
+      setTheme: setThemeState,
+      toggleTheme: () =>
+        setThemeState((current) => (current === "dark" ? "light" : "dark")),
+      sessionExpiresAt,
+      extendSession,
       lastLogin,
       chatHistory,
       setChatHistory,
       isChatBusy,
-      setIsChatBusy
+      setIsChatBusy,
     }),
-    [user, theme, sessionExpiresAt, lastLogin, chatHistory, isChatBusy]
+    [
+      user,
+      isLoading,
+      login,
+      changePassword,
+      logout,
+      theme,
+      sessionExpiresAt,
+      extendSession,
+      lastLogin,
+      chatHistory,
+      isChatBusy,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
-  return ctx;
+  const context = useContext(AuthContext);
+  if (!context) throw new Error("useAuth must be used inside <AuthProvider>");
+  return context;
 };
-
-function deriveName(id: string): string {
-  const tail = id.split("-").pop() ?? id;
-  if (/^\d+$/.test(tail)) return `Officer ${tail}`;
-  return id;
-}

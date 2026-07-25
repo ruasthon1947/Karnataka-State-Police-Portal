@@ -6,6 +6,7 @@ import {
   CaseRecord,
   caseKey,
   caseRoute,
+  dedupeOptionValues,
   findCase,
   joinNames,
   optionList,
@@ -17,6 +18,27 @@ import {
 } from "../lib/cases";
 import { useAuth } from "../context/AuthContext";
 import { askCopilot } from "../lib/chatApi";
+import { KSPPBrandMark } from "../components/brand/KSPPBrand";
+
+function safeJsonParse(rawText: string) {
+  if (!rawText) throw new Error("Received empty response from AI engine.");
+
+  let cleaned = String(rawText)
+    .replace(/^```(?:json)?/gi, "")
+    .replace(/```$/gi, "")
+    .trim();
+
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  }
+
+  // Replace unescaped newlines/line breaks inside JSON strings with standard spaces
+  cleaned = cleaned.replace(/[\r\n]+/g, " ");
+
+  return JSON.parse(cleaned);
+}
 
 const STEPS = [
   {
@@ -202,24 +224,41 @@ const OptionInput: React.FC<{
   field: string;
   placeholder?: string;
   disabled?: boolean;
-}> = ({ label, value, onChange, options, placeholder, disabled }) => (
-  <Field label={label}>
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      disabled={disabled}
-      className={inputClass}
-    >
-      <option value="">{placeholder || "Select"}</option>
-      {value && !options.includes(value) && <option value={value}>{value}</option>}
-      {options.map((item) => (
-        <option key={item} value={item}>
-          {item}
-        </option>
-      ))}
-    </select>
-  </Field>
-);
+  onOptionsOpen?: () => void;
+}> = ({ label, value, onChange, options, field, placeholder, disabled, onOptionsOpen }) => {
+  const listId = `fir-${field}-${React.useId().replace(/:/g, "")}`;
+  const suggestions = useMemo(() => dedupeOptionValues(options), [options]);
+
+  return (
+    <Field label={label}>
+      <div className="relative">
+        <input
+          type="text"
+          name={field}
+          list={disabled ? undefined : listId}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onFocus={onOptionsOpen}
+          disabled={disabled}
+          autoComplete="off"
+          placeholder={placeholder || "Select or type"}
+          className={`${inputClass} new-fir-option-input pr-9`}
+        />
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted"
+        >
+          ▼
+        </span>
+        <datalist id={listId}>
+          {suggestions.map((item) => (
+            <option key={item.toLocaleLowerCase()} value={item} />
+          ))}
+        </datalist>
+      </div>
+    </Field>
+  );
+};
 
 const namesFromTextarea = (value: string) => joinNames(value.split(/\n|;/));
 const textareaFromNames = (value: string) => splitNames(value).join("\n");
@@ -276,41 +315,109 @@ const randomDateTime = (date = randomRecentDate()) =>
     randomInt(0, 59),
   ).padStart(2, "0")}:00`;
 
-const syncMessage = (sync: { ok: boolean; skipped?: boolean; message?: string; stderr?: string }) => {
+const notificationMessage = (
+  notifications?: {
+    event: "new_fir" | "status_update";
+    eligible: number;
+    sent: number;
+    failed: number;
+  } | null,
+) => {
+  if (!notifications) return "";
+  if (notifications.sent > 0 && notifications.failed === 0) {
+    return ` SMS alert sent to ${notifications.sent} officer${notifications.sent === 1 ? "" : "s"}.`;
+  }
+  if (notifications.sent > 0) {
+    return ` SMS alerts: ${notifications.sent} sent, ${notifications.failed} failed.`;
+  }
+  if (notifications.failed > 0) {
+    return " The FIR was saved, but SMS delivery failed. Check the SMS provider configuration.";
+  }
+  return " No verified, opted-in officers matched this alert.";
+};
+
+const syncMessage = (
+  sync: { ok: boolean; skipped?: boolean; message?: string; stderr?: string },
+  notifications?: {
+    event: "new_fir" | "status_update";
+    eligible: number;
+    sent: number;
+    failed: number;
+  } | null,
+) => {
   if (sync.ok) {
     return sync.skipped
       ? "Local draft saved. Google Sheets will update once you click Submit FIR."
-      : "FIR submitted. Google Sheets master was updated.";
+      : `FIR submitted. Google Sheets master was updated.${notificationMessage(notifications)}`;
   }
   return `Local save complete, but Google sync needs attention: ${sync.stderr || sync.message || "script failed"}`;
 };
 
-let globalFormCache: Record<string, string> | null = null;
-let globalComplaintCache: string = "";
-let globalAiReadyCache: boolean = false;
+type FirDraft = {
+  form: FormState;
+  complaint: string;
+  aiReady: boolean;
+  step: number;
+  highestUnlocked: number;
+};
+
+const draftStorageKey = (employeeId: string, caseId?: string) =>
+  `kpfir.firDraft.${employeeId}.${caseId || "new"}`;
+
+const readDraft = (key: string): FirDraft | null => {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<FirDraft>;
+    if (!parsed.form || typeof parsed.form !== "object") return null;
+    return {
+      form: { ...emptyForm(), ...parsed.form },
+      complaint: String(parsed.complaint || ""),
+      aiReady: Boolean(parsed.aiReady),
+      step: Math.min(STEPS.length, Math.max(1, Number(parsed.step) || 1)),
+      highestUnlocked: Math.min(
+        STEPS.length,
+        Math.max(1, Number(parsed.highestUnlocked) || 1),
+      ),
+    };
+  } catch {
+    return null;
+  }
+};
 
 const NewFIR: React.FC = () => {
   const { tr } = useLanguage();
   const navigate = useNavigate();
   const { id } = useParams();
   const editing = Boolean(id);
-  const { cases, options, loading, error, reload } = useCases();
   const { user } = useAuth();
+  const draftKey = draftStorageKey(user?.employeeId || "unknown", id);
+  const [initialDraft] = useState<FirDraft | null>(() => readDraft(draftKey));
+  const { cases, options, loading, error, reload } = useCases();
 
   const existingCase = useMemo(() => findCase(cases, id), [cases, id]);
-  const [loadedKey, setLoadedKey] = useState("");
-  const [step, setStep] = useState(1);
-  const [highestUnlocked, setHighestUnlocked] = useState(editing ? STEPS.length : 1);
-  const [persistedCaseId, setPersistedCaseId] = useState("");
+  const [loadedKey, setLoadedKey] = useState(
+    editing && initialDraft ? decodeURIComponent(id || "") : "",
+  );
+  const [step, setStep] = useState(initialDraft?.step || 1);
+  const [highestUnlocked, setHighestUnlocked] = useState(
+    initialDraft?.highestUnlocked || (editing ? STEPS.length : 1),
+  );
+  const [persistedCaseId, setPersistedCaseId] = useState(
+    editing ? decodeURIComponent(id || "") : "",
+  );
   const [aiLoading, setAiLoading] = useState(false);
-  const [form, setForm] = useState<FormState>(() => globalFormCache || emptyForm());
-  const [complaint, setComplaint] = useState<string>(() => globalComplaintCache);
-  const [aiReady, setAiReady] = useState<boolean>(() => globalAiReadyCache);
+  const [form, setForm] = useState<FormState>(
+    () => initialDraft?.form || emptyForm(),
+  );
+  const [complaint, setComplaint] = useState(initialDraft?.complaint || "");
+  const [aiReady, setAiReady] = useState(initialDraft?.aiReady || false);
   const [saveState, setSaveState] = useState<SaveState>({
     status: "idle",
     message: "",
   });
   const [successRoute, setSuccessRoute] = useState("");
+  const [successNotice, setSuccessNotice] = useState("");
 
   useEffect(() => {
     if (!editing || !existingCase) return;
@@ -324,12 +431,17 @@ const NewFIR: React.FC = () => {
   }, [editing, existingCase, loadedKey]);
 
   useEffect(() => {
-    globalFormCache = form;
-    globalComplaintCache = complaint;
-    globalAiReadyCache = aiReady;
-  }, [form, complaint, aiReady]);
+    try {
+      sessionStorage.setItem(
+        draftKey,
+        JSON.stringify({ form, complaint, aiReady, step, highestUnlocked }),
+      );
+    } catch {
+      // The explicit Save locally action reports storage failures to the user.
+    }
+  }, [draftKey, form, complaint, aiReady, step, highestUnlocked]);
 
-  const persisted = Boolean(persistedCaseId || form.CaseMasterID);
+  const persisted = editing || highestUnlocked > 1;
   const meta = STEPS[step - 1];
   const accusedCount = splitNames(form.AccusedNames).length;
   const victimCount = splitNames(form.VictimNames).length;
@@ -342,7 +454,6 @@ const NewFIR: React.FC = () => {
   };
 
   const saveCurrentStep = async (syncNow = false) => {
-    // 1. Strict mandatory validations check
     if (!form.CrimeRegisteredDate || !form.PoliceStation || !form.CrimeHead) {
       setSaveState({
         status: "error",
@@ -351,17 +462,49 @@ const NewFIR: React.FC = () => {
       return null;
     }
 
+    if (!syncNow) {
+      try {
+        sessionStorage.setItem(
+          draftKey,
+          JSON.stringify({
+            form,
+            complaint,
+            aiReady,
+            step,
+            highestUnlocked,
+          }),
+        );
+        setSaveState({
+          status: "saved",
+          message: "Draft saved in this browser tab. Submit FIR to update Google Sheets.",
+        });
+        return {
+          ok: true,
+          created: !editing,
+          headers: CASE_HEADERS,
+          case: buildPayload(form, user),
+          options,
+          notifications: null,
+          sync: { ok: true, skipped: true, message: "Draft saved locally." },
+        };
+      } catch {
+        setSaveState({
+          status: "error",
+          message: "This browser could not save the draft. Keep this page open and try again.",
+        });
+        return null;
+      }
+    }
+
     setSaveState({
       status: "saving",
-      message: syncNow ? "Submitting FIR and updating Google Sheets..." : "Saving local draft...",
+      message: "Submitting FIR and updating Google Sheets...",
     });
 
     try {
-      // Attempt backend API operation execution
       const result = await saveCase(
         buildPayload(form, user),
-        persistedCaseId || form.CaseMasterID || undefined,
-        { skipSync: !syncNow },
+        editing ? persistedCaseId || id : undefined,
       );
       
       const nextForm = toForm(result.case);
@@ -370,37 +513,21 @@ const NewFIR: React.FC = () => {
       setForm(nextForm);
       setPersistedCaseId(nextKey);
       setLoadedKey(nextKey);
-      setSaveState({ status: result.sync.ok ? "saved" : "error", message: syncMessage(result.sync) });
-      
-      await reload();
-      
-      // Auto-advance step on backend operational success
-      setStep((prev) => Math.min(prev + 1, STEPS.length));
-      return result;
-    } catch (err) {
-      console.warn("[Backend Network Offline/Failed] Falling back to local state bypass layout:", err);
-      
-      // 2. CLIENT-SIDE FALLBACK INTERCEPTOR
-      // If server throws 500 error or hangs, fake a success state so UI components don't freeze up
       setSaveState({
-        status: "saved",
-        message: "Server unavailable. Data buffered safely in local memory cache workspace.",
+        status: result.sync.ok ? "saved" : "error",
+        message: syncMessage(result.sync, result.notifications),
       });
-
-      // Keep tracking keys matching whatever custom IDs you typed in Step 1
-      if (form.CaseMasterID && !persistedCaseId) {
-        setPersistedCaseId(form.CaseMasterID);
-        setLoadedKey(form.CaseMasterID);
-      }
-
-      // Smoothly jump to the next step tab layout anyway
-      setStep((prev) => Math.min(prev + 1, STEPS.length));
-
-      // Construct a mock response object matching Expected Return Signature type structures
-      return {
-        case: { ...form } as any,
-        sync: { ok: true, status: "local-bypass" }
-      };
+      await reload();
+      return result;
+    } catch (error) {
+      setSaveState({
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "The FIR could not be submitted. Your local draft is still available.",
+      });
+      return null;
     }
   };
   
@@ -415,142 +542,140 @@ const NewFIR: React.FC = () => {
 
   const submit = async () => {
     const result = await saveCurrentStep(true);
-    if (result) {
-      if (result.sync.ok) {
-        // Clear the cache values so the next new case workspace starts fresh
-        globalFormCache = null;
-        globalComplaintCache = "";
-        globalAiReadyCache = false;
-
-        setSuccessRoute(`/fir/${caseRoute(result.case)}`);
-      }
+    if (result?.sync.ok) {
+      sessionStorage.removeItem(draftKey);
+      setSuccessNotice(notificationMessage(result.notifications).trim());
+      setSuccessRoute(`/fir/${caseRoute(result.case)}`);
     }
   };
 
-const generateDraft = async () => {
+  const generateDraft = async () => {
     if (!complaint.trim()) return;
     setAiLoading(true);
     setSaveState({ status: "idle", message: "" });
     
     try {
       // 🚀 Generate realistic random IDs as fallback for IDs if text does not provide them
-      const autoMasterId = String(Math.floor(100000000000 + Math.random() * 900000000000));
-      const autoCaseNo = `FIR/${new Date().getFullYear()}/${Math.floor(100 + Math.random() * 900)}`;
-      const autoCrimeNo = `CR-${Math.floor(1000 + Math.random() * 9000)}/${new Date().getFullYear()}`;
+      const liveOptionRules = [
+        "CrimeHead",
+        "CrimeSubHead",
+        "PoliceStation",
+        "PoliceStationType",
+        "District",
+        "Court",
+        "Officer",
+        "OfficerRank",
+        "OfficerDesignation",
+        "CaseCategory",
+        "Gravity",
+        "Status",
+        "Acts",
+        "Sections",
+        "ChargesheetStatus",
+      ]
+        .map((field) => {
+          const values = optionList(options, field);
+          return values.length
+            ? `- "${field}": prefer one of the current Google Sheets values ${JSON.stringify(values)}; use a new value only when the complaint explicitly requires it.`
+            : `- "${field}": Google Sheets has no existing values yet; infer a concise value from the complaint.`;
+        })
+        .join("\n");
 
-      const systemPrompt = `Analyze this police complaint text and extract structural parameters for ALL system fields across all 7 steps. 
-      You MUST respond ONLY with a raw JSON object. Do not include any introductory text, no conversational explanations, no markdown formatting, and NO backticks (\`\`\`).
-      
-      Strict Dropdown Options Rules (Choose the best match or infer correctly):
-      - "CrimeHead": MUST be exactly one of: ["Theft", "Housebreaking and Theft", "Cyber Crime", "Assault", "General Offence"]
-      - "CrimeSubHead": MUST be exactly one of: ["Housebreaking by Night", "Chain Snatching", "Online Financial Fraud", "Vehicle Theft"]
-      - "PoliceStation": MUST be exactly one of: ["Jayanagar Police Station", "Indiranagar Police Station", "Koramangala Police Station", "Cyber Crime Police Station"]
-      - "PoliceStationType": MUST be exactly one of: ["Law & Order", "Traffic", "Crime", "Special Unit"]
-      - "District": MUST be exactly one of: ["Bangalore Urban", "Bangalore Rural", "Mysuru", "Mangaluru"]
-      - "CaseCategory": MUST be exactly one of: ["FIR", "NCR", "Petty Case"]
-      - "Gravity": MUST be exactly one of: ["Heinous", "Non-Heinous"]
-      - "Status": MUST be exactly one of: ["Under Investigation", "Untraced", "Charge Sheeted", "Closed"]
+      // 🚀 Explicit FIR signal prefix included for backend detection
+      const systemPrompt = `Extract FIR details into JSON format:
+Analyze this police complaint text and extract structural parameters for ALL system fields across all 7 steps.
+You MUST respond ONLY with a raw JSON object. Do not include any introductory text, no conversational explanations, no markdown formatting, and NO backticks (\`\`\`).
 
-      Expected JSON Structure:
-      {
-        "CaseMasterID": "Extracted string ID or empty string if not mentioned",
-        "CaseNo": "Extracted Case/FIR Number or empty string",
-        "CrimeNo": "Extracted Crime Number or empty string",
-        "CrimeRegisteredDate": "YYYY-MM-DD or empty string",
-        "PoliceStation": "Selected from allowed list",
-        "PoliceStationType": "Selected from allowed list",
-        "District": "Selected from allowed list",
-        "CrimeHead": "Selected from allowed list",
-        "CrimeSubHead": "Selected from allowed list",
-        "CaseCategory": "Selected from allowed list",
-        "Gravity": "Selected from allowed list",
-        "Status": "Selected from allowed list",
-        "Court": "Name of local jurisdiction court",
-        "EmployeeID": "Officer Employee ID if mentioned",
-        "Officer": "Officer Name",
-        "OfficerRank": "Rank if mentioned (e.g., Inspector of Police)",
-        "OfficerDesignation": "Designation (e.g., Investigating Officer (IO))",
-        "BriefFacts": "Detailed summary narrative of the complaint facts",
-        "InfoReceivedPSDate": "YYYY-MM-DD HH:MM:SS date-time string",
-        "IncidentFromDate": "YYYY-MM-DD HH:MM:SS date-time string",
-        "IncidentToDate": "YYYY-MM-DD HH:MM:SS date-time string",
-        "Latitude": "GPS latitude string if inferred or available",
-        "Longitude": "GPS longitude string if inferred or available",
-        "Complainant": "Full Name of person reporting",
-        "VictimNames": "Semicolon separated list of victims",
-        "AccusedNames": "Semicolon separated list of accused names or 'Unknown'",
-        "Acts": "Applicable laws like BNS, IT Act",
-        "Sections": "Specific law sections if referenced",
-        "ArrestCount": "Number of arrests as string",
-        "ChargesheetCount": "Number of chargesheets as string",
-        "ChargesheetStatus": "Pending or Submitted"
-      }
+Live Google Sheets suggestion rules:
+${liveOptionRules}
 
-      Text to parse: "${complaint}"`;
+Expected JSON Structure:
+{
+  "CaseMasterID": "Extracted string ID or empty string if not mentioned",
+  "CaseNo": "Extracted Case/FIR Number or empty string",
+  "CrimeNo": "Extracted Crime Number or empty string",
+  "CrimeRegisteredDate": "YYYY-MM-DD or empty string",
+  "PoliceStation": "Selected from allowed list",
+  "PoliceStationType": "Selected from allowed list",
+  "District": "Selected from allowed list",
+  "CrimeHead": "Selected from allowed list",
+  "CrimeSubHead": "Selected from allowed list",
+  "CaseCategory": "Selected from allowed list",
+  "Gravity": "Selected from allowed list",
+  "Status": "Selected from allowed list",
+  "Court": "Name of local jurisdiction court",
+  "EmployeeID": "Officer Employee ID if mentioned",
+  "Officer": "Officer Name",
+  "OfficerRank": "Rank if mentioned (e.g., Inspector of Police)",
+  "OfficerDesignation": "Designation (e.g., Investigating Officer (IO))",
+  "BriefFacts": "Detailed summary narrative of the complaint facts",
+  "InfoReceivedPSDate": "YYYY-MM-DD HH:MM:SS date-time string",
+  "IncidentFromDate": "YYYY-MM-DD HH:MM:SS date-time string",
+  "IncidentToDate": "YYYY-MM-DD HH:MM:SS date-time string",
+  "Latitude": "GPS latitude string if inferred or available",
+  "Longitude": "GPS longitude string if inferred or available",
+  "Complainant": "Full Name of person reporting",
+  "VictimNames": "Semicolon separated list of victims",
+  "AccusedNames": "Semicolon separated list of accused names or 'Unknown'",
+  "Acts": "Applicable laws like BNS, IT Act",
+  "Sections": "Specific law sections if referenced",
+  "ArrestCount": "Number of arrests as string",
+  "ChargesheetCount": "Number of chargesheets as string",
+  "ChargesheetStatus": "Pending or Submitted"
+}
+
+Text to parse: "${complaint}"`;
 
       const rawAiReply = await askCopilot({
         question: systemPrompt,
-        role: (user as any)?.role ?? "Inspector",
-        stationId: (user as any)?.policeStation,
         language: "en"
       });
 
-      // Cleaning response markdown wrappers
-      let cleanJsonStr = rawAiReply.trim();
-      if (cleanJsonStr.includes("```")) {
-        cleanJsonStr = cleanJsonStr.replace(/```json|```/gi, "").trim();
-      }
-      
-      const firstBrace = cleanJsonStr.indexOf("{");
-      const lastBrace = cleanJsonStr.lastIndexOf("}");
-      if (firstBrace !== -1 && lastBrace !== -1) {
-        cleanJsonStr = cleanJsonStr.substring(firstBrace, lastBrace + 1);
-      }
-
-      const parsedData = JSON.parse(cleanJsonStr);
+      // Safe JSON parsing helper to clean markdown backticks and control chars
+      const parsedData = safeJsonParse(rawAiReply);
 
       // 🚀 Auto-fill ALL fields across all 7 steps (including IDs)
       setForm((current) => ({
         ...current,
         // Step 1: Case Identity & Basics
-        CaseMasterID: parsedData.CaseMasterID || current.CaseMasterID || autoMasterId,
-        CaseNo: parsedData.CaseNo || current.CaseNo || autoCaseNo,
-        CrimeNo: parsedData.CrimeNo || current.CrimeNo || autoCrimeNo,
+        CaseMasterID: parsedData.CaseMasterID || current.CaseMasterID,
+        CaseNo: parsedData.CaseNo || current.CaseNo,
+        CrimeNo: parsedData.CrimeNo || current.CrimeNo,
         CrimeRegisteredDate: parsedData.CrimeRegisteredDate || current.CrimeRegisteredDate || todayIso(),
-        PoliceStation: parsedData.PoliceStation || current.PoliceStation || "Jayanagar Police Station",
-        PoliceStationType: parsedData.PoliceStationType || current.PoliceStationType || "Law & Order",
+        PoliceStation: parsedData.PoliceStation || current.PoliceStation || user?.policeStation || "",
+        PoliceStationType: parsedData.PoliceStationType || current.PoliceStationType,
         District: parsedData.District || current.District || "Bangalore Urban",
-        CrimeHead: parsedData.CrimeHead || current.CrimeHead || "General Offence",
+        CrimeHead: parsedData.CrimeHead || current.CrimeHead,
         CrimeSubHead: parsedData.CrimeSubHead || current.CrimeSubHead || "",
         CaseCategory: parsedData.CaseCategory || current.CaseCategory || "FIR",
         Gravity: parsedData.Gravity || current.Gravity || "Non-Heinous",
         Status: parsedData.Status || current.Status || "Under Investigation",
-        Court: parsedData.Court || current.Court || "Court of ACMM Bengaluru",
-        EmployeeID: parsedData.EmployeeID || current.EmployeeID || "201",
-        Officer: parsedData.Officer || current.Officer || (user as any)?.name || "Investigating Officer",
-        OfficerRank: parsedData.OfficerRank || current.OfficerRank || "Inspector of Police",
+        Court: parsedData.Court || current.Court,
+        EmployeeID: parsedData.EmployeeID || current.EmployeeID || user?.employeeId || "",
+        Officer: parsedData.Officer || current.Officer || user?.name || "",
+        OfficerRank: parsedData.OfficerRank || current.OfficerRank,
         OfficerDesignation: parsedData.OfficerDesignation || current.OfficerDesignation || "Investigating Officer (IO)",
 
         // Step 2: Incident Details
         BriefFacts: parsedData.BriefFacts || complaint,
-        InfoReceivedPSDate: parsedData.InfoReceivedPSDate || current.InfoReceivedPSDate || `${todayIso()} 10:00:00`,
-        IncidentFromDate: parsedData.IncidentFromDate || current.IncidentFromDate || `${todayIso()} 02:00:00`,
-        IncidentToDate: parsedData.IncidentToDate || current.IncidentToDate || `${todayIso()} 04:00:00`,
-        Latitude: parsedData.Latitude || current.Latitude || "12.9250",
-        Longitude: parsedData.Longitude || current.Longitude || "77.5938",
+        InfoReceivedPSDate: parsedData.InfoReceivedPSDate || current.InfoReceivedPSDate,
+        IncidentFromDate: parsedData.IncidentFromDate || current.IncidentFromDate,
+        IncidentToDate: parsedData.IncidentToDate || current.IncidentToDate,
+        Latitude: parsedData.Latitude || current.Latitude,
+        Longitude: parsedData.Longitude || current.Longitude,
 
         // Step 3: Complainant
-        Complainant: parsedData.Complainant || current.Complainant || "Unknown Complainant",
+        Complainant: parsedData.Complainant || current.Complainant,
 
         // Step 4: Victims
         VictimNames: parsedData.VictimNames || current.VictimNames || "",
 
         // Step 5: Accused
-        AccusedNames: parsedData.AccusedNames || current.AccusedNames || "Unknown",
+        AccusedNames: parsedData.AccusedNames || current.AccusedNames,
 
         // Step 6: Acts & Sections
-        Acts: parsedData.Acts || current.Acts || "BNS",
-        Sections: parsedData.Sections || current.Sections || "303",
+        Acts: parsedData.Acts || current.Acts,
+        Sections: parsedData.Sections || current.Sections,
         ArrestCount: parsedData.ArrestCount || current.ArrestCount || "0",
         ChargesheetCount: parsedData.ChargesheetCount || current.ChargesheetCount || "0",
         ChargesheetStatus: parsedData.ChargesheetStatus || current.ChargesheetStatus || "Pending",
@@ -559,13 +684,13 @@ const generateDraft = async () => {
       setAiReady(true);
       setSaveState({ 
         status: "saved", 
-        message: "AI Assistant successfully extracted details and auto-filled all 7 tabs (including CaseMasterID, CaseNo, and CrimeNo)! Please review before saving." 
+        message: "AI Assistant extracted the available details. Review every field before saving or submitting."
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("[Autonomous Auto-Fill Failure]:", err);
       setSaveState({ 
         status: "error", 
-        message: "AI Draft extraction failed to parse JSON format. Check console logs." 
+        message: `AI Draft extraction error: ${err.message || "Failed to parse JSON format"}. Please review fields manually.`
       });
     } finally {
       setAiLoading(false);
@@ -575,6 +700,9 @@ const generateDraft = async () => {
   const stationOptions = optionList(options, "PoliceStation");
   const crimeHeadOptions = optionList(options, "CrimeHead");
   const crimeSubHeadOptions = subHeadOptions(options, form.CrimeHead);
+  const refreshOptions = () => {
+    void reload(true);
+  };
 
   const fillDemoForStep = () => {
     setForm((current) => {
@@ -690,29 +818,33 @@ const generateDraft = async () => {
   }
 
   return (
-    <div className="min-h-full bg-ink text-white">
-      <div className="px-6 py-3 border-b border-line bg-ink flex items-center justify-between gap-4">
+    <div className="new-fir-page min-h-full overflow-x-hidden bg-ink text-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-ink px-4 py-3 sm:px-6">
         <h2 className="text-white text-sm font-medium">
           {editing ? "Edit FIR" : "New FIR"}
         </h2>
-        <div className="text-xs text-muted">
-          Source: <span className="text-white">Google Sheets API</span>
+        <div className="text-[11px] text-muted sm:text-xs">
+          Options: <span className="text-white">Live from Google Sheets</span>
         </div>
       </div>
 
-      <div className="px-6 pt-6">
-        <div className="max-w-6xl mx-auto bg-shell border border-line rounded-2xl p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
+      <div className="px-4 pt-4 sm:px-6 sm:pt-6">
+        <div className="mx-auto max-w-6xl rounded-2xl border border-line bg-shell p-4 sm:p-5">
+          <div className="flex flex-col gap-3 min-[600px]:flex-row min-[600px]:items-start min-[600px]:justify-between">
+            <div className="min-w-0">
               <h1 className="text-lg font-semibold text-white">
                 {tr("AI FIR Draft Assistant", "AI FIR Draft Assistant")}
               </h1>
               <p className="text-xs text-muted mt-1">
-                Enter a complaint draft, then save case details. Steps save locally; Submit FIR updates Google Sheets once.
+                Enter a complaint draft and review each step. Drafts stay in this browser tab; Submit FIR updates Google Sheets once.
               </p>
             </div>
-            <span className="text-[10px] border border-line rounded-full px-2.5 py-1 text-muted">
-              {persisted ? `Case saved: ${form.CaseMasterID || persistedCaseId}` : "Case not saved yet"}
+            <span className="max-w-full self-start break-all rounded-full border border-line px-2.5 py-1 text-[10px] text-muted">
+              {editing
+                ? `Editing case: ${form.CaseMasterID || persistedCaseId}`
+                : persisted
+                  ? "Local draft saved"
+                  : "New local draft"}
             </span>
           </div>
 
@@ -748,10 +880,10 @@ const generateDraft = async () => {
         </div>
       </div>
 
-      <div className="flex mt-4">
-        <aside className="w-72 shrink-0 border-r border-line bg-ink sticky top-0 self-start py-8 px-6">
-          <div className="space-y-1">
-            {STEPS.map((item) => {
+       <div className="mt-4 flex flex-col lg:flex-row">
+         <aside className="w-full shrink-0 border-b border-line bg-ink px-4 py-4 lg:sticky lg:top-0 lg:w-72 lg:self-start lg:border-b-0 lg:border-r lg:px-6 lg:py-8">
+           <div className="new-fir-steps flex gap-2 overflow-x-auto pb-2 lg:block lg:space-y-1 lg:overflow-visible lg:pb-0">
+             {STEPS.map((item) => {
               const active = step === item.id;
               const done = step > item.id;
               const locked = item.id > highestUnlocked;
@@ -760,7 +892,8 @@ const generateDraft = async () => {
                   key={item.id}
                   onClick={() => !locked && setStep(item.id)}
                   disabled={locked}
-                  className={`new-fir-step w-full text-left rounded-xl px-3 py-3 transition border ${
+                  aria-current={active ? "step" : undefined}
+                  className={`new-fir-step w-[min(76vw,17rem)] shrink-0 rounded-xl border px-3 py-3 text-left transition lg:w-full ${
                     active
                       ? "bg-brand/10 border-brand/40"
                       : done
@@ -793,11 +926,11 @@ const generateDraft = async () => {
           </div>
         </aside>
 
-        <section className="flex-1 px-8 py-8 min-h-[calc(100vh-4rem)]">
-          <div className="max-w-4xl">
-            <div className="flex items-start justify-between mb-6">
-              <div>
-                <h1 className="text-2xl font-schibsted text-white font-semibold">
+         <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:min-h-[calc(100vh-4rem)] lg:px-8 lg:py-8">
+           <div className="mx-auto w-full max-w-4xl">
+             <div className="mb-5 flex flex-col gap-2 min-[480px]:flex-row min-[480px]:items-start min-[480px]:justify-between sm:mb-6">
+               <div className="min-w-0">
+                 <h1 className="text-2xl font-schibsted text-white font-semibold">
                   {meta.title}
                 </h1>
                 <p className="text-muted text-sm mt-1">{meta.subtitle}</p>
@@ -807,7 +940,7 @@ const generateDraft = async () => {
               </div>
             </div>
 
-            <div className="bg-shell/40 border border-line rounded-2xl p-6">
+             <div className="rounded-2xl border border-line bg-shell/40 p-4 sm:p-6">
               {step === 1 && (
                 <Step1
                   form={form}
@@ -816,6 +949,7 @@ const generateDraft = async () => {
                   stationOptions={stationOptions}
                   crimeHeadOptions={crimeHeadOptions}
                   crimeSubHeadOptions={crimeSubHeadOptions}
+                  refreshOptions={refreshOptions}
                 />
               )}
               {step === 2 && <Step2 form={form} update={update} />}
@@ -825,28 +959,35 @@ const generateDraft = async () => {
                 <Step5
                   form={form}
                   update={update}
-                  disabled={!persisted}
+                  disabled={false}
                   accusedCount={accusedCount}
                 />
               )}
-              {step === 6 && <Step6 form={form} update={update} options={options} />}
+              {step === 6 && (
+                <Step6
+                  form={form}
+                  update={update}
+                  options={options}
+                  refreshOptions={refreshOptions}
+                />
+              )}
               {step === 7 && <Step7 form={form} persisted={persisted} />}
             </div>
 
-            <div className="mt-5 flex items-center justify-between gap-3">
-              <button
+             <div className="mt-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+               <button
                 onClick={() => setStep((current) => Math.max(1, current - 1))}
                 disabled={step === 1 || saveState.status === "saving"}
-                className="text-sm text-muted hover:text-white disabled:opacity-40 px-3 py-2"
+                className="self-start px-3 py-2 text-sm text-muted hover:text-white disabled:opacity-40"
               >
                 &lt;- Previous
               </button>
 
-              <div className="flex items-center gap-3">
+               <div className="new-fir-actions grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-3">
                 <button
                   onClick={fillDemoForStep}
                   disabled={saveState.status === "saving"}
-                  className="h-10 px-4 rounded-lg border border-brand/40 text-sm text-brand hover:bg-brand/10 disabled:opacity-40"
+                   className="h-10 rounded-lg border border-brand/40 px-3 text-sm text-brand hover:bg-brand/10 disabled:opacity-40 sm:px-4"
                 >
                   Fill demo
                 </button>
@@ -854,24 +995,24 @@ const generateDraft = async () => {
                 <button
                   onClick={() => saveCurrentStep(false)}
                   disabled={saveState.status === "saving"}
-                  className="h-10 px-4 rounded-lg border border-line text-sm text-muted hover:text-white disabled:opacity-40"
+                   className="h-10 rounded-lg border border-line px-3 text-sm text-muted hover:text-white disabled:opacity-40 sm:px-4"
                 >
-                  {saveState.status === "saving" ? "Saving..." : "Save locally"}
+                  {saveState.status === "saving" ? "Saving..." : "Save draft"}
                 </button>
 
                 {step < STEPS.length ? (
                   <button
                     onClick={goNext}
                     disabled={saveState.status === "saving"}
-                    className="bg-brand text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-brand/90 shadow-glow disabled:opacity-40"
+                     className="col-span-2 min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white shadow-glow hover:bg-brand/90 disabled:opacity-40 sm:px-5"
                   >
-                    Save locally & continue -&gt;
+                    Save draft & continue -&gt;
                   </button>
                 ) : (
                   <button
                     onClick={submit}
                     disabled={saveState.status === "saving"}
-                    className="bg-sage text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-sage/90 disabled:opacity-40"
+                     className="col-span-2 min-h-10 rounded-lg bg-sage px-4 py-2 text-sm font-medium text-white hover:bg-sage/90 disabled:opacity-40 sm:px-5"
                   >
                     Submit FIR
                   </button>
@@ -890,7 +1031,8 @@ const generateDraft = async () => {
             </div>
             <h2 className="text-center text-xl font-semibold text-white">FIR successfully submitted</h2>
             <p className="mt-2 text-center text-sm text-muted">
-              Local data is saved and the Google Sheets master has been updated.
+              The FIR and its related details were saved to Google Sheets.
+              {successNotice ? ` ${successNotice}` : ""}
             </p>
             <div className="mt-6 flex justify-center">
               <button
@@ -917,7 +1059,16 @@ const Step1: React.FC<{
   stationOptions: string[];
   crimeHeadOptions: string[];
   crimeSubHeadOptions: string[];
-}> = ({ form, update, options, stationOptions, crimeHeadOptions, crimeSubHeadOptions }) => (
+  refreshOptions: () => void;
+}> = ({
+  form,
+  update,
+  options,
+  stationOptions,
+  crimeHeadOptions,
+  crimeSubHeadOptions,
+  refreshOptions,
+}) => (
   <>
     <Section title="Case identity">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -949,6 +1100,9 @@ const Step1: React.FC<{
     </Section>
 
     <Section title="Case basics">
+      <p className="mb-3 text-xs text-muted">
+        Suggestions refresh from Google Sheets when a field is opened. Select a suggestion or type a new value.
+      </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label="CrimeRegisteredDate">
           <input
@@ -959,135 +1113,85 @@ const Step1: React.FC<{
           />
         </Field>
 
-        {/* 1. PoliceStation Fallback Dropdown */}
-        <Field label="PoliceStation">
-          <select
-            value={form.PoliceStation || ""}
-            onChange={(event) => update("PoliceStation", event.target.value)}
-            className="w-full rounded-xl border border-border bg-white px-4 py-3 text-sm focus:border-brand focus:outline-none"
-          >
-            <option value="">Select or type station</option>
-            <option value="Jayanagar Police Station">Jayanagar Police Station</option>
-            <option value="Indiranagar Police Station">Indiranagar Police Station</option>
-            <option value="Koramangala Police Station">Koramangala Police Station</option>
-            <option value="Cyber Crime Police Station">Cyber Crime Police Station</option>
-          </select>
-        </Field>
-
-        {/* 2. CrimeHead Fallback Dropdown */}
-        <Field label="CrimeHead">
-          <select
-            value={form.CrimeHead || ""}
-            onChange={(event) => {
-              update("CrimeHead", event.target.value);
-              update("CrimeSubHead", "");
-            }}
-            className="w-full rounded-xl border border-border bg-white px-4 py-3 text-sm focus:border-brand focus:outline-none"
-          >
-            <option value="">Select Crime Head</option>
-            <option value="Theft">Theft</option>
-            <option value="Housebreaking and Theft">Housebreaking and Theft</option>
-            <option value="Cyber Crime">Cyber Crime</option>
-            <option value="Assault">Assault</option>
-            <option value="General Offence">General Offence</option>
-          </select>
-        </Field>
-
-        {/* 3. CrimeSubHead Fallback Dropdown */}
-        <Field label="CrimeSubHead">
-          <select
-            value={form.CrimeSubHead || ""}
-            onChange={(event) => update("CrimeSubHead", event.target.value)}
-            className="w-full rounded-xl border border-border bg-white px-4 py-3 text-sm focus:border-brand focus:outline-none"
-          >
-            <option value="">Select Crime Sub Head</option>
-            <option value="Housebreaking by Night">Housebreaking by Night</option>
-            <option value="Chain Snatching">Chain Snatching</option>
-            <option value="Online Financial Fraud">Online Financial Fraud</option>
-            <option value="Vehicle Theft">Vehicle Theft</option>
-          </select>
-        </Field>
-
-        {/* 4. PoliceStationType Fallback Dropdown */}
-        <Field label="PoliceStationType">
-          <select
-            value={form.PoliceStationType || ""}
-            onChange={(event) => update("PoliceStationType", event.target.value)}
-            className="w-full rounded-xl border border-border bg-white px-4 py-3 text-sm focus:border-brand focus:outline-none"
-          >
-            <option value="">Select Station Type</option>
-            <option value="Law & Order">Law & Order</option>
-            <option value="Traffic">Traffic</option>
-            <option value="Crime">Crime</option>
-            <option value="Special Unit">Special Unit</option>
-          </select>
-        </Field>
-
-        {/* 5. District Fallback Dropdown */}
-        <Field label="District">
-          <select
-            value={form.District || ""}
-            onChange={(event) => update("District", event.target.value)}
-            className="w-full rounded-xl border border-border bg-white px-4 py-3 text-sm focus:border-brand focus:outline-none"
-          >
-            <option value="">Select District</option>
-            <option value="Bangalore Urban">Bangalore Urban</option>
-            <option value="Bangalore Rural">Bangalore Rural</option>
-            <option value="Mysuru">Mysuru</option>
-            <option value="Mangaluru">Mangaluru</option>
-          </select>
-        </Field>
-
-        {/* 6. CaseCategory Fallback Dropdown */}
-        <Field label="CaseCategory">
-          <select
-            value={form.CaseCategory || ""}
-            onChange={(event) => update("CaseCategory", event.target.value)}
-            className="w-full rounded-xl border border-border bg-white px-4 py-3 text-sm focus:border-brand focus:outline-none"
-          >
-            <option value="">Select Category</option>
-            <option value="FIR">FIR</option>
-            <option value="NCR">NCR (Non-Cognizable Report)</option>
-            <option value="Petty Case">Petty Case</option>
-          </select>
-        </Field>
-
-        {/* 7. Gravity Fallback Dropdown */}
-        <Field label="Gravity">
-          <select
-            value={form.Gravity || ""}
-            onChange={(event) => update("Gravity", event.target.value)}
-            className="w-full rounded-xl border border-border bg-white px-4 py-3 text-sm focus:border-brand focus:outline-none"
-          >
-            <option value="">Select Gravity</option>
-            <option value="Heinous">Heinous</option>
-            <option value="Non-Heinous">Non-Heinous</option>
-          </select>
-        </Field>
-
-        {/* 8. Status Fallback Dropdown */}
-        <Field label="Status">
-          <select
-            value={form.Status || ""}
-            onChange={(event) => update("Status", event.target.value)}
-            className="w-full rounded-xl border border-border bg-white px-4 py-3 text-sm focus:border-brand focus:outline-none"
-          >
-            <option value="">Select Status</option>
-            <option value="Under Investigation">Under Investigation</option>
-            <option value="Untraced">Untraced</option>
-            <option value="Charge Sheeted">Charge Sheeted</option>
-            <option value="Closed">Closed</option>
-          </select>
-        </Field>
-
-        <Field label="Court">
-          <input
-            value={form.Court}
-            onChange={(event) => update("Court", event.target.value)}
-            className={inputClass}
-            placeholder="Enter Jurisdiction Court"
-          />
-        </Field>
+        <OptionInput
+          label="PoliceStation"
+          field="PoliceStation"
+          value={form.PoliceStation}
+          onChange={(value) => update("PoliceStation", value)}
+          options={stationOptions}
+          placeholder="Select or type station"
+          onOptionsOpen={refreshOptions}
+        />
+        <OptionInput
+          label="CrimeHead"
+          field="CrimeHead"
+          value={form.CrimeHead}
+          onChange={(value) => {
+            update("CrimeHead", value);
+            update("CrimeSubHead", "");
+          }}
+          options={crimeHeadOptions}
+          placeholder="Select or type crime head"
+          onOptionsOpen={refreshOptions}
+        />
+        <OptionInput
+          label="CrimeSubHead"
+          field="CrimeSubHead"
+          value={form.CrimeSubHead}
+          onChange={(value) => update("CrimeSubHead", value)}
+          options={crimeSubHeadOptions}
+          placeholder="Select or type crime sub-head"
+          onOptionsOpen={refreshOptions}
+        />
+        <OptionInput
+          label="PoliceStationType"
+          field="PoliceStationType"
+          value={form.PoliceStationType}
+          onChange={(value) => update("PoliceStationType", value)}
+          options={optionList(options, "PoliceStationType")}
+          onOptionsOpen={refreshOptions}
+        />
+        <OptionInput
+          label="District"
+          field="District"
+          value={form.District}
+          onChange={(value) => update("District", value)}
+          options={optionList(options, "District")}
+          onOptionsOpen={refreshOptions}
+        />
+        <OptionInput
+          label="CaseCategory"
+          field="CaseCategory"
+          value={form.CaseCategory}
+          onChange={(value) => update("CaseCategory", value)}
+          options={optionList(options, "CaseCategory")}
+          onOptionsOpen={refreshOptions}
+        />
+        <OptionInput
+          label="Gravity"
+          field="Gravity"
+          value={form.Gravity}
+          onChange={(value) => update("Gravity", value)}
+          options={optionList(options, "Gravity")}
+          onOptionsOpen={refreshOptions}
+        />
+        <OptionInput
+          label="Status"
+          field="Status"
+          value={form.Status}
+          onChange={(value) => update("Status", value)}
+          options={optionList(options, "Status")}
+          onOptionsOpen={refreshOptions}
+        />
+        <OptionInput
+          label="Court"
+          field="Court"
+          value={form.Court}
+          onChange={(value) => update("Court", value)}
+          options={optionList(options, "Court")}
+          placeholder="Select or type court"
+          onOptionsOpen={refreshOptions}
+        />
       </div>
     </Section>
 
@@ -1100,27 +1204,30 @@ const Step1: React.FC<{
             className={inputClass}
           />
         </Field>
-        <Field label="Officer">
-          <input
-            value={form.Officer}
-            onChange={(event) => update("Officer", event.target.value)}
-            className={inputClass}
-          />
-        </Field>
+        <OptionInput
+          label="Officer"
+          field="Officer"
+          value={form.Officer}
+          onChange={(value) => update("Officer", value)}
+          options={optionList(options, "Officer")}
+          onOptionsOpen={refreshOptions}
+        />
         <OptionInput
           label="OfficerRank"
           field="OfficerRank"
           value={form.OfficerRank}
           onChange={(value) => update("OfficerRank", value)}
           options={optionList(options, "OfficerRank")}
+          onOptionsOpen={refreshOptions}
         />
-        <Field label="OfficerDesignation">
-          <input
-            value={form.OfficerDesignation}
-            onChange={(event) => update("OfficerDesignation", event.target.value)}
-            className={inputClass}
-          />
-        </Field>
+        <OptionInput
+          label="OfficerDesignation"
+          field="OfficerDesignation"
+          value={form.OfficerDesignation}
+          onChange={(value) => update("OfficerDesignation", value)}
+          options={optionList(options, "OfficerDesignation")}
+          onOptionsOpen={refreshOptions}
+        />
       </div>
     </Section>
   </>
@@ -1246,23 +1353,31 @@ const Step6: React.FC<{
   form: FormState;
   update: (field: string, value: string) => void;
   options: CaseOptions;
-}> = ({ form, update, options }) => (
+  refreshOptions: () => void;
+}> = ({ form, update, options, refreshOptions }) => (
   <>
+    <p className="mb-4 text-xs text-muted">
+      Suggestions refresh from Google Sheets when a field is opened. You can also type values and separate multiple entries with semicolons.
+    </p>
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <Field label="Acts" hint="Separate multiple acts with semicolons.">
-        <input
-          value={form.Acts}
-          onChange={(event) => update("Acts", joinNames(event.target.value.split(";")))}
-          className={inputClass}
-        />
-      </Field>
-      <Field label="Sections" hint="Separate multiple sections with semicolons.">
-        <input
-          value={form.Sections}
-          onChange={(event) => update("Sections", joinNames(event.target.value.split(";")))}
-          className={inputClass}
-        />
-      </Field>
+      <OptionInput
+        label="Acts"
+        field="Acts"
+        value={form.Acts}
+        onChange={(value) => update("Acts", value)}
+        options={optionList(options, "Acts")}
+        placeholder="Select or type; separate multiple acts with semicolons"
+        onOptionsOpen={refreshOptions}
+      />
+      <OptionInput
+        label="Sections"
+        field="Sections"
+        value={form.Sections}
+        onChange={(value) => update("Sections", value)}
+        options={optionList(options, "Sections")}
+        placeholder="Select or type; separate multiple sections with semicolons"
+        onOptionsOpen={refreshOptions}
+      />
       <Field label="ArrestCount">
         <input
           value={form.ArrestCount}
@@ -1291,6 +1406,7 @@ const Step6: React.FC<{
         value={form.ChargesheetStatus}
         onChange={(value) => update("ChargesheetStatus", value)}
         options={optionList(options, "ChargesheetStatus")}
+        onOptionsOpen={refreshOptions}
       />
     </div>
   </>
@@ -1313,20 +1429,20 @@ const Step7: React.FC<{ form: FormState; persisted: boolean }> = ({ form, persis
   return (
     <>
       <p className="text-sm text-muted mb-4">
-        Review the row before submission. Earlier steps save locally; Submit FIR runs the Google Sheets sync once.
+        Review the row before submission. Earlier steps are kept in this browser tab; Submit FIR writes to Google Sheets once.
       </p>
 
       {!persisted && (
         <div className="mb-4 rounded-lg border border-amber/30 bg-amber/10 text-amber text-sm px-4 py-3">
-          Case Basics have not been saved yet.
+          Case Basics have not been saved as a local draft yet.
         </div>
       )}
 
       <div className="bg-panel border border-line rounded-lg divide-y divide-line">
         {summary.map(([label, value]) => (
-          <div key={label} className="grid grid-cols-3 px-4 py-2.5">
+          <div key={label} className="grid grid-cols-1 gap-1 px-4 py-2.5 sm:grid-cols-3 sm:gap-0">
             <div className="text-xs text-muted uppercase tracking-wide">{label}</div>
-            <div className="col-span-2 text-white text-sm">{value || "-"}</div>
+            <div className="break-words text-sm text-white sm:col-span-2">{value || "-"}</div>
           </div>
         ))}
       </div>

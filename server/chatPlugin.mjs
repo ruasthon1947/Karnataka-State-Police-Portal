@@ -1,100 +1,109 @@
 import "dotenv/config";
 import dns from "node:dns";
 import { handleChatQuery } from "./geminiService.mjs";
+import { checkChatRateLimit, requireSession } from "./security.mjs";
 
-// Force Node.js to resolve IPv4 addresses first to fix ETIMEDOUT / fetch failed errors
 dns.setDefaultResultOrder("ipv4first");
 
-/**
- * Normalizes crime numbers for flexible matching.
- * E.g., "0011/2026", "CR-0011/2026", and "11/2026" all normalize to "11/2026".
- */
+const MAX_BODY_BYTES = 50_000;
+const MAX_QUESTION_LENGTH = 2_000;
+
 export function normalizeCrimeNo(str) {
   if (!str) return "";
-  const cleaned = String(str)
-    .trim()
-    .toUpperCase()
-    .replace(/^CR-?/i, ""); // Strip leading "CR-" or "CR"
-
+  const cleaned = String(str).trim().toUpperCase().replace(/^CR-?/i, "");
   const parts = cleaned.split("/");
   if (parts.length === 2) {
-    const seq = parts[0].replace(/^0+/, ""); // Strip leading zeros from sequence
+    const seq = parts[0].replace(/^0+/, "");
     return `${seq}/${parts[1]}`;
   }
   return cleaned;
 }
 
+function sendJson(res, status, payload) {
+  res.statusCode = status;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.end(JSON.stringify(payload));
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
-    req.on("data", (c) => (body += c));
+    let received = 0;
+    req.on("data", (chunk) => {
+      received += chunk.length;
+      if (received > MAX_BODY_BYTES) {
+        reject(Object.assign(new Error("Request body is too large."), { status: 413 }));
+        req.destroy();
+        return;
+      }
+      body += chunk;
+    });
     req.on("end", () => {
-      try { 
-        resolve(body ? JSON.parse(body) : {}); 
-      } catch { 
-        reject(new Error("Invalid JSON body")); 
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(Object.assign(new Error("Invalid JSON body."), { status: 400 }));
       }
     });
     req.on("error", reject);
   });
 }
 
-async function handleChatApi(req, res, next) {
+export async function handleChatApi(req, res, next) {
   const url = new URL(req.url || "/", "http://local-chat");
-
-  // 1. Chat Endpoint Route Handler
-  if (req.method === "POST" && url.pathname === "/api/chat") {
-    try {
-      const { question, role, stationId, language } = await readBody(req);
-
-      // Extract and normalize any crime numbers (e.g. 0011/2026 or CR-0011/2026) in the user's question
-      const crimeNoRegex = /(?:CR-?)?\b\d{1,4}\/\d{4}\b/gi;
-      const normalizedQuestion = String(question || "").replace(crimeNoRegex, (match) => {
-        return normalizeCrimeNo(match);
-      });
-
-      const answer = await handleChatQuery({ 
-        question, 
-        normalizedQuestion, 
-        normalizedCrimeNo: normalizeCrimeNo(question),
-        role, 
-        stationId, 
-        language 
-      });
-
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ ok: true, answer }));
-    } catch (err) {
-      console.error(err);
-      res.statusCode = 500;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ ok: false, error: err.message }));
-    }
+  if (req.method !== "POST" || url.pathname !== "/api/chat") {
+    next();
     return;
   }
 
-  // 2. Login Endpoint Route Handler
-  if (req.method === "POST" && url.pathname === "/api/login") {
-    try {
-      const { employeeId, firebaseAuth } = await readBody(req);
-      console.log(`[Server API] Intercepted authentication loop for Employee ID: ${employeeId}`);
-      
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ 
-        ok: true, 
-        name: `Officer ${employeeId?.split("-").pop() || employeeId}`, 
-        isFirstLogin: !firebaseAuth 
-      }));
-    } catch (err) {
-      console.error(err);
-      res.statusCode = 400;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ ok: false, error: err.message || "Invalid payload verification parameters." }));
-    }
+  const session = requireSession(req, res);
+  if (!session) return;
+
+  const rate = checkChatRateLimit(session.employeeId);
+  if (!rate.ok) {
+    res.setHeader("Retry-After", String(rate.retryAfterSeconds));
+    sendJson(res, 429, {
+      ok: false,
+      error: `Too many Copilot requests. Try again in ${rate.retryAfterSeconds} seconds.`,
+    });
     return;
   }
 
-  next();
+  try {
+    const { question, language } = await readBody(req);
+    const cleanedQuestion = String(question || "").trim();
+    if (!cleanedQuestion) {
+      sendJson(res, 400, { ok: false, error: "Please enter a question." });
+      return;
+    }
+    if (cleanedQuestion.length > MAX_QUESTION_LENGTH) {
+      sendJson(res, 400, {
+        ok: false,
+        error: `Questions must be ${MAX_QUESTION_LENGTH} characters or fewer.`,
+      });
+      return;
+    }
+
+    const normalizedQuestion = cleanedQuestion.replace(
+      /(?:CR-?)?\b\d{1,4}\/\d{4}\b/gi,
+      (match) => normalizeCrimeNo(match),
+    );
+    const answer = await handleChatQuery({
+      question: normalizedQuestion,
+      role: session.role,
+      stationId: session.policeStation,
+      employeeId: session.employeeId,
+      language: language === "kn" ? "kn" : "en",
+    });
+    sendJson(res, 200, { ok: true, answer });
+  } catch (error) {
+    console.error("[Chat API] Request failed.", error);
+    sendJson(res, error?.status || 500, {
+      ok: false,
+      error: error?.status ? error.message : "Copilot is temporarily unavailable. Please try again.",
+    });
+  }
 }
 
 function chatPlugin() {
