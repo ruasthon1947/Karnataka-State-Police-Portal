@@ -62,7 +62,7 @@ export const FIR_RECORDS: FIR[] = [
     complainant: "Ananya Rao",
     accused: "Unknown",
     phone: "9876543210",
-    vehicle: "—",
+    vehicle: "-",
     section: "BNS 318(4)",
   },
   {
@@ -92,7 +92,7 @@ export const FIR_RECORDS: FIR[] = [
     complainant: "Nisha S",
     accused: "Arun P",
     phone: "9900123456",
-    vehicle: "—",
+    vehicle: "-",
     section: "BNS 109",
   },
   {
@@ -121,8 +121,8 @@ export const FIR_RECORDS: FIR[] = [
     date: "2026-06-29",
     complainant: "State",
     accused: "Unknown",
-    phone: "—",
-    vehicle: "—",
+    phone: "-",
+    vehicle: "-",
     section: "NDPS 20(b)",
   },
   {
@@ -219,9 +219,9 @@ const ReferenceHeader: React.FC<{
           {loading
             ? tr("Loading...", "ಲೋಡ್ ಆಗುತ್ತಿದೆ...")
             : tr(
-                `${count.toLocaleString("en-IN")} records loaded`,
-                `${count.toLocaleString("kn-IN")} ದಾಖಲೆಗಳು ಲೋಡ್ ಆಗಿವೆ`,
-              )}
+              `${count.toLocaleString("en-IN")} records loaded`,
+              `${count.toLocaleString("kn-IN")} ದಾಖಲೆಗಳು ಲೋಡ್ ಆಗಿವೆ`,
+            )}
         </span>
         {error && (
           <span className="rounded-full border border-rose/30 bg-rose/10 px-3 py-1 text-rose">
@@ -439,13 +439,13 @@ export const Dashboard: React.FC = () => {
     let start = new Date();
     start.setDate(start.getDate() - 6);
     let end = new Date();
-    
+
     if (fromDate) start = new Date(fromDate);
     if (toDate) end = new Date(toDate);
-    
+
     const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
     const groupByMonth = diffDays > 60;
-    
+
     if (groupByMonth) {
       const buckets = new Map<string, { day: string; fir: number; solved: number }>();
       let d = new Date(start);
@@ -1039,38 +1039,38 @@ export const FIRDetail: React.FC = () => {
   const liveTimeline = [
     r.raw.CrimeRegisteredDate
       ? [
-          t("FIR Registered", "FIR Registered"),
-          r.raw.CrimeRegisteredDate,
-          r.raw.FiledBy ? `Filed by ${r.raw.FiledBy}` : "Registration recorded",
-        ]
+        t("FIR Registered", "FIR Registered"),
+        r.raw.CrimeRegisteredDate,
+        r.raw.FiledBy ? `Filed by ${r.raw.FiledBy}` : "Registration recorded",
+      ]
       : null,
     r.raw.InfoReceivedPSDate
       ? [
-          t("Information received", "Information received"),
-          r.raw.InfoReceivedPSDate,
-          r.station || "Police station",
-        ]
+        t("Information received", "Information received"),
+        r.raw.InfoReceivedPSDate,
+        r.station || "Police station",
+      ]
       : null,
     r.raw.IncidentFromDate
       ? [
-          t("Incident period", "Incident period"),
-          [r.raw.IncidentFromDate, r.raw.IncidentToDate].filter(Boolean).join(" – "),
-          r.raw.BriefFacts || "Incident details recorded",
-        ]
+        t("Incident period", "Incident period"),
+        [r.raw.IncidentFromDate, r.raw.IncidentToDate].filter(Boolean).join(" – "),
+        r.raw.BriefFacts || "Incident details recorded",
+      ]
       : null,
     r.io
       ? [
-          t("Investigating officer assigned", "Investigating officer assigned"),
-          r.raw.CrimeRegisteredDate || "Date not recorded",
-          r.io,
-        ]
+        t("Investigating officer assigned", "Investigating officer assigned"),
+        r.raw.CrimeRegisteredDate || "Date not recorded",
+        r.io,
+      ]
       : null,
     r.raw.LatestChargesheetDate || r.raw.ChargesheetStatus
       ? [
-          t("Chargesheet status", "Chargesheet status"),
-          r.raw.LatestChargesheetDate || "Date not recorded",
-          r.raw.ChargesheetStatus || "Status not recorded",
-        ]
+        t("Chargesheet status", "Chargesheet status"),
+        r.raw.LatestChargesheetDate || "Date not recorded",
+        r.raw.ChargesheetStatus || "Status not recorded",
+      ]
       : null,
   ].filter((item): item is string[] => Boolean(item));
 
@@ -1214,14 +1214,14 @@ export const AdvancedSearch: React.FC = () => {
   const [saved, setSaved] = useState<string[]>(() =>
     JSON.parse(
       localStorage.getItem("kpfir.savedSearches") ||
-        "[]"
+      "[]"
     )
   );
 
   const [recent, setRecent] = useState<string[]>(() =>
     JSON.parse(
       localStorage.getItem("kpfir.recentSearches") ||
-        "[]"
+      "[]"
     )
   );
 
@@ -1488,12 +1488,12 @@ export const Reports: React.FC = () => {
     let start = new Date();
     start.setDate(start.getDate() - 180); // Default 6 months
     let end = new Date();
-    
+
     if (fromDate) start = new Date(fromDate);
     if (toDate) end = new Date(toDate);
 
     const buckets = new Map<string, { m: string; fir: number; closed: number }>();
-    
+
     // Initialize buckets for all months in range
     let d = new Date(start);
     d.setDate(1); // Set to start of month
@@ -1509,7 +1509,7 @@ export const Reports: React.FC = () => {
       if (!Number.isFinite(date.getTime())) continue;
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
       if (!buckets.has(key)) continue; // Outside filter range
-      
+
       const bucket = buckets.get(key)!;
       bucket.fir += 1;
       if (closedStatuses.includes(record.status)) {
@@ -1553,8 +1553,8 @@ export const Reports: React.FC = () => {
     .filter((value): value is number => value !== null);
   const avgInvestigationDays = investigationDurations.length
     ? Math.round(
-        (investigationDurations.reduce((sum, value) => sum + value, 0) / investigationDurations.length) * 10
-      ) / 10
+      (investigationDurations.reduce((sum, value) => sum + value, 0) / investigationDurations.length) * 10
+    ) / 10
     : 0;
   const casesThisMonth = filteredRecords.filter((record) => {
     const date = new Date(record.date);
@@ -1570,13 +1570,13 @@ export const Reports: React.FC = () => {
   }).length;
   const disposedWithin30 = closedCases.length
     ? Math.round(
-        (closedCases.filter((record) => {
-          const age = daysBetween(record.date, record.raw.LatestChargesheetDate || undefined);
-          return age !== null && age <= 30;
-        }).length /
-          closedCases.length) *
-          100
-      )
+      (closedCases.filter((record) => {
+        const age = daysBetween(record.date, record.raw.LatestChargesheetDate || undefined);
+        return age !== null && age <= 30;
+      }).length /
+        closedCases.length) *
+      100
+    )
     : 0;
   const chargeSheetsFiled = filteredRecords.filter((record) => record.raw.ChargesheetStatus === "Filed").length;
   const chargeSheetFiledRate = totalCases ? Math.round((chargeSheetsFiled / totalCases) * 100) : 0;
@@ -2178,9 +2178,8 @@ export const Courts: React.FC = () => {
                 ].map((column, index) => (
                   <th
                     key={column}
-                    className={`px-4 py-3 font-semibold [overflow-wrap:normal] ${
-                      index >= 3 ? "text-center" : ""
-                    }`}
+                    className={`px-4 py-3 font-semibold [overflow-wrap:normal] ${index >= 3 ? "text-center" : ""
+                      }`}
                   >
                     {column}
                   </th>
@@ -2241,14 +2240,12 @@ const Toggle = ({ on, set }: { on: boolean; set: (v: boolean) => void }) => (
     type="button"
     aria-pressed={on}
     onClick={() => set(!on)}
-    className={`relative h-5 w-10 shrink-0 rounded-full transition ${
-      on ? "bg-brand" : "bg-panel border border-line"
-    }`}
+    className={`relative h-5 w-10 shrink-0 rounded-full transition ${on ? "bg-brand" : "bg-panel border border-line"
+      }`}
   >
     <span
-      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${
-        on ? "left-[22px]" : "left-0.5"
-      }`}
+      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${on ? "left-[22px]" : "left-0.5"
+        }`}
     />
   </button>
 );
@@ -2497,7 +2494,7 @@ export const Settings: React.FC = () => {
         }
         throw new Error(
           data?.error ||
-            t("Failed to verify OTP.", "OTP ದೃಢೀಕರಿಸಲು ವಿಫಲವಾಗಿದೆ."),
+          t("Failed to verify OTP.", "OTP ದೃಢೀಕರಿಸಲು ವಿಫಲವಾಗಿದೆ."),
         );
       }
 
@@ -2766,26 +2763,25 @@ export const Settings: React.FC = () => {
             {smsConfigured !== null && (
               <div
                 role={smsConfigured ? "status" : "alert"}
-                className={`my-3 rounded-lg border px-3 py-2 text-[11px] ${
-                  smsConfigured
+                className={`my-3 rounded-lg border px-3 py-2 text-[11px] ${smsConfigured
                     ? "border-sage/30 bg-sage/10 text-sage"
                     : "border-rose/30 bg-rose/10 text-rose"
-                }`}
+                  }`}
               >
                 {smsConfigured
                   ? phoneVerified
                     ? t(
-                        "SMS delivery is connected and your verified number can receive enabled alerts.",
-                        "SMS ವಿತರಣೆ ಸಂಪರ್ಕಗೊಂಡಿದೆ ಮತ್ತು ನಿಮ್ಮ ದೃಢೀಕೃತ ಸಂಖ್ಯೆ ಸಕ್ರಿಯ ಎಚ್ಚರಿಕೆಗಳನ್ನು ಸ್ವೀಕರಿಸಬಹುದು.",
-                      )
+                      "SMS delivery is connected and your verified number can receive enabled alerts.",
+                      "SMS ವಿತರಣೆ ಸಂಪರ್ಕಗೊಂಡಿದೆ ಮತ್ತು ನಿಮ್ಮ ದೃಢೀಕೃತ ಸಂಖ್ಯೆ ಸಕ್ರಿಯ ಎಚ್ಚರಿಕೆಗಳನ್ನು ಸ್ವೀಕರಿಸಬಹುದು.",
+                    )
                     : t(
-                        "SMS delivery is connected. Verify a phone number to receive alerts.",
-                        "SMS ವಿತರಣೆ ಸಂಪರ್ಕಗೊಂಡಿದೆ. ಎಚ್ಚರಿಕೆಗಳನ್ನು ಪಡೆಯಲು ಫೋನ್ ಸಂಖ್ಯೆಯನ್ನು ದೃಢೀಕರಿಸಿ.",
-                      )
+                      "SMS delivery is connected. Verify a phone number to receive alerts.",
+                      "SMS ವಿತರಣೆ ಸಂಪರ್ಕಗೊಂಡಿದೆ. ಎಚ್ಚರಿಕೆಗಳನ್ನು ಪಡೆಯಲು ಫೋನ್ ಸಂಖ್ಯೆಯನ್ನು ದೃಢೀಕರಿಸಿ.",
+                    )
                   : t(
-                      "SMS delivery is not configured on the server.",
-                      "ಸರ್ವರ್‌ನಲ್ಲಿ SMS ವಿತರಣೆಯನ್ನು ಕಾನ್ಫಿಗರ್ ಮಾಡಲಾಗಿಲ್ಲ.",
-                    )}
+                    "SMS delivery is not configured on the server.",
+                    "ಸರ್ವರ್‌ನಲ್ಲಿ SMS ವಿತರಣೆಯನ್ನು ಕಾನ್ಫಿಗರ್ ಮಾಡಲಾಗಿಲ್ಲ.",
+                  )}
               </div>
             )}
             <SettingRow
@@ -2846,13 +2842,12 @@ export const Settings: React.FC = () => {
 
           {pullState.message && (
             <div
-              className={`mt-4 rounded-lg border px-3 py-2 text-xs ${
-                pullState.status === "error"
+              className={`mt-4 rounded-lg border px-3 py-2 text-xs ${pullState.status === "error"
                   ? "border-red-200 bg-red-50 text-red-700"
                   : pullState.status === "success"
                     ? "border-green-200 bg-green-50 text-green-700"
                     : "border-line bg-panel text-muted"
-              }`}
+                }`}
             >
               {pullState.message}
             </div>

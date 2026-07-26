@@ -53,7 +53,7 @@ const Settings = React.lazy(() =>
  */
 const App: React.FC = () => {
   const location = useLocation();
-  // Hide auth screens on the chrome-bearing layout — they get their own full-page design.
+  // Hide auth screens on the chrome-bearing layout - they get their own full-page design.
   const isAuthScreen =
     location.pathname === "/login" ||
     location.pathname.startsWith("/change-password");
@@ -67,48 +67,48 @@ const App: React.FC = () => {
       }
     >
       <Routes>
-      {/* Auth screens (standalone layout) */}
-      <Route path="/login" element={<Login />} />
-      <Route
-        path="/change-password"
-        element={
-          <RequireAuth>
-            <ChangePassword />
-          </RequireAuth>
-        }
-      />
+        {/* Auth screens (standalone layout) */}
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/change-password"
+          element={
+            <RequireAuth>
+              <ChangePassword />
+            </RequireAuth>
+          }
+        />
 
-      {/* Protected app */}
-      <Route
-        element={
-          <RequireAuth>
-            <AppShell />
-          </RequireAuth>
-        }
-      >
-        <Route path="/" element={<Chat />} />
-        <Route path="/dashboard" element={<Dashboard />} />
+        {/* Protected app */}
+        <Route
+          element={
+            <RequireAuth>
+              <AppShell />
+            </RequireAuth>
+          }
+        >
+          <Route path="/" element={<Chat />} />
+          <Route path="/dashboard" element={<Dashboard />} />
 
-        <Route path="/fir" element={<FIRList />} />
-        <Route path="/fir/new" element={<NewFIR />} />
-        <Route path="/fir/:id" element={<FIRDetail />} />
-        <Route path="/fir/:id/edit" element={<NewFIR />} />
+          <Route path="/fir" element={<FIRList />} />
+          <Route path="/fir/new" element={<NewFIR />} />
+          <Route path="/fir/:id" element={<FIRDetail />} />
+          <Route path="/fir/:id/edit" element={<NewFIR />} />
 
-        <Route path="/search" element={<AdvancedSearch />} />
+          <Route path="/search" element={<AdvancedSearch />} />
 
-        <Route path="/employees" element={<Employees />} />
-        <Route path="/master-data" element={<MasterData />} />
-        <Route path="/units" element={<Units />} />
-        <Route path="/courts" element={<Courts />} />
+          <Route path="/employees" element={<Employees />} />
+          <Route path="/master-data" element={<MasterData />} />
+          <Route path="/units" element={<Units />} />
+          <Route path="/courts" element={<Courts />} />
 
-        <Route path="/reports" element={<Reports />} />
-        <Route path="/settings" element={<Settings />} />
-      </Route>
+          <Route path="/reports" element={<Reports />} />
+          <Route path="/settings" element={<Settings />} />
+        </Route>
 
-      <Route
-        path="*"
-        element={<Navigate to={isAuthScreen ? "/login" : "/"} replace />}
-      />
+        <Route
+          path="*"
+          element={<Navigate to={isAuthScreen ? "/login" : "/"} replace />}
+        />
       </Routes>
     </React.Suspense>
   );

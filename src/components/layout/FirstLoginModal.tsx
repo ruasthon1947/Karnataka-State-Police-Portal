@@ -5,7 +5,7 @@ import { KSPPBrandMark, KSPP_SHORT_NAME } from "../brand/KSPPBrand";
 /**
  * Modal that fires after a successful first-time login.
  * It is rendered by RequireAuth when user.isFirstLogin === true,
- * BUT only once — the modal's primary action routes to /change-password
+ * BUT only once - the modal's primary action routes to /change-password
  * which clears the first-login flag upon successful submit.
  */
 export const FirstLoginModal: React.FC<{ employeeId: string }> = ({ employeeId }) => {

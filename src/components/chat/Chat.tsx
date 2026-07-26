@@ -22,7 +22,7 @@ export const Chat: React.FC = () => {
   const [input, setInput] = useState("");
   const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
   const [attachmentError, setAttachmentError] = useState("");
-  
+
   // References for scrolling and target PDF export element
   const endRef = useRef<HTMLDivElement | null>(null);
   const chatListRef = useRef<HTMLDivElement | null>(null);
@@ -40,11 +40,11 @@ export const Chat: React.FC = () => {
     }
 
     const opt = {
-      margin:       [10, 10, 10, 10], // top, left, bottom, right margins in mm
-      filename:     `Karnataka_Police_Chat_Report_${new Date().toISOString().slice(0, 10)}.pdf`,
-      image:        { type: "jpeg", quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false },
-      jsPDF:        { unit: "mm", format: "a4", orientation: "portrait" }
+      margin: [10, 10, 10, 10], // top, left, bottom, right margins in mm
+      filename: `Karnataka_Police_Chat_Report_${new Date().toISOString().slice(0, 10)}.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
     };
 
     try {
@@ -217,8 +217,8 @@ export const Chat: React.FC = () => {
 
           <p className="text-[11px] text-muted text-center mt-2">
             {tr(
-              "Copilot generates drafts and queries — verify against source records before any official action.",
-              "ಕೋಪೈಲಟ್ ಕರಡುಗಳು ಮತ್ತು ಪ್ರಶ್ನೆಗಳನ್ನು ರಚಿಸುತ್ತದೆ — ಯಾವುದೇ ಅಧಿಕೃತ ಕ್ರಮಕ್ಕೂ ಮೊದಲು ಮೂಲ ದಾಖಲೆಗಳೊಂದಿಗೆ ಪರಿಶೀಲಿಸಿ."
+              "Copilot generates drafts and queries - verify against source records before any official action.",
+              "ಕೋಪೈಲಟ್ ಕರಡುಗಳು ಮತ್ತು ಪ್ರಶ್ನೆಗಳನ್ನು ರಚಿಸುತ್ತದೆ - ಯಾವುದೇ ಅಧಿಕೃತ ಕ್ರಮಕ್ಕೂ ಮೊದಲು ಮೂಲ ದಾಖಲೆಗಳೊಂದಿಗೆ ಪರಿಶೀಲಿಸಿ."
             )}
           </p>
         </div>
@@ -313,74 +313,74 @@ const Composer: React.FC<{
   tr,
   language,
 }) => {
-  const taRef = useRef<HTMLTextAreaElement | null>(null);
-  const fileRef = useRef<HTMLInputElement | null>(null);
+    const taRef = useRef<HTMLTextAreaElement | null>(null);
+    const fileRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    const ta = taRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = Math.min(180, ta.scrollHeight) + "px";
-  }, [value]);
+    useEffect(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      ta.style.height = "auto";
+      ta.style.height = Math.min(180, ta.scrollHeight) + "px";
+    }, [value]);
 
-  return (
-    <div className="rounded-2xl border border-line bg-shell px-3 py-2.5 shadow-soft focus-within:border-brand/50 focus-within:ring-2 focus-within:ring-brand/15 sm:px-4 sm:py-3">
-      {attachment && (
-        <div className="mb-2 flex items-center gap-2 rounded-lg border border-brand/30 bg-brand/10 px-3 py-2 text-xs text-white">
-          <span aria-hidden="true">📎</span>
-          <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+    return (
+      <div className="rounded-2xl border border-line bg-shell px-3 py-2.5 shadow-soft focus-within:border-brand/50 focus-within:ring-2 focus-within:ring-brand/15 sm:px-4 sm:py-3">
+        {attachment && (
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-brand/30 bg-brand/10 px-3 py-2 text-xs text-white">
+            <span aria-hidden="true">📎</span>
+            <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+            <button
+              type="button"
+              onClick={onRemoveAttachment}
+              className="rounded px-1.5 py-0.5 text-muted hover:bg-panel hover:text-white"
+              aria-label="Remove attachment"
+            >
+              ×
+            </button>
+          </div>
+        )}
+        {attachmentError && <p className="mb-2 text-xs text-red-300" role="alert">{attachmentError}</p>}
+        <textarea
+          ref={taRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } }}
+          placeholder={tr(
+            "Ask the Copilot - try 'FIRs in Whitefield last week' or 'disposal rate'",
+            "ಕೋಪೈಲಟ್ ಅನ್ನು ಕೇಳಿ - 'ಕಳೆದ ವಾರ ವೈಟ್‌ಫೀಲ್ಡ್‌ನ ಎಫ್‌ಐಆರ್‌ಗಳು' ಅಥವಾ 'ವಿಲೇವಾರಿ ದರ' ಎಂದು ಪ್ರಯತ್ನಿಸಿ"
+          )}
+          rows={1}
+          className="w-full bg-transparent text-white placeholder-muted outline-none resize-none text-sm leading-relaxed"
+        />
+        <div className="flex items-center gap-1 mt-1">
+          <input
+            ref={fileRef}
+            type="file"
+            className="hidden"
+            accept=".txt,.csv,.json,.md,.pdf,.jpg,.jpeg,.png,.webp,text/plain,text/csv,text/markdown,application/json,application/pdf,image/jpeg,image/png,image/webp"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void onAttachmentSelected(file);
+              event.target.value = "";
+            }}
+          />
           <button
             type="button"
-            onClick={onRemoveAttachment}
-            className="rounded px-1.5 py-0.5 text-muted hover:bg-panel hover:text-white"
-            aria-label="Remove attachment"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            className="h-8 w-8 grid place-items-center rounded-md text-muted hover:text-white hover:bg-panel transition"
+            title={tr("Attach a file or picture", "ಫೈಲ್ ಅಥವಾ ಚಿತ್ರವನ್ನು ಲಗತ್ತಿಸಿ")}
           >
-            ×
+            ＋
           </button>
-        </div>
-      )}
-      {attachmentError && <p className="mb-2 text-xs text-red-300" role="alert">{attachmentError}</p>}
-      <textarea
-        ref={taRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } }}
-        placeholder={tr(
-          "Ask the Copilot — try 'FIRs in Whitefield last week' or 'disposal rate'",
-          "ಕೋಪೈಲಟ್ ಅನ್ನು ಕೇಳಿ — 'ಕಳೆದ ವಾರ ವೈಟ್‌ಫೀಲ್ಡ್‌ನ ಎಫ್‌ಐಆರ್‌ಗಳು' ಅಥವಾ 'ವಿಲೇವಾರಿ ದರ' ಎಂದು ಪ್ರಯತ್ನಿಸಿ"
-        )}
-        rows={1}
-        className="w-full bg-transparent text-white placeholder-muted outline-none resize-none text-sm leading-relaxed"
-      />
-      <div className="flex items-center gap-1 mt-1">
-        <input
-          ref={fileRef}
-          type="file"
-          className="hidden"
-          accept=".txt,.csv,.json,.md,.pdf,.jpg,.jpeg,.png,.webp,text/plain,text/csv,text/markdown,application/json,application/pdf,image/jpeg,image/png,image/webp"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void onAttachmentSelected(file);
-            event.target.value = "";
-          }}
-        />
-        <button 
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          disabled={busy}
-          className="h-8 w-8 grid place-items-center rounded-md text-muted hover:text-white hover:bg-panel transition" 
-          title={tr("Attach a file or picture", "ಫೈಲ್ ಅಥವಾ ಚಿತ್ರವನ್ನು ಲಗತ್ತಿಸಿ")}
-        >
-          ＋
-        </button>
-        
-        <VoiceButton language={language} onResult={(text) => onVoiceResult(text)} disabled={busy} />
 
-        <div className="flex-1" />
-        <button onClick={onSend} disabled={busy || (!value.trim() && !attachment)} className="h-8 w-8 grid place-items-center rounded-full bg-brand text-white disabled:opacity-40 hover:bg-brand/90 transition">↗</button>
+          <VoiceButton language={language} onResult={(text) => onVoiceResult(text)} disabled={busy} />
+
+          <div className="flex-1" />
+          <button onClick={onSend} disabled={busy || (!value.trim() && !attachment)} className="h-8 w-8 grid place-items-center rounded-full bg-brand text-white disabled:opacity-40 hover:bg-brand/90 transition">↗</button>
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
 

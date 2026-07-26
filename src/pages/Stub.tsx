@@ -28,7 +28,7 @@ const Stub: React.FC<Props> = ({ title, description }) => {
       </div>
 
       <div className="bg-shell border border-line rounded-xl p-6 text-muted text-sm">
-        Preview space — content for this screen lives in its page component.
+        Preview space - content for this screen lives in its page component.
       </div>
     </div>
   );
