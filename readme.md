@@ -1,6 +1,8 @@
-# 🚨 Karnataka-State-Police-Portal
-
 <div align="center">
+
+<img src="./assets/kspplogo.png" alt="Karnataka State Police Portal Logo" width="180"/>
+
+# 🚨 Karnataka-State-Police-Portal
 
 ### **AI-Powered Law Enforcement Workspace & FIR Management System**
 
