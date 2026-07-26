@@ -1,80 +1,45 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-// Helper: Converts English numbers (0-9) to Kannada numerals (೦-೯)
-function convertNumbersToKannada(str: string): string {
-  const kanDigits = ["೦", "೧", "೨", "೩", "೪", "೫", "೬", "೭", "೮", "೯"];
-  return str.replace(/\d/g, (d) => kanDigits[parseInt(d, 10)]);
-}
+type SpeechStatus = {
+  transcript: string;
+  interimTranscript: string;
+  listening: boolean;
+  starting: boolean;
+  error: string;
+  start: () => void;
+  stop: () => void;
+};
 
-// Helper: Maps common Romanized speech terms directly into Kannada script
-function transliterateKanglishToKannada(text: string): string {
-  let output = text;
-
-  const phraseMap: [RegExp, string][] = [
-    // Phrases & Words
-    [/\bnanage\b/gi, "ನನಗೆ"],
-    [/\bcase\s*master\b/gi, "ಕೇಸ್ ಮಾಸ್ಟರ್"],
-    [/\bcase\b/gi, "ಕೇಸ್"],
-    [/\bmaster\b/gi, "ಮಾಸ್ಟರ್"],
-    [/\bid\b/gi, "ಐಡಿ"],
-    [/\bcomplete\b/gi, "ಸಂಪೂರ್ಣ"],
-    [/\bdetails\b/gi, "ವಿವರಗಳು"],
-    [/\bvivara\b/gi, "ವಿವರ"],
-    [/\bvivaragalu\b/gi, "ವಿವರಗಳು"],
-    [/\bkodi\b/gi, "ಕೊಡಿ"],
-    [/\bnaadi\b/gi, "ನೀಡಿ"],
-    [/\bge\b/gi, "ಗೆ"],
-    [/\bondu\b/gi, "ಒಂದು"],
-    [/\byaradu\b/gi, "ಎರಡು"],
-    [/\bmooru\b/gi, "ಮೂರು"],
-    [/\bnaalaku\b/gi, "ನಾಲ್ಕು"],
-    [/\baaidu\b/gi, "ಐದು"],
-    [/\baaru\b/gi, "ಆರು"],
-    [/\beelu\b/gi, "ಏಳು"],
-    [/\bentu\b/gi, "ಎಂಟು"],
-    [/\bombattu\b/gi, "ಒಂಬತ್ತು"],
-    [/\bhattu\b/gi, "ಹತ್ತು"],
-    [/\bfir\b/gi, "ಎಫ್‌ಐಆರ್"],
-    [/\bpolice\s*station\b/gi, "ಪೊಲೀಸ್ ಠಾಣೆ"],
-    [/\bofficer\b/gi, "ಅಧಿಕಾರಿ"]
-  ];
-
-  phraseMap.forEach(([regex, kanReplacement]) => {
-    output = output.replace(regex, kanReplacement);
-  });
-
-  // Convert numbers to Kannada digits
-  return convertNumbersToKannada(output);
-}
-
-export function useSpeechRecognition(lang: "kn-IN" | "en-IN") {
+export function useSpeechRecognition(lang: "kn-IN" | "en-IN"): SpeechStatus {
   const [transcript, setTranscript] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
   const [listening, setListening] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState("");
   const recognitionRef = useRef<any>(null);
   const timeoutRef = useRef<number | null>(null);
 
-  const clearAutoStop = () => {
-    if (timeoutRef.current) {
+  const clearAutoStop = useCallback(() => {
+    if (timeoutRef.current !== null) {
       window.clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
-  };
+  }, []);
 
   const stop = useCallback(() => {
     clearAutoStop();
     try {
       recognitionRef.current?.stop();
     } catch {
-      // Ignore stop errors
+      // Recognition may already be stopping.
     }
     setListening(false);
-  }, []);
+    setStarting(false);
+    setInterimTranscript("");
+  }, [clearAutoStop]);
 
-  // Update recognition language dynamically
   useEffect(() => {
-    if (recognitionRef.current) {
-      recognitionRef.current.lang = lang;
-    }
+    if (recognitionRef.current) recognitionRef.current.lang = lang;
   }, [lang]);
 
   const start = useCallback(() => {
@@ -82,63 +47,98 @@ export function useSpeechRecognition(lang: "kn-IN" | "en-IN") {
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert("Speech recognition isn't supported in this browser. Try Chrome or Edge.");
+      setError("Microphone input is not supported here. Please use Chrome or Edge.");
       return;
     }
 
     if (recognitionRef.current) {
       try {
-        recognitionRef.current.stop();
-      } catch {}
+        recognitionRef.current.abort();
+      } catch {
+        // Ignore stale recognition cleanup errors.
+      }
       recognitionRef.current = null;
     }
+
+    setTranscript("");
+    setInterimTranscript("");
+    setError("");
+    setStarting(true);
 
     const recognition = new SpeechRecognition();
     recognition.lang = lang;
     recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
+    recognition.onstart = () => {
+      setStarting(false);
+      setListening(true);
+    };
+
     recognition.onresult = (event: any) => {
-      let rawText = event.results[0][0].transcript;
-
-      // 🚀 FORCE FULL KANNADA CONVERSION WHEN LANGUAGE IS SET TO KANNADA
-      if (lang === "kn-IN") {
-        rawText = transliterateKanglishToKannada(rawText);
+      let finalText = "";
+      let interimText = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        if (result.isFinal) finalText += result[0].transcript;
+        else interimText += result[0].transcript;
       }
-
-      setTranscript(rawText);
-      stop();
+      setInterimTranscript(interimText.trim());
+      if (finalText.trim()) {
+        setTranscript(finalText.trim());
+        setInterimTranscript("");
+      }
     };
 
     recognition.onspeechend = () => {
-      recognition.stop();
+      try {
+        recognition.stop();
+      } catch {
+        // Recognition may already be stopping.
+      }
     };
 
     recognition.onerror = (event: any) => {
       console.error("Speech recognition error:", event.error);
+      const message =
+        event.error === "not-allowed" || event.error === "service-not-allowed"
+          ? "Microphone permission was denied. Allow microphone access and try again."
+          : event.error === "no-speech"
+            ? "No speech was detected. Please try again."
+            : "Microphone recognition failed. Please try again.";
+      setError(message);
       stop();
     };
 
     recognition.onend = () => {
+      clearAutoStop();
       setListening(false);
+      setStarting(false);
+      setInterimTranscript("");
       recognitionRef.current = null;
     };
 
     recognitionRef.current = recognition;
-
     try {
       recognition.start();
-      setListening(true);
-      clearAutoStop();
-      timeoutRef.current = window.setTimeout(() => stop(), 10000);
-    } catch (err) {
-      console.error("Failed to start speech recognition:", err);
-      setListening(false);
+      timeoutRef.current = window.setTimeout(stop, 15_000);
+    } catch (startError) {
+      console.error("Failed to start speech recognition:", startError);
+      setError("The microphone could not be started. Please try again.");
+      setStarting(false);
     }
-  }, [lang, stop]);
+  }, [clearAutoStop, lang, stop]);
 
   useEffect(() => () => stop(), [stop]);
 
-  return { transcript, listening, start, stop };
+  return {
+    transcript,
+    interimTranscript,
+    listening,
+    starting,
+    error,
+    start,
+    stop,
+  };
 }

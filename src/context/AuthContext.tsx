@@ -109,7 +109,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const login = useCallback<AuthContextValue["login"]>(
     async (employeeId, password) => {
-      setThemeState("light");
       const id = employeeId.trim();
       if (!id) return { ok: false, error: "Employee ID is required." };
       if (!password) return { ok: false, error: "Password is required." };

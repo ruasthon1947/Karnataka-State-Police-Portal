@@ -1,5 +1,12 @@
 import { fetchCases } from "./cases";
 
+export type ChatAttachment = {
+  name: string;
+  mimeType: string;
+  content?: string;
+  data?: string;
+};
+
 function normalizedCrimeNumber(value: string): string {
   const cleaned = String(value || "").trim().toUpperCase().replace(/^CR-?/i, "");
   const match = cleaned.match(/^(\d{1,4})\/(\d{4})$/);
@@ -31,8 +38,12 @@ async function directIdentityAnswer(question: string): Promise<string | null> {
 export async function askCopilot(params: {
   question: string;
   language: "en" | "kn";
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
+  attachment?: ChatAttachment;
 }): Promise<string> {
-  const directAnswer = await directIdentityAnswer(params.question);
+  const directAnswer = params.attachment
+    ? null
+    : await directIdentityAnswer(params.question);
   if (directAnswer) return directAnswer;
 
   const res = await fetch("/api/chat", {
@@ -41,6 +52,8 @@ export async function askCopilot(params: {
     body: JSON.stringify({
       question: params.question,
       language: params.language,
+      history: params.history,
+      attachment: params.attachment,
     }),
   });
 
@@ -52,14 +65,26 @@ export async function askCopilot(params: {
     throw new Error(serverMessage);
   }
 
-  return data.answer;
+  if (typeof data.answer !== "string" || !data.answer.trim()) {
+    throw new Error("The Copilot returned an empty response.");
+  }
+
+  return data.answer.trim();
 }
 
-export async function requestFirDraft(complaint: string): Promise<Record<string, string>> {
+export type FirDraftContext = {
+  allowedValues?: Record<string, string[]>;
+  defaults?: Record<string, string>;
+};
+
+export async function requestFirDraft(
+  complaint: string,
+  context?: FirDraftContext,
+): Promise<Record<string, string>> {
   const res = await fetch("/api/fir-draft", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ complaint }),
+    body: JSON.stringify({ complaint, context }),
   });
   const data = await res.json().catch(() => null);
   if (!res.ok || !data?.ok) {

@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { KSPPBrandMark } from "../brand/KSPPBrand";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
-import { askCopilot } from "../../lib/chatApi";
+import { askCopilot, type ChatAttachment } from "../../lib/chatApi";
 import { VoiceButton } from "./VoiceButton";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; ts: number };
@@ -20,6 +20,8 @@ export const Chat: React.FC = () => {
   const { language, tr } = useLanguage();
   const navigate = useNavigate();
   const [input, setInput] = useState("");
+  const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
+  const [attachmentError, setAttachmentError] = useState("");
   
   // References for scrolling and target PDF export element
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -55,20 +57,32 @@ export const Chat: React.FC = () => {
   };
 
   const send = async (text?: string) => {
-    const trimmed = (text ?? input).trim();
+    const trimmed = (text ?? input).trim() ||
+      (attachment ? "Please analyze the attached file and summarize the relevant information." : "");
     if (!trimmed || isChatBusy) return;
+    const outgoingAttachment = attachment;
+    const recentHistory = chatHistory
+      .slice(-6)
+      .map(({ role, content }) => ({ role, content }));
+    const visibleQuestion = outgoingAttachment
+      ? `${trimmed}\n📎 **Attachment:** ${outgoingAttachment.name}`
+      : trimmed;
 
     setChatHistory((messages) => [
       ...messages,
-      { id: crypto.randomUUID(), role: "user", content: trimmed, ts: Date.now() },
+      { id: crypto.randomUUID(), role: "user", content: visibleQuestion, ts: Date.now() },
     ]);
     setInput("");
+    setAttachment(null);
+    setAttachmentError("");
     setIsChatBusy(true);
 
     try {
       const reply = await askCopilot({
         question: trimmed,
         language: language === "kn" ? "kn" : "en",
+        history: recentHistory,
+        attachment: outgoingAttachment || undefined,
       });
       setChatHistory((messages) => [
         ...messages,
@@ -89,6 +103,57 @@ export const Chat: React.FC = () => {
     }
   };
 
+  const selectAttachment = async (file: File) => {
+    setAttachmentError("");
+    const extension = file.name.toLowerCase().split(".").pop() || "";
+    const inferredTypes: Record<string, string> = {
+      csv: "text/csv",
+      json: "application/json",
+      md: "text/markdown",
+      pdf: "application/pdf",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      txt: "text/plain",
+      webp: "image/webp",
+    };
+    const mimeType = file.type || inferredTypes[extension] || "application/octet-stream";
+    const textTypes = new Set(["text/plain", "text/csv", "text/markdown", "application/json"]);
+    const binaryTypes = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
+
+    if (!textTypes.has(mimeType) && !binaryTypes.has(mimeType)) {
+      setAttachmentError("Upload TXT, CSV, JSON, Markdown, PDF, JPG, PNG, or WebP.");
+      return;
+    }
+    if (file.size > 2_000_000) {
+      setAttachmentError("The attachment must be 2 MB or smaller.");
+      return;
+    }
+
+    try {
+      if (textTypes.has(mimeType)) {
+        const content = (await file.text()).slice(0, 12_000);
+        if (!content.trim()) throw new Error("The selected file is empty.");
+        setAttachment({ name: file.name, mimeType, content });
+        return;
+      }
+
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("The selected file could not be read."));
+        reader.readAsDataURL(file);
+      });
+      const data = dataUrl.slice(dataUrl.indexOf(",") + 1);
+      setAttachment({ name: file.name, mimeType, data });
+    } catch (fileError) {
+      setAttachment(null);
+      setAttachmentError(
+        fileError instanceof Error ? fileError.message : "The selected file could not be read.",
+      );
+    }
+  };
+
   const tod = timeOfDay();
   const firstName = (user?.name ?? "Officer").split(/\s+/)[0];
   const greeting = language === "kn"
@@ -100,9 +165,25 @@ export const Chat: React.FC = () => {
       <div className="flex items-center gap-3 border-b border-line bg-ink px-3 py-3 sm:px-6">
         <div className="flex items-center gap-2 text-sm">
           <KSPPBrandMark size="sm" decorative />
-          <span className="text-white font-medium">{tr("KSPP Assistant", "KSPP ಸಹಾಯಕ")}</span>
+          <span className="hidden text-white font-medium sm:inline">{tr("KSPP Assistant", "KSPP ಸಹಾಯಕ")}</span>
         </div>
         <div className="flex-1" />
+        <button
+          type="button"
+          onClick={() => navigate("/fir/new")}
+          className="min-h-9 rounded-md border border-line bg-panel px-3 py-1.5 text-xs font-medium text-white transition hover:bg-shell"
+        >
+          {tr("New FIR", "ಹೊಸ ಎಫ್‌ಐಆರ್")}
+        </button>
+        <button
+          type="button"
+          onClick={exportChatToPDF}
+          disabled={chatHistory.length === 0}
+          className="min-h-9 rounded-md border border-line bg-panel px-3 py-1.5 text-xs font-medium text-white transition hover:bg-shell disabled:cursor-not-allowed disabled:opacity-40"
+          title={tr("Generate PDF from chat history", "ಸಂಭಾಷಣೆಯಿಂದ PDF ರಚಿಸಿ")}
+        >
+          {tr("Export PDF", "PDF ರಫ್ತು")}
+        </button>
         <button onClick={() => { setChatHistory([]); setIsChatBusy(false); }} className="min-h-9 rounded-md border border-brand/30 bg-brand/15 px-3 py-1.5 text-xs text-white transition hover:bg-brand/25">
           {tr("New session", "ಹೊಸ ಸೆಷನ್")}
         </button>
@@ -122,12 +203,16 @@ export const Chat: React.FC = () => {
             onChange={setInput}
             onSend={() => send()}
             onVoiceResult={(text) => send(text)}
-            onNavigateToFir={() => navigate("/fir/new")}
-            onExportPdf={exportChatToPDF}
+            attachment={attachment}
+            attachmentError={attachmentError}
+            onAttachmentSelected={selectAttachment}
+            onRemoveAttachment={() => {
+              setAttachment(null);
+              setAttachmentError("");
+            }}
             busy={isChatBusy}
             tr={tr}
             language={language === "kn" ? "kn" : "en"}
-            hasMessages={chatHistory.length > 0}
           />
 
           <p className="text-[11px] text-muted text-center mt-2">
@@ -208,14 +293,28 @@ const Composer: React.FC<{
   onChange: (v: string) => void;
   onSend: () => void;
   onVoiceResult: (text: string) => void;
-  onNavigateToFir: () => void;
-  onExportPdf: () => void;
+  attachment: ChatAttachment | null;
+  attachmentError: string;
+  onAttachmentSelected: (file: File) => void;
+  onRemoveAttachment: () => void;
   busy: boolean;
   tr: (en: string, kn: string) => string;
   language: "en" | "kn";
-  hasMessages: boolean;
-}> = ({ value, onChange, onSend, onVoiceResult, onNavigateToFir, onExportPdf, busy, tr, language, hasMessages }) => {
+}> = ({
+  value,
+  onChange,
+  onSend,
+  onVoiceResult,
+  attachment,
+  attachmentError,
+  onAttachmentSelected,
+  onRemoveAttachment,
+  busy,
+  tr,
+  language,
+}) => {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const ta = taRef.current;
@@ -226,6 +325,21 @@ const Composer: React.FC<{
 
   return (
     <div className="rounded-2xl border border-line bg-shell px-3 py-2.5 shadow-soft focus-within:border-brand/50 focus-within:ring-2 focus-within:ring-brand/15 sm:px-4 sm:py-3">
+      {attachment && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg border border-brand/30 bg-brand/10 px-3 py-2 text-xs text-white">
+          <span aria-hidden="true">📎</span>
+          <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+          <button
+            type="button"
+            onClick={onRemoveAttachment}
+            className="rounded px-1.5 py-0.5 text-muted hover:bg-panel hover:text-white"
+            aria-label="Remove attachment"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {attachmentError && <p className="mb-2 text-xs text-red-300" role="alert">{attachmentError}</p>}
       <textarea
         ref={taRef}
         value={value}
@@ -239,39 +353,31 @@ const Composer: React.FC<{
         className="w-full bg-transparent text-white placeholder-muted outline-none resize-none text-sm leading-relaxed"
       />
       <div className="flex items-center gap-1 mt-1">
+        <input
+          ref={fileRef}
+          type="file"
+          className="hidden"
+          accept=".txt,.csv,.json,.md,.pdf,.jpg,.jpeg,.png,.webp,text/plain,text/csv,text/markdown,application/json,application/pdf,image/jpeg,image/png,image/webp"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void onAttachmentSelected(file);
+            event.target.value = "";
+          }}
+        />
         <button 
-          hidden
-          onClick={() => undefined}
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
           className="h-8 w-8 grid place-items-center rounded-md text-muted hover:text-white hover:bg-panel transition" 
           title={tr("Attach a file or picture", "ಫೈಲ್ ಅಥವಾ ಚಿತ್ರವನ್ನು ಲಗತ್ತಿಸಿ")}
         >
           ＋
         </button>
         
-        <VoiceButton language={language} onResult={(text) => onVoiceResult(text)} />
-        
-        {/* Dynamic New FIR Page Shortcut Redirector */}
-        <button 
-          onClick={onNavigateToFir} 
-          className="h-8 w-8 grid place-items-center rounded-md text-muted hover:text-white hover:bg-panel font-medium text-xs transition" 
-          title={tr("New FIR Wizard", "ಹೊಸ ಎಫ್‌ಐಆರ್")}
-        >
-          <strong>FIR</strong>
-        </button>
-
-        {/* 🚀 EXPORT PDF BUTTON */}
-        <button
-          type="button"
-          onClick={onExportPdf}
-          disabled={!hasMessages}
-          className="h-8 px-2 grid place-items-center rounded-md text-muted hover:text-white hover:bg-panel font-medium text-xs transition whitespace-nowrap" 
-          title={tr("Generate PDF from chat history", "ಸಂಭಾಷಣೆಯಿಂದ PDF ರಚಿಸಿ")}
-        >
-          <strong>{tr("Generate PDF", "PDF ರಚಿಸಿ")}</strong>
-        </button>
+        <VoiceButton language={language} onResult={(text) => onVoiceResult(text)} disabled={busy} />
 
         <div className="flex-1" />
-        <button onClick={onSend} disabled={busy || !value.trim()} className="h-8 w-8 grid place-items-center rounded-full bg-brand text-white disabled:opacity-40 hover:bg-brand/90 transition">↗</button>
+        <button onClick={onSend} disabled={busy || (!value.trim() && !attachment)} className="h-8 w-8 grid place-items-center rounded-full bg-brand text-white disabled:opacity-40 hover:bg-brand/90 transition">↗</button>
       </div>
     </div>
   );

@@ -6,7 +6,21 @@ import { checkChatRateLimit, requireSession } from "./security.mjs";
 
 dns.setDefaultResultOrder("ipv4first");
 
-const MAX_BODY_BYTES = 50_000;
+const MAX_BODY_BYTES = 3_000_000;
+const MAX_ATTACHMENT_BYTES = 2_000_000;
+const MAX_ATTACHMENT_TEXT_CHARS = 12_000;
+const ALLOWED_BINARY_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+const ALLOWED_TEXT_TYPES = new Set([
+  "application/json",
+  "text/csv",
+  "text/markdown",
+  "text/plain",
+]);
 
 export function normalizeCrimeNo(str) {
   if (!str) return "";
@@ -50,6 +64,66 @@ function readBody(req) {
   });
 }
 
+export function normalizeChatAttachment(value) {
+  if (value == null) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw Object.assign(new Error("Invalid attachment."), { status: 400 });
+  }
+
+  const name = String(value.name || "attachment").trim().slice(0, 120);
+  const mimeType = String(value.mimeType || "").trim().toLowerCase();
+  if (ALLOWED_TEXT_TYPES.has(mimeType)) {
+    const content = String(value.content || "").slice(0, MAX_ATTACHMENT_TEXT_CHARS);
+    if (!content.trim()) {
+      throw Object.assign(new Error("The attached text file is empty."), { status: 400 });
+    }
+    return { name, mimeType, content };
+  }
+
+  if (!ALLOWED_BINARY_TYPES.has(mimeType)) {
+    throw Object.assign(
+      new Error("Unsupported attachment type. Upload TXT, CSV, JSON, Markdown, PDF, JPG, PNG, or WebP."),
+      { status: 400 },
+    );
+  }
+
+  const data = String(value.data || "").trim();
+  if (!data || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) {
+    throw Object.assign(new Error("Invalid attachment data."), { status: 400 });
+  }
+  const estimatedBytes = Math.floor((data.length * 3) / 4);
+  if (estimatedBytes > MAX_ATTACHMENT_BYTES) {
+    throw Object.assign(new Error("The attachment must be 2 MB or smaller."), { status: 413 });
+  }
+  return { name, mimeType, data };
+}
+
+export function normalizeFirDraftContext(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { allowedValues: {}, defaults: {} };
+  }
+  const allowedValues = {};
+  if (value.allowedValues && typeof value.allowedValues === "object") {
+    for (const [field, rawValues] of Object.entries(value.allowedValues)) {
+      if (!Array.isArray(rawValues)) continue;
+      allowedValues[String(field).slice(0, 60)] = rawValues
+        .slice(0, 15)
+        .map((item) => String(item || "").trim().replace(/\s+/g, " ").slice(0, 120))
+        .filter(Boolean);
+    }
+  }
+  const defaults = {};
+  if (value.defaults && typeof value.defaults === "object") {
+    for (const [field, rawValue] of Object.entries(value.defaults)) {
+      defaults[String(field).slice(0, 60)] = String(rawValue || "")
+        .trim()
+        .replace(/\s+/g, " ")
+        .slice(0, 200);
+    }
+  }
+  return { allowedValues, defaults };
+}
+
 export async function handleChatApi(req, res, next) {
   const url = new URL(req.url || "/", "http://local-chat");
   const isChatRequest = url.pathname === "/api/chat";
@@ -73,7 +147,7 @@ export async function handleChatApi(req, res, next) {
   }
 
   try {
-    const { question, complaint, language } = await readBody(req);
+    const { question, complaint, language, history, attachment, context } = await readBody(req);
     const cleanedQuestion = String(isFirDraftRequest ? complaint : question || "").trim();
     if (!cleanedQuestion) {
       sendJson(res, 400, {
@@ -82,8 +156,20 @@ export async function handleChatApi(req, res, next) {
       });
       return;
     }
+    if (cleanedQuestion.length > 30_000) {
+      sendJson(res, 413, {
+        ok: false,
+        error: isFirDraftRequest
+          ? "The complaint must be 30,000 characters or fewer."
+          : "The question is too long.",
+      });
+      return;
+    }
     if (isFirDraftRequest) {
-      const draft = await generateFirDraft(cleanedQuestion);
+      const draft = await generateFirDraft(
+        cleanedQuestion,
+        normalizeFirDraftContext(context),
+      );
       sendJson(res, 200, { ok: true, draft });
       return;
     }
@@ -112,6 +198,8 @@ export async function handleChatApi(req, res, next) {
       stationId: session.policeStation,
       employeeId: session.employeeId,
       language: language === "kn" ? "kn" : "en",
+      history,
+      attachment: normalizeChatAttachment(attachment),
     });
     sendJson(res, 200, { ok: true, answer });
   } catch (error) {

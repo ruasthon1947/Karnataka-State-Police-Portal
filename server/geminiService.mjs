@@ -25,6 +25,12 @@ const STOP_WORDS = new Set([
   "output", "kannada", "english", "please", "tell", "need", "only", "also",
   "list", "all", "the", "for", "any", "in", "at", "of", "is", "and", "or"
 ]);
+const TIME_AND_QUERY_WORDS = new Set([
+  ...STOP_WORDS,
+  "fir", "firs", "crime", "crimes", "registered", "registration",
+  "today", "week", "weeks", "weekly", "month", "months", "monthly",
+  "year", "years", "yearly", "past", "last", "recent", "recently",
+]);
 
 function normalizeLocationOrTerm(term) {
   const t = String(term || "").toLowerCase().trim();
@@ -54,29 +60,71 @@ export function normalizeCrimeNo(str) {
   return cleaned;
 }
 
-async function generateWithGroq(prompt, apiKey, maxTokens = 350, isJson = false) {
+const DEFAULT_CHAT_OUTPUT_TOKENS = 900;
+const CONTINUATION_OUTPUT_TOKENS = 500;
+
+function joinContinuation(first, second) {
+  const left = String(first || "").trimEnd();
+  const right = String(second || "").trimStart();
+  if (!left) return right;
+  if (!right) return left;
+  return `${left}\n${right}`;
+}
+
+function continuationPrompt(originalPrompt, partialAnswer) {
+  return `${originalPrompt}
+
+The previous response below was cut off by the output limit:
+--- partial response ---
+${partialAnswer}
+--- end partial response ---
+
+Continue exactly where it stopped. Do not repeat any completed text. Finish the answer concisely.`;
+}
+
+async function generateWithGroq(prompt, apiKey, maxTokens = DEFAULT_CHAT_OUTPUT_TOKENS, isJson = false) {
   for (const model of FALLBACK_GROQ_MODELS) {
     try {
       console.log(`[Copilot Engine] Calling Groq model '${model}'...`);
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.0,
-          max_tokens: maxTokens,
-          ...(isJson ? { response_format: { type: "json_object" } } : {})
-        })
-      });
+      const requestCompletion = (requestPrompt, outputTokens) =>
+        fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [{ role: "user", content: requestPrompt }],
+            temperature: 0.0,
+            max_completion_tokens: outputTokens,
+            reasoning_effort: "low",
+            reasoning_format: "hidden",
+            ...(isJson ? { response_format: { type: "json_object" } } : {})
+          })
+        });
+
+      const res = await requestCompletion(prompt, maxTokens);
 
       if (res.ok) {
         const data = await res.json();
         const text = data.choices?.[0]?.message?.content;
-        if (text) return text.trim();
+        const finishReason = data.choices?.[0]?.finish_reason;
+        if (!text) throw new Error("Groq returned an empty response.");
+        if (finishReason !== "length") return text.trim();
+        if (isJson) throw new Error("Groq JSON response reached its output limit.");
+
+        const continuationResponse = await requestCompletion(
+          continuationPrompt(prompt, text),
+          CONTINUATION_OUTPUT_TOKENS,
+        );
+        if (!continuationResponse.ok) {
+          throw new Error(`Groq continuation failed with HTTP ${continuationResponse.status}.`);
+        }
+        const continuationData = await continuationResponse.json();
+        const continuation = continuationData.choices?.[0]?.message?.content;
+        if (!continuation) throw new Error("Groq returned an empty continuation.");
+        return joinContinuation(text, continuation);
       } else {
         const errJson = await res.json().catch(() => ({}));
         console.warn(`[Copilot Engine] Groq model '${model}' HTTP ${res.status}:`, errJson?.error?.message || res.statusText);
@@ -88,7 +136,12 @@ async function generateWithGroq(prompt, apiKey, maxTokens = 350, isJson = false)
   throw new Error("All Groq models failed.");
 }
 
-async function generateWithFallback(fullPrompt, maxTokens = 350, isJson = false) {
+async function generateWithFallback(
+  fullPrompt,
+  maxTokens = DEFAULT_CHAT_OUTPUT_TOKENS,
+  isJson = false,
+  attachment = null,
+) {
   let lastError = null;
 
   // 1. Try Gemini API keys
@@ -102,15 +155,38 @@ async function generateWithFallback(fullPrompt, maxTokens = 350, isJson = false)
           config.responseMimeType = "application/json";
         }
 
-        const response = await ai.models.generateContent(
+        const requestCompletion = (contents, outputTokens) => ai.models.generateContent(
           {
             model: modelName,
-            contents: fullPrompt,
-            config: config
+            contents: attachment?.data
+              ? [
+                  {
+                    inlineData: {
+                      mimeType: attachment.mimeType,
+                      data: attachment.data,
+                    },
+                  },
+                  { text: contents },
+                ]
+              : contents,
+            config: { ...config, maxOutputTokens: outputTokens }
           },
           { timeout: 30000 }
         );
-        return response.text.trim();
+        const response = await requestCompletion(fullPrompt, maxTokens);
+        const text = String(response.text || "").trim();
+        const finishReason = response.candidates?.[0]?.finishReason;
+        if (!text) throw new Error("Gemini returned an empty response.");
+        if (finishReason !== "MAX_TOKENS") return text;
+        if (isJson) throw new Error("Gemini JSON response reached its output limit.");
+
+        const continuationResponse = await requestCompletion(
+          continuationPrompt(fullPrompt, text),
+          CONTINUATION_OUTPUT_TOKENS,
+        );
+        const continuation = String(continuationResponse.text || "").trim();
+        if (!continuation) throw new Error("Gemini returned an empty continuation.");
+        return joinContinuation(text, continuation);
       } catch (err) {
         const errorMsg = err.message || String(err);
         console.warn(`[Copilot Engine] ⚠️ Gemini Key #${i + 1} failed on '${modelName}' (${err.status || 'Quota/404'}). Retrying...`);
@@ -119,7 +195,13 @@ async function generateWithFallback(fullPrompt, maxTokens = 350, isJson = false)
     }
   }
 
-  // 2. Try Groq API keys as fallback engine
+  // 2. Groq is a text fallback. Binary PDFs/images stay on the multimodal
+  // Gemini path so the assistant never pretends to have inspected a file.
+  if (attachment?.data) {
+    throw new Error(`All multimodal AI providers failed. Last error: ${lastError?.message}`);
+  }
+
+  // 3. Try Groq API keys as fallback engine
   for (let i = 0; i < GROQ_KEYS.length; i++) {
     const key = GROQ_KEYS[i];
     try {
@@ -249,14 +331,26 @@ export function findMatchingCases(question, allCases) {
       startDateStr = d.toISOString().split("T")[0];
     }
 
+    const dateMatches = [];
     for (const c of allCases) {
       if (!c) continue;
       const parsedDate = parseCaseDate(c.CrimeRegisteredDate || c.IncidentFromDate);
       if (parsedDate && parsedDate >= startDateStr && parsedDate <= todayStr) {
-        matched.add(c);
+        dateMatches.push(c);
       }
     }
-    return Array.from(matched);
+
+    // A timeframe must not discard the rest of the query. For example,
+    // "FIRs in Whitefield last week" must remain restricted to Whitefield.
+    const filterTerms = qClean
+      .split(/\s+/)
+      .map(normalizeLocationOrTerm)
+      .filter((term) => term.length > 2 && !TIME_AND_QUERY_WORDS.has(term));
+    if (filterTerms.length === 0) return dateMatches;
+    return dateMatches.filter((record) => {
+      const rowText = Object.values(record).join(" ").toLowerCase();
+      return filterTerms.every((term) => rowText.includes(term));
+    });
   }
 
   // 4. Multi-term Category / Station search matching (e.g. kidnapping in whitefield)
@@ -297,54 +391,168 @@ export function findMatchingCases(question, allCases) {
 /**
  * Dedicated FIR Auto-Fill Exporter for NewFIR
  */
-export async function generateFirDraft(unstructuredText) {
-  const prompt = `
-Extract structured FIR details from the following police incident description. Return one complete, valid JSON object only: no markdown, no comments, and no text before or after the JSON. Escape all quotation marks and line breaks inside string values.
+const FIR_DRAFT_FIELDS = [
+  "CaseMasterID", "CaseNo", "CrimeNo", "CrimeRegisteredDate",
+  "CrimeHead", "CrimeSubHead", "PoliceStation", "PoliceStationType",
+  "District", "Court", "EmployeeID", "Officer", "OfficerRank",
+  "OfficerDesignation", "Status", "CaseCategory", "Gravity",
+  "AccusedCount", "AccusedNames", "VictimCount", "VictimNames",
+  "Complainant", "ArrestCount", "ChargesheetCount", "LatestChargesheetDate",
+  "ChargesheetStatus", "Acts", "Sections", "InfoReceivedPSDate",
+  "IncidentFromDate", "IncidentToDate", "Latitude", "Longitude",
+  "BriefFacts", "FiledBy",
+];
 
-JSON Keys Required:
-{
-  "CaseMasterID": "string or empty",
-  "CaseNo": "string or empty",
-  "CrimeNo": "string or empty",
-  "CrimeRegisteredDate": "YYYY-MM-DD or empty",
-  "CrimeHead": "string",
-  "CrimeSubHead": "string",
-  "PoliceStation": "string",
-  "PoliceStationType": "string or empty",
-  "District": "Bangalore Urban",
-  "Court": "string",
-  "EmployeeID": "string or empty",
-  "Officer": "string",
-  "OfficerRank": "string or empty",
-  "OfficerDesignation": "string or empty",
-  "CaseCategory": "FIR",
-  "Gravity": "Non-Heinous",
-  "Status": "Under Investigation",
-  "Acts": "string",
-  "Sections": "string",
-  "Complainant": "string",
-  "VictimNames": "string",
-  "AccusedNames": "string",
-  "IncidentFromDate": "YYYY-MM-DD HH:MM:SS or empty",
-  "IncidentToDate": "YYYY-MM-DD HH:MM:SS or empty",
-  "InfoReceivedPSDate": "YYYY-MM-DD HH:MM:SS or empty",
-  "Latitude": "string or empty",
-  "Longitude": "string or empty",
-  "BriefFacts": "detailed brief facts",
-  "ArrestCount": "number as string",
-  "ChargesheetCount": "number as string",
-  "ChargesheetStatus": "Pending or Submitted"
+const FIR_OPTION_FIELDS = new Set([
+  "CrimeHead", "CrimeSubHead", "PoliceStation", "PoliceStationType",
+  "District", "Court", "Officer", "OfficerRank", "OfficerDesignation",
+  "Status", "CaseCategory", "Gravity", "Acts", "Sections",
+  "ChargesheetStatus",
+]);
+
+function firScalar(value) {
+  if (Array.isArray(value)) return value.map(firScalar).filter(Boolean).join("; ");
+  if (value == null || typeof value === "object") return "";
+  return String(value).trim().replace(/\s+/g, " ");
 }
 
-Incident facts:
-"""
-${unstructuredText}
-"""
-`;
+function normalizedOptionKey(value) {
+  return firScalar(value).toLocaleLowerCase().replace(/[^a-z0-9\u0C80-\u0CFF]+/g, " ").trim();
+}
+
+function alignWithAllowedValue(field, value, context) {
+  const cleaned = firScalar(value);
+  if (!cleaned || !FIR_OPTION_FIELDS.has(field)) return cleaned;
+  const allowed = Array.isArray(context?.allowedValues?.[field])
+    ? context.allowedValues[field]
+    : [];
+  if (allowed.length === 0) return cleaned;
+  const wanted = normalizedOptionKey(cleaned);
+  return allowed.find((option) => normalizedOptionKey(option) === wanted) || cleaned;
+}
+
+function normalizeIsoDate(value) {
+  const cleaned = firScalar(value);
+  if (!cleaned) return "";
+  const match = cleaned.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return "";
+  const date = new Date(`${match[1]}-${match[2]}-${match[3]}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== match[0]
+    ? ""
+    : match[0];
+}
+
+function normalizeIsoDateTime(value) {
+  const cleaned = firScalar(value);
+  if (!cleaned) return "";
+  const match = cleaned.match(
+    /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/,
+  );
+  if (!match || !normalizeIsoDate(match[1])) return "";
+  const hour = Number(match[2] || "00");
+  const minute = Number(match[3] || "00");
+  const second = Number(match[4] || "00");
+  if (hour > 23 || minute > 59 || second > 59) return "";
+  return `${match[1]} ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}`;
+}
+
+function normalizeCount(value) {
+  const parsed = Number.parseInt(firScalar(value), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? String(parsed) : "0";
+}
+
+function normalizeCoordinate(value, min, max) {
+  const cleaned = firScalar(value);
+  if (!cleaned) return "";
+  const number = Number(cleaned);
+  return Number.isFinite(number) && number >= min && number <= max
+    ? String(number)
+    : "";
+}
+
+function listCount(value) {
+  if (!value) return "0";
+  return String(value.split(";").map((item) => item.trim()).filter(Boolean).length);
+}
+
+export function normalizeFirDraft(rawDraft, complaint, context = {}) {
+  const source = rawDraft && typeof rawDraft === "object" && !Array.isArray(rawDraft)
+    ? rawDraft
+    : {};
+  const result = Object.fromEntries(FIR_DRAFT_FIELDS.map((field) => [field, ""]));
+  for (const field of FIR_DRAFT_FIELDS) {
+    result[field] = alignWithAllowedValue(field, source[field], context).slice(
+      0,
+      field === "BriefFacts" ? 4_000 : 1_000,
+    );
+  }
+
+  const defaults = context?.defaults || {};
+  for (const field of [
+    "CrimeRegisteredDate", "PoliceStation", "PoliceStationType", "District",
+    "EmployeeID", "Officer", "OfficerRank", "OfficerDesignation", "Status",
+    "CaseCategory", "Gravity", "FiledBy",
+  ]) {
+    if (!result[field]) result[field] = firScalar(defaults[field]).slice(0, 200);
+  }
+
+  result.CrimeRegisteredDate =
+    normalizeIsoDate(result.CrimeRegisteredDate) || new Date().toISOString().slice(0, 10);
+  result.LatestChargesheetDate = normalizeIsoDate(result.LatestChargesheetDate);
+  for (const field of ["InfoReceivedPSDate", "IncidentFromDate", "IncidentToDate"]) {
+    result[field] = normalizeIsoDateTime(result[field]);
+  }
+  result.Latitude = normalizeCoordinate(result.Latitude, -90, 90);
+  result.Longitude = normalizeCoordinate(result.Longitude, -180, 180);
+  result.ArrestCount = normalizeCount(result.ArrestCount);
+  result.ChargesheetCount = normalizeCount(result.ChargesheetCount);
+  result.AccusedNames = firScalar(result.AccusedNames);
+  result.VictimNames = firScalar(result.VictimNames);
+  result.AccusedCount = listCount(result.AccusedNames);
+  result.VictimCount = listCount(result.VictimNames);
+  result.CaseCategory = result.CaseCategory || "FIR";
+  result.Status = result.Status || "Under Investigation";
+  result.Gravity = result.Gravity || "Non-Heinous";
+  result.ChargesheetStatus = result.ChargesheetStatus || "Pending";
+  result.BriefFacts = result.BriefFacts || firScalar(complaint).slice(0, 4_000);
+
+  if (result.IncidentFromDate && result.IncidentToDate &&
+      result.IncidentToDate < result.IncidentFromDate) {
+    result.IncidentToDate = result.IncidentFromDate;
+  }
+  return result;
+}
+
+export async function generateFirDraft(unstructuredText, context = {}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const prompt = `You extract structured data for a Karnataka Police FIR draft.
+Return one complete valid JSON object only, with every key listed below. Use strings for every value.
+
+Rules:
+- Today is ${today}.
+- Extract facts from the complaint accurately. Never invent IDs, case/crime numbers, coordinates, officer details, station, court, dates, arrests, or chargesheet activity.
+- Infer a concise CrimeHead and CrimeSubHead from the incident. Use the closest supplied allowed value when one clearly matches.
+- Acts and Sections may be inferred only when reasonably supported by the facts; keep them concise and semicolon-separated.
+- Keep distinct roles correct: Complainant is the reporter, VictimNames are harmed persons, and AccusedNames are alleged offenders. Use semicolon-separated names. Use "Unknown" only when an offender exists but is unidentified.
+- Preserve the complaint's facts in BriefFacts as a neutral, detailed 2-5 sentence summary. Do not add evidence or allegations absent from the complaint.
+- Use YYYY-MM-DD for date fields and YYYY-MM-DD HH:MM:SS for date-time fields. Leave an unknown value empty.
+- Initial FIR defaults are ArrestCount "0", ChargesheetCount "0", LatestChargesheetDate "", ChargesheetStatus "Pending", Status "Under Investigation", and CaseCategory "FIR".
+
+Allowed live Google Sheets values (bounded):
+${JSON.stringify(context.allowedValues || {})}
+
+Authorized officer/form defaults:
+${JSON.stringify(context.defaults || {})}
+
+Required keys:
+${JSON.stringify(FIR_DRAFT_FIELDS)}
+
+Complaint:
+${JSON.stringify(String(unstructuredText || "").slice(0, 30_000))}`;
 
   const rawDraft = await generateWithFallback(prompt, 1500, true);
   try {
-    return parseFirDraftJson(rawDraft);
+    return normalizeFirDraft(parseFirDraftJson(rawDraft), unstructuredText, context);
   } catch {
     // Some providers occasionally emit an otherwise correct object with an
     // unescaped quote in a narrative field.  Repair it before returning any
@@ -354,7 +562,7 @@ ${unstructuredText}
       1500,
       true,
     );
-    return parseFirDraftJson(repairedDraft);
+    return normalizeFirDraft(parseFirDraftJson(repairedDraft), unstructuredText, context);
   }
 }
 
@@ -373,17 +581,100 @@ function parseFirDraftJson(value) {
   return parsed;
 }
 
+export function compactConversationHistory(history) {
+  if (!Array.isArray(history)) return [];
+  return history
+    .slice(-6)
+    .filter((message) =>
+      message &&
+      (message.role === "user" || message.role === "assistant") &&
+      typeof message.content === "string"
+    )
+    .map((message) => ({
+      role: message.role,
+      content: message.content.replace(/\s+/g, " ").trim().slice(0, 800),
+    }))
+    .filter((message) => message.content);
+}
+
+function conversationText(history) {
+  if (!history.length) return "No earlier conversation.";
+  return history
+    .map((message) => `${message.role === "user" ? "Officer" : "Assistant"}: ${message.content}`)
+    .join("\n");
+}
+
+function searchQuestionWithHistory(question, history) {
+  const looksLikeFollowUp =
+    /\b(it|its|that|this|those|these|same|above|former|latter)\b/i.test(question) ||
+    /^(and|also|what about|how about|who|where|when|why)\b/i.test(question.trim());
+  if (!looksLikeFollowUp || history.length === 0) return question;
+  return `${history.slice(-2).map((message) => message.content).join(" ")} ${question}`;
+}
+
+export function isCaseRecordQuestion(question) {
+  const hasRecordIdentifier =
+    /(?:cr-?)?\d{1,4}\/\d{4}|\b\d{5,16}\b/i.test(question);
+  const looksLikeGeneralKnowledge =
+    /^(what (?:is|are)|explain|define|how (?:does|do|to)|why)\b/i.test(question.trim());
+  if (looksLikeGeneralKnowledge && !hasRecordIdentifier) return false;
+  return /\b(fir|crime\s*(?:no|number)?|case\s*(?:no|number|record|status|details?)?|complainant|accused|victim|police station|chargesheet|charge sheet|court|investigation|registered|disposal rate|offence|incident)\b/i
+    .test(question);
+}
+
 export async function handleChatQuery({
   question,
   role,
   stationId,
   employeeId,
   language,
+  history,
+  attachment,
 }) {
   try {
     // Check if the query is an FIR draft auto-fill request
     if (String(question || "").toLowerCase().includes("extract fir details into json format")) {
       return JSON.stringify(await generateFirDraft(question));
+    }
+
+    const recentHistory = compactConversationHistory(history);
+    const searchQuestion = searchQuestionWithHistory(question, recentHistory);
+    const asksForCaseRecords = isCaseRecordQuestion(searchQuestion);
+    const isKannada = language === "kn" || /[\u0C80-\u0CFF]/.test(question || "");
+    const languageInstruction = isKannada
+      ? "Respond completely and exclusively in Kannada."
+      : "Respond completely and exclusively in English.";
+    const attachmentInstruction = attachment
+      ? attachment.content
+        ? `The officer attached ${JSON.stringify(attachment.name)} (${attachment.mimeType}).
+Use only the relevant portions of this bounded extracted text:
+--- attachment text ---
+${attachment.content}
+--- end attachment text ---`
+        : `The officer attached ${JSON.stringify(attachment.name)} (${attachment.mimeType}) as multimodal input.
+Inspect it directly and answer only what was asked. Do not transcribe the entire file unless explicitly requested.`
+      : "No file is attached.";
+
+    // General questions do not need a database round trip or case data in the
+    // prompt. This makes them faster, cheaper, and independent of Sheets uptime.
+    if (!asksForCaseRecords) {
+      const generalPrompt = `You are the Karnataka Police Copilot for authorized officers.
+${languageInstruction}
+Be direct, well-structured, accurate, and complete. Prefer a concise answer, but do not stop mid-sentence or omit a part explicitly requested by the officer.
+Give a useful answer from general knowledge. Do not invent or imply access to a specific case record. For legal or operational guidance, distinguish general information from an official legal determination.
+
+Recent conversation:
+${conversationText(recentHistory)}
+
+${attachmentInstruction}
+
+Current officer question: ${JSON.stringify(question)}`;
+      return await generateWithFallback(
+        generalPrompt,
+        question.length > 300 ? 1100 : 800,
+        false,
+        attachment,
+      );
     }
 
     // 1. Fetch tables simultaneously
@@ -403,18 +694,10 @@ export async function handleChatQuery({
     // assignment list, otherwise valid FIR queries incorrectly return zero.
     const allCases = sourceCases;
 
-    let contextualRows = findMatchingCases(question, allCases);
+    let contextualRows = findMatchingCases(searchQuestion, allCases);
+    const matchingCount = contextualRows.length;
 
-    // Fallback Context Guard: Only if query is generic and not date/FIR specific
-    const isTimeOrSpecificSearch = /fir|cr-|\d{3,}|today|week|month|year|recent|last/i.test(question || "");
-    if (contextualRows.length === 0 && !isTimeOrSpecificSearch && allCases.length > 0) {
-      contextualRows = allCases.slice(0, 3);
-    }
-
-    // Ultra-lean context cap to keep prompt tokens in the 100s range (max 3 cases)
-    contextualRows = contextualRows.slice(0, 3);
-
-    if (contextualRows.length === 0) {
+    if (matchingCount === 0) {
       return language === "kn"
         ? `ಗೌರವಾನ್ವಿತ ಅಧಿಕಾರಿಗಳೇ, ನಿಮ್ಮ ಅಧಿಕಾರ ವ್ಯಾಪ್ತಿಯಲ್ಲಿ ಈ ಅವಧಿಗೆ/ವಿನಂತಿಗೆ ("${question}") ಸಂಬಂಧಿಸಿದಂತೆ **0** ಪ್ರಕರಣಗಳು ದಾಖಲಾಗಿವೆ (ಒಟ್ಟು ಸಿಸ್ಟಮ್ ಪ್ರಕರಣಗಳು: ${allCases.length}).`
         : `Officer, based on verified database records, there are currently **0** cases registered matching your request ("${question}"). (Total system cases: ${allCases.length}).`;
@@ -425,7 +708,7 @@ export async function handleChatQuery({
     // names and avoids partial or truncated chat responses.
     const asksForComplainant = /\bcomplainant\b/i.test(question || "");
     const asksForAccused = /\baccused|\baccuse[d]?\b/i.test(question || "");
-    if (contextualRows.length === 1 && asksForComplainant && asksForAccused) {
+    if (matchingCount === 1 && asksForComplainant && asksForAccused) {
       const record = contextualRows[0];
       const reference = record.CrimeNo || record.CaseNo || record.CaseMasterID || "Matched case";
       const complainant = record.Complainant || "Not recorded";
@@ -434,7 +717,7 @@ export async function handleChatQuery({
     }
 
     // 2. Inject relational details onto the case blocks safely (concise 1-liners)
-    contextualRows = contextualRows.map(cCase => {
+    contextualRows = contextualRows.slice(0, 3).map(cCase => {
       if (!cCase) return {};
       const caseId = String(cCase.CaseMasterID || "").trim();
       
@@ -457,19 +740,13 @@ export async function handleChatQuery({
 
     const finalFilteredRows = contextualRows;
 
-    if (finalFilteredRows.length === 0) {
-      return language === "kn"
-        ? "ಗೌರವಾನ್ವಿತ ಅಧಿಕಾರಿಗಳೇ, ನಿಮ್ಮ ಅಧಿಕಾರ ವ್ಯಾಪ್ತಿಯಲ್ಲಿ ಈ ಹೆಸರಿಗೆ ಸಂಬಂಧಿಸಿದ ಯಾವುದೇ ದಾಖಲೆಗಳು ಕಂಡುಬಂದಿಲ್ಲ."
-        : "Respectful greetings Officer. Based on the verified database records currently available, there are no records found matching the requested query within your authorization scope.";
-    }
-
-    // 3. Build ultra-lean prompt payload for Gemini / Groq (< 300 prompt tokens total)
-    const isKannada = language === "kn" || /[\u0C80-\u0CFF]/.test(question || "");
-
+    // 3. Build a bounded prompt: recent conversation plus at most three
+    // relevant records. Full match counts are retained even when rows are sampled.
     const IMPORTANT_KEYS = [
       "CaseNo", "CrimeNo", "CrimeHead", "CrimeSubHead", "Gravity",
       "PoliceStation", "Status", "Court", "ChargesheetStatus",
-      "IncidentFromDate", "CrimeRegisteredDate", "Complainant", "AccusedNames"
+      "IncidentFromDate", "CrimeRegisteredDate", "Complainant", "AccusedNames",
+      "VictimNames", "Acts", "Sections", "Officer", "EmployeeID", "BriefFacts"
     ];
 
     const formattedContext = finalFilteredRows.map((row, i) => {
@@ -480,7 +757,7 @@ export async function handleChatQuery({
         if (k in row) {
           let v = String(row[k] ?? "").trim();
           if (!v || v === "N/A" || v === "None listed.") continue;
-          v = v.replace(/\s+/g, " ");
+          v = v.replace(/\s+/g, " ").slice(0, 500);
           parts.push(`${k}: ${v}`);
           usedKeys.add(k);
         }
@@ -493,49 +770,29 @@ export async function handleChatQuery({
     const todayStr = new Date().toISOString().split("T")[0];
     const todayCount = allCases.filter(r => String(r.CrimeRegisteredDate || "").startsWith(todayStr)).length;
 
-    const prompt = isKannada ? `
-Official Karnataka Police Copilot AI. Read & respond EXCLUSIVELY in Kannada (ಕನ್ನಡ).
-DB Stats: Total: ${totalSystemCount}, Today: ${todayCount}, Matching query: ${finalFilteredRows.length}.
-If user asked for a count/summary, state the matching count (${finalFilteredRows.length}) clearly first.
+    const dataInstruction = `Verified database facts are provided below. Use only these facts for case-specific claims.
+Total system cases: ${totalSystemCount}. Registered today: ${todayCount}. Full matching count: ${matchingCount}.
+Only ${finalFilteredRows.length} representative matching record(s) are included to control token usage. If there are more matches, state the full count and clearly say that only the first ${finalFilteredRows.length} are shown.
+Answer the officer's actual question directly. Include only relevant fields; do not force a fixed template, invent missing values, or display bracket placeholders.
 
-Response Layout:
-📌 **ಪ್ರಕರಣದ ಸಂಖ್ಯೆ:** [CaseNo] (ಅಪರಾಧ ಸಂಖ್ಯೆ: [CrimeNo])
-🏷️ **ಅಪರಾಧದ ಪ್ರಕಾರ:** [CrimeHead] - [CrimeSubHead]
-🏛️ **ಪೊಲೀಸ್ ಠಾಣೆ ಮತ್ತು ತನಿಖಾಧಿಕಾರಿ:** [PoliceStation] | [Officer] (ID: [EmployeeID])
-👤 **ದೂರುದಾರರು:** [Complainant] | 🚨 **ಆರೋಪಿಗಳು:** [AccusedNames]
-📊 **ಪ್ರಸ್ತುತ ಸ್ಥಿತಿ:** [Status] | ನ್ಯಾಯಾಲಯ: [Court]
-📅 **ಸಮಯಾವಧಿ:** ನೋಂದಣಿ: [CrimeRegisteredDate]
-📝 **ಸಂಕ್ಷಿಪ್ತ ಸಾರಾಂಶ:** [1-2 ವಾಕ್ಯಗಳಲ್ಲಿ ಸಾರಾಂಶ]
+Verified records:
+${formattedContext}`;
 
-Use only the verified values in Context. For direct questions about a complainant or accused, answer those fields plainly and do not add unrelated sections.
+    const prompt = `You are the Karnataka Police Copilot for authorized officers.
+${languageInstruction}
+Be direct, well-structured, and complete. Prefer a concise answer, but do not stop mid-sentence or omit a part explicitly requested by the officer.
 
-Context:
-${formattedContext}
+Recent conversation:
+${conversationText(recentHistory)}
 
-User Query: "${question}"
-` : `
-Official Karnataka Police Copilot AI. Respond EXCLUSIVELY in English.
-DB Stats: Total: ${totalSystemCount}, Today: ${todayCount}, Matching query: ${finalFilteredRows.length}.
-If user asked a count question, state the matching count (${finalFilteredRows.length}) clearly in your summary statement first.
+${attachmentInstruction}
 
-Response Layout:
-📌 **Case Number:** [CaseNo] (Crime No: [CrimeNo])
-🏷️ **Offence:** [CrimeHead] - [CrimeSubHead]
-🏛️ **Station & IO:** [PoliceStation] | [Officer] (ID: [EmployeeID])
-👤 **Complainant:** [Complainant] | 🚨 **Accused:** [AccusedNames]
-📊 **Status:** [Status] | Court: [Court]
-📅 **Timeline:** Registered: [CrimeRegisteredDate]
-📝 **Summary:** [1-2 sentences concise summary]
+${dataInstruction}
 
-Use only the verified values in Context. For direct questions about a complainant or accused, answer those fields plainly and do not add unrelated sections.
+Current officer question: ${JSON.stringify(question)}`;
 
-Context:
-${formattedContext}
-
-User Query: "${question}"
-`;
-
-    return await generateWithFallback(prompt, 350, false);
+    const outputBudget = matchingCount > 1 || question.length > 300 ? 1100 : 800;
+    return await generateWithFallback(prompt, outputBudget, false, attachment);
   } catch (err) {
     console.error("[Copilot Engine] Generation failed.", err);
     throw new Error("Copilot could not complete this request.");

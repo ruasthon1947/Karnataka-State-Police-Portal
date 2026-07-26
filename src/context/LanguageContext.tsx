@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   createContext,
   useContext,
   useEffect,
@@ -22,14 +23,25 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({
     localStorage.getItem("kpfir.language") === "kn" ? "kn" : "en",
   );
 
-  const setLanguage = (nextLanguage: Language) => {
+  const setLanguage = useCallback((nextLanguage: Language) => {
     setLanguageState(nextLanguage);
     localStorage.setItem("kpfir.language", nextLanguage);
-  };
+  }, []);
 
   useEffect(() => {
     document.documentElement.lang = language === "kn" ? "kn" : "en";
+    document.documentElement.dataset.language = language;
+    localStorage.setItem("kpfir.language", language);
   }, [language]);
+
+  useEffect(() => {
+    const syncLanguage = (event: StorageEvent) => {
+      if (event.key !== "kpfir.language") return;
+      setLanguageState(event.newValue === "kn" ? "kn" : "en");
+    };
+    window.addEventListener("storage", syncLanguage);
+    return () => window.removeEventListener("storage", syncLanguage);
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -38,7 +50,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({
       tr: (english: string, kannada: string) =>
         language === "kn" ? kannada : english,
     }),
-    [language],
+    [language, setLanguage],
   );
 
   return (

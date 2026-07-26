@@ -164,6 +164,11 @@ const uniqueText = (values: string[], fallback = "-") => {
   return unique.length ? unique.join(", ") : fallback;
 };
 
+const uniqueTextValues = (values: string[]) =>
+  Array.from(new Set(values.map(textValue).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b)
+  );
+
 const countByValue = (
   records: FirRecord[],
   field: keyof CaseRecord,
@@ -200,25 +205,33 @@ const ReferenceHeader: React.FC<{
   loading: boolean;
   error: string;
   count: number;
-}> = ({ title, description, loading, error, count }) => (
-  <div>
-    <h1 className="text-xl font-semibold">{title}</h1>
-    <p className="text-sm text-muted mt-1">{description}</p>
-    <div className="mt-3 flex flex-wrap gap-2 text-xs">
-      <span className="rounded-full border border-line bg-shell px-3 py-1 text-muted">
-        Source: Google Sheets API
-      </span>
-      <span className="rounded-full border border-line bg-shell px-3 py-1 text-muted">
-        {loading ? "Loading..." : `${count.toLocaleString("en-IN")} records loaded`}
-      </span>
-      {error && (
-        <span className="rounded-full border border-rose/30 bg-rose/10 px-3 py-1 text-rose">
-          {error}
+}> = ({ title, description, loading, error, count }) => {
+  const { tr } = useLanguage();
+  return (
+    <div>
+      <h1 className="text-xl font-semibold">{title}</h1>
+      <p className="text-sm text-muted mt-1">{description}</p>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        <span className="rounded-full border border-line bg-shell px-3 py-1 text-muted">
+          {tr("Source: Google Sheets API", "ಮೂಲ: Google Sheets API")}
         </span>
-      )}
+        <span className="rounded-full border border-line bg-shell px-3 py-1 text-muted">
+          {loading
+            ? tr("Loading...", "ಲೋಡ್ ಆಗುತ್ತಿದೆ...")
+            : tr(
+                `${count.toLocaleString("en-IN")} records loaded`,
+                `${count.toLocaleString("kn-IN")} ದಾಖಲೆಗಳು ಲೋಡ್ ಆಗಿವೆ`,
+              )}
+        </span>
+        {error && (
+          <span className="rounded-full border border-rose/30 bg-rose/10 px-3 py-1 text-rose">
+            {error}
+          </span>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const ReferenceStat: React.FC<{
   label: string;
@@ -2049,46 +2062,172 @@ export const Units: React.FC = () => {
 };
 
 export const Courts: React.FC = () => {
+  const t = useT();
   const { records, loading, error } = useFirRecords();
   const groups = groupByKey(records, (record) => record.raw.Court);
-  const rows = groups.map(([court, courtCases]) => {
-    const filed = courtCases.filter((record) => record.raw.ChargesheetStatus === "Filed").length;
-    const pendingTrial = courtCases.filter((record) => record.status === "Pending Trial").length;
-    return [
-      <div className="font-semibold text-brand">{court}</div>,
-      uniqueText(courtCases.map((record) => record.raw.District)),
-      uniqueText(courtCases.map((record) => record.station)),
-      courtCases.length.toLocaleString("en-IN"),
-      filed.toLocaleString("en-IN"),
-      pendingTrial.toLocaleString("en-IN"),
-    ];
+  const courtRows = groups.map(([court, courtCases]) => {
+    const filed = courtCases.filter((record) =>
+      /^(filed|submitted|charge sheeted)$/i.test(record.raw.ChargesheetStatus || record.status),
+    ).length;
+    const pendingTrial = courtCases.filter((record) =>
+      /pending trial/i.test(record.status),
+    ).length;
+    return {
+      court,
+      districts: uniqueTextValues(courtCases.map((record) => record.raw.District)),
+      stations: uniqueTextValues(courtCases.map((record) => record.station)),
+      cases: courtCases.length,
+      filed,
+      pendingTrial,
+    };
   });
+  const filedTotal = courtRows.reduce((sum, row) => sum + row.filed, 0);
+  const pendingTotal = courtRows.reduce((sum, row) => sum + row.pendingTrial, 0);
+  const locale = document.documentElement.lang === "kn" ? "kn-IN" : "en-IN";
 
   return (
-    <div className="p-5 space-y-4">
+    <div className="space-y-4 p-3 sm:p-5">
       <ReferenceHeader
-        title="Courts"
-        description="Court directory derived from FIR court mappings and chargesheet/trial status."
+        title={t("Courts", "ನ್ಯಾಯಾಲಯಗಳು")}
+        description={t(
+          "Court directory derived from FIR court mappings and chargesheet/trial status.",
+          "ಎಫ್‌ಐಆರ್ ನ್ಯಾಯಾಲಯ ಮ್ಯಾಪಿಂಗ್ ಮತ್ತು ಆರೋಪಪಟ್ಟಿ/ವಿಚಾರಣೆಯ ಸ್ಥಿತಿಯಿಂದ ಪಡೆದ ನ್ಯಾಯಾಲಯ ಡೈರೆಕ್ಟರಿ.",
+        )}
         loading={loading}
         error={error}
         count={records.length}
       />
-      <div className="grid md:grid-cols-4 gap-3">
-        <ReferenceStat label="Courts" value={groups.length} />
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <ReferenceStat label={t("Courts", "ನ್ಯಾಯಾಲಯಗಳು")} value={groups.length} />
         <ReferenceStat
-          label="Filed Chargesheets"
-          value={records.filter((record) => record.raw.ChargesheetStatus === "Filed").length}
+          label={t("Filed Chargesheets", "ಸಲ್ಲಿಸಿದ ಆರೋಪಪಟ್ಟಿಗಳು")}
+          value={filedTotal}
         />
         <ReferenceStat
-          label="Pending Trial"
-          value={records.filter((record) => record.status === "Pending Trial").length}
+          label={t("Pending Trial", "ವಿಚಾರಣೆ ಬಾಕಿ")}
+          value={pendingTotal}
         />
-        <ReferenceStat label="Mapped Stations" value={countByValue(records, "PoliceStation").length} />
+        <ReferenceStat
+          label={t("Mapped Stations", "ಮ್ಯಾಪ್ ಮಾಡಿದ ಠಾಣೆಗಳು")}
+          value={countByValue(records, "PoliceStation").length}
+        />
       </div>
-      <ReferenceTable
-        columns={["Court", "District", "Stations", "Cases", "Filed CS", "Pending Trial"]}
-        rows={rows}
-      />
+
+      <div className="space-y-3 lg:hidden">
+        {courtRows.map((row) => (
+          <Card key={row.court} className="overflow-hidden p-4">
+            <div className="font-semibold leading-6 text-brand [overflow-wrap:normal]">
+              {row.court}
+            </div>
+            <div className="mt-1 text-xs text-muted">
+              {row.districts.join(", ") || "-"}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {row.stations.slice(0, 5).map((station) => (
+                <span key={station} className="rounded-full border border-line bg-panel px-2.5 py-1 text-[11px]">
+                  {station}
+                </span>
+              ))}
+              {row.stations.length > 5 && (
+                <span className="rounded-full border border-brand/25 bg-brand/10 px-2.5 py-1 text-[11px] text-brand">
+                  +{row.stations.length - 5} {t("more", "ಇನ್ನಷ್ಟು")}
+                </span>
+              )}
+            </div>
+            <div className="mt-4 grid grid-cols-3 divide-x divide-line rounded-lg border border-line bg-panel/40 py-2 text-center">
+              {[
+                [t("Cases", "ಪ್ರಕರಣಗಳು"), row.cases],
+                [t("Filed CS", "ಸಲ್ಲಿಸಿದ ಆ.ಪ."), row.filed],
+                [t("Pending", "ಬಾಕಿ"), row.pendingTrial],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="px-2">
+                  <div className="num text-base font-semibold">{Number(value).toLocaleString(locale)}</div>
+                  <div className="mt-0.5 text-[10px] text-muted">{label}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))}
+        {!loading && courtRows.length === 0 && (
+          <Card className="p-8 text-center text-sm text-muted">
+            {t("No court data found.", "ಯಾವುದೇ ನ್ಯಾಯಾಲಯದ ಮಾಹಿತಿ ಕಂಡುಬಂದಿಲ್ಲ.")}
+          </Card>
+        )}
+      </div>
+
+      <Card className="hidden overflow-hidden lg:block">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[960px] table-fixed text-sm">
+            <colgroup>
+              <col className="w-[22%]" />
+              <col className="w-[15%]" />
+              <col className="w-[39%]" />
+              <col className="w-[8%]" />
+              <col className="w-[8%]" />
+              <col className="w-[8%]" />
+            </colgroup>
+            <thead>
+              <tr className="border-b border-line bg-panel/40 text-left text-[10px] uppercase tracking-wide text-muted">
+                {[
+                  t("Court", "ನ್ಯಾಯಾಲಯ"),
+                  t("District", "ಜಿಲ್ಲೆ"),
+                  t("Stations", "ಠಾಣೆಗಳು"),
+                  t("Cases", "ಪ್ರಕರಣಗಳು"),
+                  t("Filed CS", "ಸಲ್ಲಿಸಿದ ಆ.ಪ."),
+                  t("Pending Trial", "ವಿಚಾರಣೆ ಬಾಕಿ"),
+                ].map((column, index) => (
+                  <th
+                    key={column}
+                    className={`px-4 py-3 font-semibold [overflow-wrap:normal] ${
+                      index >= 3 ? "text-center" : ""
+                    }`}
+                  >
+                    {column}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {courtRows.map((row) => (
+                <tr key={row.court} className="border-b border-line last:border-0">
+                  <td className="px-4 py-4 align-top font-semibold leading-6 text-brand [overflow-wrap:normal]">
+                    {row.court}
+                  </td>
+                  <td className="px-4 py-4 align-top leading-6 [overflow-wrap:normal]">
+                    {row.districts.join(", ") || "-"}
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <div className="flex flex-wrap gap-1.5" title={row.stations.join(", ")}>
+                      {row.stations.slice(0, 8).map((station) => (
+                        <span key={station} className="rounded-full border border-line bg-panel px-2 py-1 text-[11px] [overflow-wrap:normal]">
+                          {station}
+                        </span>
+                      ))}
+                      {row.stations.length > 8 && (
+                        <span className="rounded-full border border-brand/25 bg-brand/10 px-2 py-1 text-[11px] text-brand">
+                          +{row.stations.length - 8} {t("more", "ಇನ್ನಷ್ಟು")}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  {[row.cases, row.filed, row.pendingTrial].map((value, index) => (
+                    <td key={index} className="num px-4 py-4 text-center align-top font-semibold">
+                      {value.toLocaleString(locale)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {!loading && courtRows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-muted">
+                    {t("No court data found.", "ಯಾವುದೇ ನ್ಯಾಯಾಲಯದ ಮಾಹಿತಿ ಕಂಡುಬಂದಿಲ್ಲ.")}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 };

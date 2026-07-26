@@ -555,8 +555,7 @@ const NewFIR: React.FC = () => {
     setSaveState({ status: "idle", message: "" });
     
     try {
-      // 🚀 Generate realistic random IDs as fallback for IDs if text does not provide them
-      const liveOptionRules = [
+      const optionFields = [
         "CrimeHead",
         "CrimeSubHead",
         "PoliceStation",
@@ -572,61 +571,27 @@ const NewFIR: React.FC = () => {
         "Acts",
         "Sections",
         "ChargesheetStatus",
-      ]
-        .map((field) => {
-          const values = optionList(options, field);
-          return values.length
-            ? `- "${field}": prefer one of the current Google Sheets values ${JSON.stringify(values)}; use a new value only when the complaint explicitly requires it.`
-            : `- "${field}": Google Sheets has no existing values yet; infer a concise value from the complaint.`;
-        })
-        .join("\n");
-
-      // 🚀 Explicit FIR signal prefix included for backend detection
-      const systemPrompt = `Extract FIR details into JSON format:
-Analyze this police complaint text and extract structural parameters for ALL system fields across all 7 steps.
-You MUST respond ONLY with a raw JSON object. Do not include any introductory text, no conversational explanations, no markdown formatting, and NO backticks (\`\`\`).
-
-Live Google Sheets suggestion rules:
-${liveOptionRules}
-
-Expected JSON Structure:
-{
-  "CaseMasterID": "Extracted string ID or empty string if not mentioned",
-  "CaseNo": "Extracted Case/FIR Number or empty string",
-  "CrimeNo": "Extracted Crime Number or empty string",
-  "CrimeRegisteredDate": "YYYY-MM-DD or empty string",
-  "PoliceStation": "Selected from allowed list",
-  "PoliceStationType": "Selected from allowed list",
-  "District": "Selected from allowed list",
-  "CrimeHead": "Selected from allowed list",
-  "CrimeSubHead": "Selected from allowed list",
-  "CaseCategory": "Selected from allowed list",
-  "Gravity": "Selected from allowed list",
-  "Status": "Selected from allowed list",
-  "Court": "Name of local jurisdiction court",
-  "EmployeeID": "Officer Employee ID if mentioned",
-  "Officer": "Officer Name",
-  "OfficerRank": "Rank if mentioned (e.g., Inspector of Police)",
-  "OfficerDesignation": "Designation (e.g., Investigating Officer (IO))",
-  "BriefFacts": "Detailed summary narrative of the complaint facts",
-  "InfoReceivedPSDate": "YYYY-MM-DD HH:MM:SS date-time string",
-  "IncidentFromDate": "YYYY-MM-DD HH:MM:SS date-time string",
-  "IncidentToDate": "YYYY-MM-DD HH:MM:SS date-time string",
-  "Latitude": "GPS latitude string if inferred or available",
-  "Longitude": "GPS longitude string if inferred or available",
-  "Complainant": "Full Name of person reporting",
-  "VictimNames": "Semicolon separated list of victims",
-  "AccusedNames": "Semicolon separated list of accused names or 'Unknown'",
-  "Acts": "Applicable laws like BNS, IT Act",
-  "Sections": "Specific law sections if referenced",
-  "ArrestCount": "Number of arrests as string",
-  "ChargesheetCount": "Number of chargesheets as string",
-  "ChargesheetStatus": "Pending or Submitted"
-}
-
-Text to parse: "${complaint}"`;
-
-      const parsedData = await requestFirDraft(complaint);
+      ];
+      const allowedValues = Object.fromEntries(
+        optionFields.map((field) => [field, optionList(options, field).slice(0, 15)]),
+      );
+      const parsedData = await requestFirDraft(complaint, {
+        allowedValues,
+        defaults: {
+          CrimeRegisteredDate: form.CrimeRegisteredDate || todayIso(),
+          PoliceStation: form.PoliceStation || user?.policeStation || "",
+          PoliceStationType: form.PoliceStationType || "Police Station",
+          District: form.District || "Bangalore Urban",
+          EmployeeID: form.EmployeeID || user?.employeeId || "",
+          Officer: form.Officer || user?.name || "",
+          OfficerRank: form.OfficerRank || user?.role || "",
+          OfficerDesignation: form.OfficerDesignation || "Investigating Officer (IO)",
+          Status: form.Status || "Under Investigation",
+          CaseCategory: form.CaseCategory || "FIR",
+          Gravity: form.Gravity || "Non-Heinous",
+          FiledBy: form.FiledBy || user?.employeeId || "",
+        },
+      });
 
       // 🚀 Auto-fill ALL fields across all 7 steps (including IDs)
       setForm((current) => ({
@@ -663,16 +628,20 @@ Text to parse: "${complaint}"`;
 
         // Step 4: Victims
         VictimNames: parsedData.VictimNames || current.VictimNames || "",
+        VictimCount: parsedData.VictimCount || current.VictimCount || "0",
 
         // Step 5: Accused
         AccusedNames: parsedData.AccusedNames || current.AccusedNames,
+        AccusedCount: parsedData.AccusedCount || current.AccusedCount || "0",
 
         // Step 6: Acts & Sections
         Acts: parsedData.Acts || current.Acts,
         Sections: parsedData.Sections || current.Sections,
         ArrestCount: parsedData.ArrestCount || current.ArrestCount || "0",
         ChargesheetCount: parsedData.ChargesheetCount || current.ChargesheetCount || "0",
+        LatestChargesheetDate: parsedData.LatestChargesheetDate || current.LatestChargesheetDate,
         ChargesheetStatus: parsedData.ChargesheetStatus || current.ChargesheetStatus || "Pending",
+        FiledBy: parsedData.FiledBy || current.FiledBy || user?.employeeId || "",
       }));
 
       setAiReady(true);
