@@ -125,15 +125,18 @@ By integrating an autonomous **AI Copilot Engine** (powered by dual-engine **Goo
 ---
 <div align="left">
   
+ 
 ## 🛠️ Tech Stack & Technologies
-
+ 
 * **Frontend:** React 18, Vite, Tailwind CSS, Lucide React Icons, React Router DOM
 * **Backend Runtime:** Node.js (with IPv4 priority DNS resolution)
 * **AI Engine (Primary):** Google Gen AI SDK (`@google/genai` - Gemini 2.0 Flash / 1.5 Flash)
 * **AI Engine (Fallback):** Groq API (`llama-3.3-70b-versatile`, `llama-3.1-8b-instant`)
 * **Database & Persistence Layer:** Google Sheets API v4 Integration & Local DB Backup
+* **Authentication:** **Firebase Authentication** (officer login, session, and identity management)
+* **Notifications:** Twilio (voice/SMS) & Fast2SMS (SMS gateway)
 * **Middleware Extensions:** Custom Vite Server Plugins (`chatPlugin.mjs`, `localDbPlugin.mjs`)
-
+* **Deployment & Hosting:** **Zoho Catalyst** (Serverless deployment & hosting platform)
 ---
 
 ## 📁 Repository Structure
@@ -187,19 +190,42 @@ npm install
 ```
 
 ### 2. Environment Configuration
-
-Create a `.env` file in the root directory and specify your API credentials:
-
+ 
+Create a `.env` file in the root directory and specify your credentials. **Never commit this file or paste real values into documentation** — `.env` is already excluded via `.gitignore`.
+ 
 ```env
 # Gemini API Key(s) - Comma-separated for quota failover
-GEMINI_API_KEYS=your_gemini_api_key_1,your_gemini_api_key_2
-
-# Groq API Key(s) - Fallback AI Engine
-GROQ_API_KEYS=your_groq_api_key
-
+GEMINI_API_KEY=your_gemini_api_key_1,your_gemini_api_key_2
+ 
+# Firebase Authentication (Officer Login)
+VITE_FIREBASE_API_KEY=your_firebase_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_firebase_app_id
+VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
+ 
+# Google Service Account (Sheets API access)
+GOOGLE_SERVICE_ACCOUNT_JSON=./service-account.json
+GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
+ 
 # Google Sheets Integration
-GOOGLE_CONSOLIDATED_SHEET_ID=your_google_sheet_id
+GOOGLE_SHEET_ID=your_google_sheet_id
+GOOGLE_MASTER_SHEET_ID=your_master_sheet_id
+GOOGLE_CONSOLIDATED_SHEET_ID=your_consolidated_sheet_id
 GOOGLE_CONSOLIDATED_TAB=Consolidated_Cases
+ 
+# Fast2SMS - SMS Gateway
+FAST2SMS_API_KEY=your_fast2sms_api_key
+ 
+# Twilio - Voice / SMS Alerts
+TWILIO_ACCOUNT_SID=your_twilio_account_sid
+TWILIO_AUTH_TOKEN=your_twilio_auth_token
+TWILIO_PHONE_NUMBER=your_twilio_phone_number
+ 
+# Groq API Key(s) - Fallback AI Engine
+GROQ_API_KEY=your_groq_api_key_1,your_groq_api_key_2
 ```
 
 ### 3. Running the Application
@@ -212,7 +238,24 @@ npm run dev
 Open your browser and navigate to `http://localhost:5173`.
 
 ---
+## 🔑 Officer Login Flow
+ 
+Authentication is handled via **Firebase Authentication**. Each officer is provisioned an account by the system administrator using the following convention:
+ 
+1. **Login ID:** Each police officer is assigned their own unique **Officer/Employee ID** as their login username.
+2. **Temporary First-Time Password:** On first login, the password is auto-generated as:
+   * The **first three letters of the officer's name** (lowercase)
+   * followed by the **year of their birth**
+   * *Example format:* `xxx````YYYY```` (e.g. an officer named "Ravi" born in 1990 → `rav1990`)
+3. **Mandatory Password Reset:** After logging in with the temporary password, the officer is **required to set a new password** before accessing the dashboard. The temporary credential cannot be reused for subsequent logins.
+> 🔒 This flow ensures every account starts with a unique, non-default credential while still forcing officers to set their own secure password before gaining full portal access.
+ 
+### 🧪 Demo Credentials
+ 
+ID = 5
+Password = test123456
 
+---
 ## ☁️ Deployment
  
 This application is **deployed and hosted on [Zoho Catalyst](https://catalyst.zoho.com)**, Zoho's serverless application development and hosting platform. Catalyst powers the production build of the Karnataka State Police Portal, providing scalable serverless hosting for the frontend along with integrated backend function execution for the AI Copilot and Google Sheets sync services.
