@@ -52,9 +52,79 @@ By integrating an autonomous **AI Copilot Engine** (powered by dual-engine **Goo
 
 ## 🏗️ Screenshots
 
+<div align="center">
+
+### `AI Assistant`
+<img width="1919" height="943" alt="image" src="https://github.com/user-attachments/assets/86d982ec-8fa8-4d79-9711-08ddd6b8135c" />
+
+<img width="1919" height="946" alt="image" src="https://github.com/user-attachments/assets/ea618919-6f5e-42b7-b355-5de80a56de93" />
+
+<img width="1919" height="946" alt="image" src="https://github.com/user-attachments/assets/29904567-d3ca-44c5-8637-653be681a3ec" />
+
+<div align="center">
+
+### `Dashboard`
+
+<img width="1919" height="945" alt="image" src="https://github.com/user-attachments/assets/a928d3cf-084b-462f-95e3-24ce0c555282" />
+
+<div align="center">
+
+### `FIR List`
+
+<img width="1919" height="949" alt="image" src="https://github.com/user-attachments/assets/52e710aa-f2e9-4663-a8d1-04e391cf56a8" />
+
+<div align="center">
+
+### `New FIR`
+
+<img width="1919" height="947" alt="image" src="https://github.com/user-attachments/assets/a0a18e14-ec77-46e5-b754-b76f924be51d" />
+<img width="1919" height="946" alt="image" src="https://github.com/user-attachments/assets/f4dad0aa-d853-47ca-bd03-150462101aaa" />
+
+<div align="center">
+
+### `Advanced Search`
+
+<img width="1918" height="946" alt="image" src="https://github.com/user-attachments/assets/a5b28ad3-66bd-4e60-8c3c-11bbcd969fec" />
+
+<div align="center">
+
+### `Employees`
+
+<img width="1919" height="949" alt="image" src="https://github.com/user-attachments/assets/f57d08d3-b5c7-45f9-9f83-cae4206d3c6f" />
+
+<div align="center">
+
+### `Master Data`
+
+<img width="1919" height="953" alt="image" src="https://github.com/user-attachments/assets/6e23e01b-7263-4de5-91cb-509516809224" />
+
+<div align="center">
+
+### `Units And Stations`
+
+<img width="1919" height="951" alt="image" src="https://github.com/user-attachments/assets/ebf77d94-db99-435b-ae07-af558fcea331" />
+
+<div align="center">
+
+### `Courts`
+
+<img width="1919" height="948" alt="image" src="https://github.com/user-attachments/assets/69795934-fed5-4ddc-bdd0-21c8eb63cb66" />
+
+<div align="center">
+
+### `Reports And Analytics`
+
+<img width="1919" height="948" alt="image" src="https://github.com/user-attachments/assets/3a45cee7-8428-442f-9ae5-e94a789e15ae" />
+
+<div align="center">
+
+### `Settings`
+
+<img width="1919" height="954" alt="image" src="https://github.com/user-attachments/assets/80eae2f3-8743-422b-a741-daa497459c52" />
 
 ---
-
+<div align="left">
+  
 ## 🛠️ Tech Stack & Technologies
 
 * **Frontend:** React 18, Vite, Tailwind CSS, Lucide React Icons, React Router DOM
@@ -143,6 +213,9 @@ Open your browser and navigate to `http://localhost:5173`.
 
 ---
 
+## ☁️ Deployment
+ 
+This application is **deployed and hosted on [Zoho Catalyst](https://catalyst.zoho.com)**, Zoho's serverless application development and hosting platform. Catalyst powers the production build of the Karnataka State Police Portal, providing scalable serverless hosting for the frontend along with integrated backend function execution for the AI Copilot and Google Sheets sync services.
 ## 🔒 Security & RBAC Compliance
 
 The portal enforces Role-Based Access Control (RBAC) across officers, inspectors, and administrators. Confidential case files, sensitive complainant records, and restricted station data are strictly scoped based on authorization privileges and station IDs before being passed to AI models or client screens.
