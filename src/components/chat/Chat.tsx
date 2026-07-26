@@ -264,10 +264,10 @@ const Composer: React.FC<{
           type="button"
           onClick={onExportPdf}
           disabled={!hasMessages}
-          className="h-8 w-8 grid place-items-center rounded-md text-muted hover:text-white hover:bg-panel font-medium text-xs transition" 
-          title={tr("Export chat history to PDF", "ಸಂಭಾಷಣೆಯನ್ನು PDF ಗೆ ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ")}
+          className="h-8 px-2 grid place-items-center rounded-md text-muted hover:text-white hover:bg-panel font-medium text-xs transition whitespace-nowrap" 
+          title={tr("Generate PDF from chat history", "ಸಂಭಾಷಣೆಯಿಂದ PDF ರಚಿಸಿ")}
         >
-          <strong>PDF</strong>
+          <strong>{tr("Generate PDF", "PDF ರಚಿಸಿ")}</strong>
         </button>
 
         <div className="flex-1" />

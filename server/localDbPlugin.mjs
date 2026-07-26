@@ -237,8 +237,9 @@ function employeeSubject(employeeId) {
 export async function handleApi(req, res, next) {
   const url = new URL(req.url || "/", "http://local-db");
   
-  // 🚀 Pass /api/chat directly to chatPlugin.mjs so localDbPlugin doesn't block it with a 404
-  if (url.pathname === "/api/chat") {
+  // Pass AI endpoints directly to chatPlugin.mjs so this middleware does not
+  // treat them as unknown API routes before the AI handler can run.
+  if (url.pathname === "/api/chat" || url.pathname === "/api/fir-draft") {
     next();
     return;
   }
@@ -525,12 +526,15 @@ export async function handleApi(req, res, next) {
 
     if (req.method === "GET" && url.pathname === "/api/cases") {
       const { headers, rows } = await casesFromGoogle();
-      const accessibleRows = filterCasesForSession(session, rows);
       sendJson(res, 200, {
         ok: true,
         headers,
-        cases: accessibleRows,
-        options: buildOptions(accessibleRows),
+        // Dashboard, reports, and reference directories are statewide shared
+        // views.  Restricting this collection to a constable's assignments
+        // made the portal report only 8 records instead of the full register.
+        // Edit permissions remain enforced below on save routes.
+        cases: rows,
+        options: buildOptions(rows),
       });
       return;
     }
@@ -571,14 +575,13 @@ export async function handleApi(req, res, next) {
         }
         
         const { headers, rows } = await casesFromGoogle();
-        const accessibleRows = filterCasesForSession(session, rows);
         sendJson(res, 200, {
           ok: true,
           pull: { ok: true },
           writeResult: { pending: false },
           headers,
-          cases: accessibleRows,
-          options: buildOptions(accessibleRows),
+          cases: rows,
+          options: buildOptions(rows),
         });
       } catch (err) {
         console.error("[Case Sync] Pull failed.", err);
@@ -591,16 +594,15 @@ export async function handleApi(req, res, next) {
     if (req.method === "GET" && caseMatch) {
       const { headers, rows } = await casesFromGoogle();
       const record = rows.find((item) => caseMatches(item, caseMatch[1]));
-      if (!record || !canAccessCase(session, record)) {
+      if (!record) {
         sendError(res, 404, "Case was not found.");
         return;
       }
-      const accessibleRows = filterCasesForSession(session, rows);
       sendJson(res, 200, {
         ok: true,
         headers,
         case: record,
-        options: buildOptions(accessibleRows),
+        options: buildOptions(rows),
       });
       return;
     }

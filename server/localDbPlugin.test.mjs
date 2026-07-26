@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
 import localDbPlugin, { buildOptions } from "./localDbPlugin.mjs";
-import { createSessionToken } from "./security.mjs";
+import { mergeCaseTables } from "./googleSheets.mjs";
+import { createSessionToken, setSessionCookie } from "./security.mjs";
 
 async function withApiServer(run) {
   let middleware;
@@ -99,6 +100,45 @@ test("session endpoint rejects forged cookies and accepts signed cookies", async
     assert.equal(payload.user.role, "Inspector");
     assert.equal(payload.user.policeStation, "Central Police Station");
   });
+});
+
+test("production session cookies remain persistent when a proxy omits its protocol header", () => {
+  const priorNodeEnv = process.env.NODE_ENV;
+  const priorSessionSecret = process.env.SESSION_SECRET;
+  process.env.NODE_ENV = "production";
+  process.env.SESSION_SECRET = "test-session-secret";
+  try {
+    let cookie = "";
+    setSessionCookie(
+      { headers: {}, socket: {} },
+      { setHeader(name, value) { if (name === "Set-Cookie") cookie = value; } },
+      { employeeId: "emp-300", name: "Inspector Khan", role: "Inspector" },
+    );
+    assert.match(cookie, /Max-Age=/);
+    assert.doesNotMatch(cookie, /(?:^|; )Secure(?:;|$)/);
+  } finally {
+    if (priorNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = priorNodeEnv;
+    if (priorSessionSecret === undefined) delete process.env.SESSION_SECRET;
+    else process.env.SESSION_SECRET = priorSessionSecret;
+  }
+});
+
+test("case data includes historic CaseMaster rows and consolidated updates", () => {
+  const merged = mergeCaseTables(
+    { headers: ["CaseMasterID", "CrimeNo", "Status"], rows: [
+      { CaseMasterID: "1", CrimeNo: "001/2026", Status: "Under Investigation" },
+      { CaseMasterID: "2", CrimeNo: "002/2026", Status: "Closed" },
+    ] },
+    { headers: ["CaseMasterID", "CrimeNo", "Status", "Gravity"], rows: [
+      { CaseMasterID: "1", CrimeNo: "001/2026", Status: "Charge Sheeted", Gravity: "Heinous" },
+    ] },
+  );
+  assert.equal(merged.rows.length, 2);
+  assert.deepEqual(merged.rows.find((row) => row.CaseMasterID === "1"), {
+    CaseMasterID: "1", CrimeNo: "001/2026", Status: "Charge Sheeted", Gravity: "Heinous",
+  });
+  assert.ok(merged.headers.includes("Gravity"));
 });
 
 test("Google Sheet dropdown options are trimmed and deduplicated case-insensitively", () => {

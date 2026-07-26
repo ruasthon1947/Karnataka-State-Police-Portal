@@ -333,11 +333,41 @@ async function syncChildTabs(record) {
 }
 
 let casesCache = { data: null, expiresAt: 0 };
-export async function casesFromGoogle() { 
+
+// Historic records live in CaseMaster, while newer portal records are also
+// written to Consolidated_Cases.  Reading just the latter made all pages show
+// only the small subset that had already been synced there.  Build the portal
+// dataset from both sources and let the consolidated copy win for duplicate
+// records, as it contains the latest portal updates.
+export function mergeCaseTables(master, consolidated) {
+  const headers = [...new Set([...master.headers, ...consolidated.headers])];
+  const merged = new Map();
+  const unkeyed = [];
+
+  for (const row of [...master.rows, ...consolidated.rows]) {
+    const key = recordKey(row);
+    if (!key) {
+      unkeyed.push(row);
+      continue;
+    }
+    merged.set(key, { ...(merged.get(key) || {}), ...row });
+  }
+  return { headers, rows: [...merged.values(), ...unkeyed] };
+}
+
+export async function casesFromGoogle() {
   if (casesCache.data && casesCache.expiresAt > Date.now()) {
     return casesCache.data;
   }
-  const data = await readTable(CONSOLIDATED_SHEET_ID, process.env.GOOGLE_CONSOLIDATED_TAB || "Consolidated_Cases");
+
+  const consolidatedTab = process.env.GOOGLE_CONSOLIDATED_TAB || "Consolidated_Cases";
+  const [master, consolidated] = await Promise.all([
+    readTable(MASTER_SHEET_ID, "CaseMaster"),
+    CONSOLIDATED_SHEET_ID
+      ? readTable(CONSOLIDATED_SHEET_ID, consolidatedTab)
+      : Promise.resolve({ headers: [], rows: [] }),
+  ]);
+  const data = mergeCaseTables(master, consolidated);
   casesCache = { data, expiresAt: Date.now() + 15000 };
   return data;
 }

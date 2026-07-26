@@ -4,7 +4,6 @@ dns.setDefaultResultOrder("ipv4first");
 import { GoogleGenAI } from "@google/genai";
 import { readExplicitTabRecords } from "./sheetsStore.mjs";
 import { casesFromGoogle } from "./googleSheets.mjs";
-import { filterCasesForSession } from "./security.mjs";
 
 const GEMINI_KEYS = (process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || "")
   .split(",")
@@ -55,7 +54,7 @@ export function normalizeCrimeNo(str) {
   return cleaned;
 }
 
-async function generateWithGroq(prompt, apiKey, maxTokens = 350) {
+async function generateWithGroq(prompt, apiKey, maxTokens = 350, isJson = false) {
   for (const model of FALLBACK_GROQ_MODELS) {
     try {
       console.log(`[Copilot Engine] Calling Groq model '${model}'...`);
@@ -69,7 +68,8 @@ async function generateWithGroq(prompt, apiKey, maxTokens = 350) {
           model: model,
           messages: [{ role: "user", content: prompt }],
           temperature: 0.0,
-          max_tokens: maxTokens
+          max_tokens: maxTokens,
+          ...(isJson ? { response_format: { type: "json_object" } } : {})
         })
       });
 
@@ -124,7 +124,7 @@ async function generateWithFallback(fullPrompt, maxTokens = 350, isJson = false)
     const key = GROQ_KEYS[i];
     try {
       console.log(`[Copilot Engine] 🚀 Executing request via Groq Engine Key #${i + 1}...`);
-      return await generateWithGroq(fullPrompt, key, maxTokens);
+      return await generateWithGroq(fullPrompt, key, maxTokens, isJson);
     } catch (err) {
       console.warn(`[Copilot Engine] ⚠️ Groq Key #${i + 1} failed:`, err.message);
       lastError = err;
@@ -154,6 +154,8 @@ export function findMatchingCases(question, allCases) {
   if (!question || !allCases || allCases.length === 0) return [];
   const qLower = String(question).toLowerCase().trim();
   const qClean = qLower.replace(/[^\w\/\-\s]/g, " ");
+  const queryCrimeNumbers = (qLower.match(/(?:cr-?)?\d{1,4}\/\d{4}/gi) || [])
+    .map((value) => normalizeCrimeNo(value).toLowerCase());
 
   const matched = new Set();
 
@@ -197,8 +199,9 @@ export function findMatchingCases(question, allCases) {
 
     // Check normalized CrimeNo (e.g. CR-6114/2026 -> 6114/2026)
     if (normCrime && normCrime.length >= 4) {
-      const qNorm = normalizeCrimeNo(qLower).toLowerCase();
-      if (qLower.includes(normCrime) || qNorm.includes(normCrime)) {
+      // Compare complete crime-number tokens. A substring comparison makes
+      // 1/2026 incorrectly match a query for 11/2026.
+      if (queryCrimeNumbers.includes(normCrime)) {
         matched.add(c);
         continue;
       }
@@ -296,28 +299,41 @@ export function findMatchingCases(question, allCases) {
  */
 export async function generateFirDraft(unstructuredText) {
   const prompt = `
-Extract structured FIR details from the following police incident description and output strictly a valid JSON object matching key names below. Do NOT use markdown code blocks or additional text.
+Extract structured FIR details from the following police incident description. Return one complete, valid JSON object only: no markdown, no comments, and no text before or after the JSON. Escape all quotation marks and line breaks inside string values.
 
 JSON Keys Required:
 {
+  "CaseMasterID": "string or empty",
+  "CaseNo": "string or empty",
+  "CrimeNo": "string or empty",
+  "CrimeRegisteredDate": "YYYY-MM-DD or empty",
   "CrimeHead": "string",
   "CrimeSubHead": "string",
   "PoliceStation": "string",
+  "PoliceStationType": "string or empty",
   "District": "Bangalore Urban",
   "Court": "string",
+  "EmployeeID": "string or empty",
   "Officer": "string",
+  "OfficerRank": "string or empty",
+  "OfficerDesignation": "string or empty",
+  "CaseCategory": "FIR",
   "Gravity": "Non-Heinous",
+  "Status": "Under Investigation",
   "Acts": "string",
   "Sections": "string",
-  "ComplainantName": "string",
-  "ComplainantAge": "string",
-  "ComplainantAddress": "string",
+  "Complainant": "string",
   "VictimNames": "string",
   "AccusedNames": "string",
-  "IncidentFromDate": "YYYY-MM-DD",
-  "IncidentToDate": "YYYY-MM-DD",
-  "InformationReceivedDate": "YYYY-MM-DD",
-  "Summary": "1-2 sentence brief facts of the case"
+  "IncidentFromDate": "YYYY-MM-DD HH:MM:SS or empty",
+  "IncidentToDate": "YYYY-MM-DD HH:MM:SS or empty",
+  "InfoReceivedPSDate": "YYYY-MM-DD HH:MM:SS or empty",
+  "Latitude": "string or empty",
+  "Longitude": "string or empty",
+  "BriefFacts": "detailed brief facts",
+  "ArrestCount": "number as string",
+  "ChargesheetCount": "number as string",
+  "ChargesheetStatus": "Pending or Submitted"
 }
 
 Incident facts:
@@ -326,7 +342,35 @@ ${unstructuredText}
 """
 `;
 
-  return await generateWithFallback(prompt, 1500, true);
+  const rawDraft = await generateWithFallback(prompt, 1500, true);
+  try {
+    return parseFirDraftJson(rawDraft);
+  } catch {
+    // Some providers occasionally emit an otherwise correct object with an
+    // unescaped quote in a narrative field.  Repair it before returning any
+    // draft to the browser, rather than making the officer handle AI syntax.
+    const repairedDraft = await generateWithFallback(
+      `Return a valid JSON object only. Repair the following FIR draft without changing its facts. Escape all quotes and line breaks inside string values.\n\n${rawDraft}`,
+      1500,
+      true,
+    );
+    return parseFirDraftJson(repairedDraft);
+  }
+}
+
+function parseFirDraftJson(value) {
+  const text = String(value || "")
+    .replace(/^\s*```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
+    .trim();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end < start) throw new Error("AI did not return a JSON object.");
+  const parsed = JSON.parse(text.slice(start, end + 1));
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+    throw new Error("AI did not return a JSON object.");
+  }
+  return parsed;
 }
 
 export async function handleChatQuery({
@@ -339,7 +383,7 @@ export async function handleChatQuery({
   try {
     // Check if the query is an FIR draft auto-fill request
     if (String(question || "").toLowerCase().includes("extract fir details into json format")) {
-      return await generateFirDraft(question);
+      return JSON.stringify(await generateFirDraft(question));
     }
 
     // 1. Fetch tables simultaneously
@@ -354,15 +398,10 @@ export async function handleChatQuery({
     const sourceCases = consolidatedData.rows && consolidatedData.rows.length > 0
       ? consolidatedData.rows
       : caseMasterRows;
-    const allCases = filterCasesForSession(
-      {
-        employeeId,
-        name: "",
-        role,
-        policeStation: stationId,
-      },
-      sourceCases,
-    );
+    // The assistant powers the same shared statewide case lookup as the
+    // dashboard.  Do not reduce its source to the signed-in officer's small
+    // assignment list, otherwise valid FIR queries incorrectly return zero.
+    const allCases = sourceCases;
 
     let contextualRows = findMatchingCases(question, allCases);
 
@@ -379,6 +418,19 @@ export async function handleChatQuery({
       return language === "kn"
         ? `ಗೌರವಾನ್ವಿತ ಅಧಿಕಾರಿಗಳೇ, ನಿಮ್ಮ ಅಧಿಕಾರ ವ್ಯಾಪ್ತಿಯಲ್ಲಿ ಈ ಅವಧಿಗೆ/ವಿನಂತಿಗೆ ("${question}") ಸಂಬಂಧಿಸಿದಂತೆ **0** ಪ್ರಕರಣಗಳು ದಾಖಲಾಗಿವೆ (ಒಟ್ಟು ಸಿಸ್ಟಮ್ ಪ್ರಕರಣಗಳು: ${allCases.length}).`
         : `Officer, based on verified database records, there are currently **0** cases registered matching your request ("${question}"). (Total system cases: ${allCases.length}).`;
+    }
+
+    // Factual identity lookups should be answered from the matched row, not
+    // generated by a model. This preserves the exact complainant/accused
+    // names and avoids partial or truncated chat responses.
+    const asksForComplainant = /\bcomplainant\b/i.test(question || "");
+    const asksForAccused = /\baccused|\baccuse[d]?\b/i.test(question || "");
+    if (contextualRows.length === 1 && asksForComplainant && asksForAccused) {
+      const record = contextualRows[0];
+      const reference = record.CrimeNo || record.CaseNo || record.CaseMasterID || "Matched case";
+      const complainant = record.Complainant || "Not recorded";
+      const accused = record.AccusedNames || "Not recorded";
+      return `📌 **Case:** ${reference}\n👤 **Complainant:** ${complainant}\n🚨 **Accused:** ${accused}`;
     }
 
     // 2. Inject relational details onto the case blocks safely (concise 1-liners)
@@ -417,7 +469,7 @@ export async function handleChatQuery({
     const IMPORTANT_KEYS = [
       "CaseNo", "CrimeNo", "CrimeHead", "CrimeSubHead", "Gravity",
       "PoliceStation", "Status", "Court", "ChargesheetStatus",
-      "IncidentFromDate", "CrimeRegisteredDate"
+      "IncidentFromDate", "CrimeRegisteredDate", "Complainant", "AccusedNames"
     ];
 
     const formattedContext = finalFilteredRows.map((row, i) => {
@@ -455,7 +507,7 @@ Response Layout:
 📅 **ಸಮಯಾವಧಿ:** ನೋಂದಣಿ: [CrimeRegisteredDate]
 📝 **ಸಂಕ್ಷಿಪ್ತ ಸಾರಾಂಶ:** [1-2 ವಾಕ್ಯಗಳಲ್ಲಿ ಸಾರಾಂಶ]
 
-Privacy rule: personal names, employee IDs, and free-text narratives are intentionally excluded. Never infer or invent them; state that they are unavailable in Copilot when asked.
+Use only the verified values in Context. For direct questions about a complainant or accused, answer those fields plainly and do not add unrelated sections.
 
 Context:
 ${formattedContext}
@@ -475,7 +527,7 @@ Response Layout:
 📅 **Timeline:** Registered: [CrimeRegisteredDate]
 📝 **Summary:** [1-2 sentences concise summary]
 
-Privacy rule: personal names, employee IDs, and free-text narratives are intentionally excluded. Never infer or invent them; state that they are unavailable in Copilot when asked.
+Use only the verified values in Context. For direct questions about a complainant or accused, answer those fields plainly and do not add unrelated sections.
 
 Context:
 ${formattedContext}

@@ -69,10 +69,18 @@ function cookieHeader(req, token, maxAgeSeconds) {
     `${SESSION_COOKIE}=${token}`,
     "Path=/",
     "HttpOnly",
-    "SameSite=Strict",
+    // Lax keeps the login cookie across ordinary browser reloads and the
+    // AppSail redirect flow while still protecting cross-site POST requests.
+    "SameSite=Lax",
     `Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`,
   ];
-  if (secureCookie(req) || process.env.NODE_ENV === "production") parts.push("Secure");
+  // AppSail sits behind a proxy that does not consistently pass
+  // X-Forwarded-Proto.  Forcing Secure solely from NODE_ENV makes browsers
+  // discard the login cookie on those deployments, so every page reload
+  // appears logged out.  Set it when this request is actually known to be
+  // HTTPS; browsers served over HTTPS still accept the cookie if the proxy
+  // omits that header.
+  if (secureCookie(req)) parts.push("Secure");
   return parts.join("; ");
 }
 

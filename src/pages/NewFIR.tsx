@@ -17,7 +17,7 @@ import {
   useCases,
 } from "../lib/cases";
 import { useAuth } from "../context/AuthContext";
-import { askCopilot } from "../lib/chatApi";
+import { requestFirDraft } from "../lib/chatApi";
 import { KSPPBrandMark } from "../components/brand/KSPPBrand";
 
 function safeJsonParse(rawText: string) {
@@ -626,13 +626,7 @@ Expected JSON Structure:
 
 Text to parse: "${complaint}"`;
 
-      const rawAiReply = await askCopilot({
-        question: systemPrompt,
-        language: "en"
-      });
-
-      // Safe JSON parsing helper to clean markdown backticks and control chars
-      const parsedData = safeJsonParse(rawAiReply);
+      const parsedData = await requestFirDraft(complaint);
 
       // 🚀 Auto-fill ALL fields across all 7 steps (including IDs)
       setForm((current) => ({
