@@ -77,6 +77,7 @@ const AppShell: React.FC = () => {
       {
         heading: tr("Insights", "ವಿಶ್ಲೇಷಣೆ"),
         entries: [
+          ["/crime-intelligence", tr("Crime Intelligence", "ಅಪರಾಧ ಗುಪ್ತಚರ"), "CI"],
           ["/reports", tr("Reports & Analytics", "ವರದಿಗಳು ಮತ್ತು ವಿಶ್ಲೇಷಣೆ"), "RA"],
           ["/settings", tr("Settings", "ಸೆಟ್ಟಿಂಗ್‌ಗಳು"), "ST"],
         ],

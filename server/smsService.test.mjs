@@ -1,13 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  SmsError,
   buildCaseAlertMessage,
+  SmsError,
   createCaseAlertService,
   createTwilioMessageSender,
   parseNotificationPreferences,
   serializeNotificationPreferences,
 } from "./smsService.mjs";
+
+test("builds a patrol alert from the selected real intelligence zone", () => {
+  const message = buildCaseAlertMessage("patrol_alert", {
+    PoliceStation: "Indiranagar Police Station",
+    ZoneName: "100 Feet Road",
+    RiskPercentage: 82,
+    RiskMode: "Live FIR density",
+    PeakWindow: "20:00–00:00",
+  });
+  assert.match(message, /100 Feet Road/);
+  assert.match(message, /Indiranagar Police Station/);
+  assert.match(message, /82%/);
+  assert.match(message, /20:00–00:00/);
+});
 
 test("the Twilio transport supports a Messaging Service and hides provider errors", async () => {
   let factoryArguments;

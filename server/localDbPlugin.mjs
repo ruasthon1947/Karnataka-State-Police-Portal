@@ -590,6 +590,55 @@ export async function handleApi(req, res, next) {
       return;
     }
 
+    if (req.method === "POST" && url.pathname === "/api/patrol-alert") {
+      const payload = await readBody(req);
+      const station = normalizeValue(payload.station);
+      const zone = normalizeValue(payload.zone);
+      const mode = normalizeValue(payload.mode);
+      const peakWindow = normalizeValue(payload.peakWindow);
+      const risk = Number(payload.risk);
+      if (!station || !zone || !Number.isFinite(risk) || risk < 0 || risk > 100) {
+        sendError(res, 400, "A valid station, zone, and intelligence score are required.");
+        return;
+      }
+
+      const masterSheetId = String(
+        process.env.GOOGLE_MASTER_SHEET_ID || process.env.GOOGLE_SHEET_ID || "",
+      ).trim();
+      if (!masterSheetId) {
+        sendError(res, 503, "The employee directory is not configured.");
+        return;
+      }
+
+      const [employeesTab, unitsTab] = await Promise.all([
+        readTable(masterSheetId, "Employee"),
+        readTable(masterSheetId, "Unit"),
+      ]);
+      const notifications = await caseAlertService.notify({
+        event: "patrol_alert",
+        record: {
+          PoliceStation: station,
+          ZoneName: zone,
+          RiskPercentage: Math.round(risk),
+          RiskMode: mode || "Crime intelligence alert",
+          PeakWindow: peakWindow,
+          RequestedBy: session.employeeId,
+        },
+        employees: employeesTab.rows,
+        units: unitsTab.rows,
+      });
+      console.log("[SMS Alerts] Patrol deployment result", {
+        requestedBy: session.employeeId,
+        station,
+        matched: notifications.matched,
+        eligible: notifications.eligible,
+        sent: notifications.sent,
+        failed: notifications.failed,
+      });
+      sendJson(res, 200, { ok: true, notifications });
+      return;
+    }
+
     const caseMatch = url.pathname.match(/^\/api\/cases\/([^/]+)$/);
     if (req.method === "GET" && caseMatch) {
       const { headers, rows } = await casesFromGoogle();

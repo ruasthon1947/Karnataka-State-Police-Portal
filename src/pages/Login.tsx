@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   KSPPBrandMark,
   KARNATAKA_GOVERNMENT,
@@ -16,14 +16,19 @@ const Login: React.FC = () => {
   const { user, isLoading, login, theme, toggleTheme } = useAuth();
   const { language, setLanguage, tr } = useLanguage();
   const navigate = useNavigate();
+  const location = useLocation();
+  const requestedPath = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
+  const destination = requestedPath?.startsWith("/") && !requestedPath.startsWith("//")
+    ? requestedPath
+    : "/";
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && user) navigate("/", { replace: true });
-  }, [isLoading, navigate, user]);
+    if (!isLoading && user) navigate(destination, { replace: true });
+  }, [destination, isLoading, navigate, user]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -48,7 +53,7 @@ const Login: React.FC = () => {
       return;
     }
 
-    navigate("/", { replace: true });
+    navigate(destination, { replace: true });
   };
 
   return (

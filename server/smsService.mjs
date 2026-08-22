@@ -204,6 +204,17 @@ export function serializeNotificationPreferences(value) {
 }
 
 export function buildCaseAlertMessage(event, record, previousRecord = {}) {
+  if (event === "patrol_alert") {
+    const station = compact(record.PoliceStation || record.Station) || "the assigned station";
+    const zone = compact(record.ZoneName || record.Location) || station;
+    const score = Number.isFinite(Number(record.RiskPercentage))
+      ? ` Score: ${Math.round(Number(record.RiskPercentage))}%.`
+      : "";
+    const mode = compact(record.RiskMode) || "crime intelligence";
+    const peak = compact(record.PeakWindow);
+    const peakText = peak && peak !== "Not recorded" ? ` Peak window: ${peak}.` : "";
+    return `KSP patrol alert: deploy visible patrol near ${zone}, ${station}. ${mode}.${score}${peakText}`;
+  }
   const reference = compact(record.CrimeNo || record.CaseNo || record.CaseMasterID) || "Unnumbered case";
   if (event === "status_update") {
     const fromStatus = compact(previousRecord.Status) || "Not set";
@@ -269,7 +280,7 @@ export function createCaseAlertService(options = {}) {
         providerConfigured: getSmsProviderStatus().configured,
         errors: [],
       };
-      if (!alertsEnabled || !["new_fir", "status_update"].includes(event)) {
+      if (!alertsEnabled || !["new_fir", "status_update", "patrol_alert"].includes(event)) {
         return summary;
       }
 
@@ -285,7 +296,7 @@ export function createCaseAlertService(options = {}) {
       const seenPhones = new Set();
       for (const employee of matchedEmployees) {
         const preferences = parseNotificationPreferences(employee.NotificationPref);
-        const optedIn = event === "new_fir" ? preferences.newFir : preferences.statusUpdates;
+        const optedIn = event === "status_update" ? preferences.statusUpdates : preferences.newFir;
         if (!optedIn) {
           summary.disabled += 1;
           continue;

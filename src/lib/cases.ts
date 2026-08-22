@@ -194,6 +194,34 @@ export function dedupeOptionValues(values: string[]): string[] {
   );
 }
 
+export type PatrolAlertResponse = {
+  ok: boolean;
+  notifications: {
+    event: "patrol_alert";
+    matched: number;
+    eligible: number;
+    sent: number;
+    failed: number;
+  };
+  error?: string;
+};
+
+export async function sendPatrolAlert(input: {
+  station: string;
+  zone: string;
+  risk: number;
+  mode: string;
+  peakWindow: string;
+}): Promise<PatrolAlertResponse> {
+  const response = await fetch(api("/patrol-alert"), {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return readJson<PatrolAlertResponse>(response);
+}
+
 export function optionList(options: CaseOptions, field: string): string[] {
   const value = options[field];
   return Array.isArray(value) ? dedupeOptionValues(value) : [];

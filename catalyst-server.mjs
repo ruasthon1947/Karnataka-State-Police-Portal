@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import localDbPlugin from "./server/localDbPlugin.mjs";
 import chatPlugin from "./server/chatPlugin.mjs";
+import mapProxyPlugin from "./server/mapProxyPlugin.mjs";
 
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url));
 const staticDirectory = path.join(rootDirectory, "dist");
@@ -19,6 +20,7 @@ const previewServer = {
 
 localDbPlugin().configurePreviewServer(previewServer);
 chatPlugin().configurePreviewServer(previewServer);
+mapProxyPlugin().configurePreviewServer(previewServer);
 
 const mimeTypes = new Map([
   [".css", "text/css; charset=utf-8"],
