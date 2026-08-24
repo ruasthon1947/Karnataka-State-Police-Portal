@@ -1,6 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  BarChart3,
+  Bot,
+  Building2,
+  Database,
+  FilePlus2,
+  FileText,
+  LayoutDashboard,
+  ListTodo,
+  Radar,
+  Scale,
+  Search,
+  Settings,
+  Users,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
   KSPPBrandMark,
   KARNATAKA_GOVERNMENT,
   KARNATAKA_GOVERNMENT_KANNADA,
@@ -21,7 +37,12 @@ import { useCompletedTasks } from "../../lib/pinnedTasks";
 
 const digestSeenKey = (employeeId: string) => `kpfir.digestSeenDate.v2.${employeeId}`;
 
-type NavEntry = [string, string, string];
+type NavTone = "workspace" | "cases" | "reference" | "insights";
+type NavEntry = {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+};
 
 const AppShell: React.FC = () => {
   const { user, logout, theme, toggleTheme, sessionExpiresAt, extendSession } =
@@ -102,40 +123,44 @@ const AppShell: React.FC = () => {
   }, [sessionExpiresAt, logout, navigate]);
 
   const navigation = useMemo<
-    Array<{ heading: string; entries: NavEntry[] }>
+    Array<{ heading: string; tone: NavTone; entries: NavEntry[] }>
   >(
     () => [
       {
         heading: tr("Workspace", "ಕಾರ್ಯಸ್ಥಳ"),
+        tone: "workspace",
         entries: [
-          ["/", tr("AI Assistant", "ಎಐ ಸಹಾಯಕ"), "AI"],
-          ["/dashboard", tr("Dashboard", "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್"), "DB"],
-          ["/todo", tr("To-Do List", "ಕಾರ್ಯಗಳ ಪಟ್ಟಿ"), "TD"],
+          { to: "/", label: tr("AI Assistant", "ಎಐ ಸಹಾಯಕ"), icon: Bot },
+          { to: "/dashboard", label: tr("Dashboard", "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್"), icon: LayoutDashboard },
+          { to: "/todo", label: tr("To-Do List", "ಕಾರ್ಯಗಳ ಪಟ್ಟಿ"), icon: ListTodo },
         ],
       },
       {
         heading: tr("Cases", "ಪ್ರಕರಣಗಳು"),
+        tone: "cases",
         entries: [
-          ["/fir", tr("FIR List", "ಎಫ್‌ಐಆರ್ ಪಟ್ಟಿ"), "FR"],
-          ["/fir/new", tr("New FIR", "ಹೊಸ ಎಫ್‌ಐಆರ್"), "+"],
-          ["/search", tr("Advanced Search", "ಸುಧಾರಿತ ಹುಡುಕಾಟ"), "⌕"],
+          { to: "/fir", label: tr("FIR List", "ಎಫ್‌ಐಆರ್ ಪಟ್ಟಿ"), icon: FileText },
+          { to: "/fir/new", label: tr("New FIR", "ಹೊಸ ಎಫ್‌ಐಆರ್"), icon: FilePlus2 },
+          { to: "/search", label: tr("Advanced Search", "ಸುಧಾರಿತ ಹುಡುಕಾಟ"), icon: Search },
         ],
       },
       {
         heading: tr("Reference", "ಉಲ್ಲೇಖ"),
+        tone: "reference",
         entries: [
-          ["/employees", tr("Employees", "ಸಿಬ್ಬಂದಿ"), "EP"],
-          ["/master-data", tr("Master Data", "ಮಾಸ್ಟರ್ ಡೇಟಾ"), "MD"],
-          ["/units", tr("Units & Stations", "ಘಟಕಗಳು ಮತ್ತು ಠಾಣೆಗಳು"), "US"],
-          ["/courts", tr("Courts", "ನ್ಯಾಯಾಲಯಗಳು"), "CT"],
+          { to: "/employees", label: tr("Employees", "ಸಿಬ್ಬಂದಿ"), icon: Users },
+          { to: "/master-data", label: tr("Master Data", "ಮಾಸ್ಟರ್ ಡೇಟಾ"), icon: Database },
+          { to: "/units", label: tr("Units & Stations", "ಘಟಕಗಳು ಮತ್ತು ಠಾಣೆಗಳು"), icon: Building2 },
+          { to: "/courts", label: tr("Courts", "ನ್ಯಾಯಾಲಯಗಳು"), icon: Scale },
         ],
       },
       {
         heading: tr("Insights", "ವಿಶ್ಲೇಷಣೆ"),
+        tone: "insights",
         entries: [
-          ["/crime-intelligence", tr("Crime Intelligence", "ಅಪರಾಧ ಗುಪ್ತಚರ"), "CI"],
-          ["/reports", tr("Reports & Analytics", "ವರದಿಗಳು ಮತ್ತು ವಿಶ್ಲೇಷಣೆ"), "RA"],
-          ["/settings", tr("Settings", "ಸೆಟ್ಟಿಂಗ್‌ಗಳು"), "ST"],
+          { to: "/crime-intelligence", label: tr("Crime Intelligence", "ಅಪರಾಧ ಗುಪ್ತಚರ"), icon: Radar },
+          { to: "/reports", label: tr("Reports & Analytics", "ವರದಿಗಳು ಮತ್ತು ವಿಶ್ಲೇಷಣೆ"), icon: BarChart3 },
+          { to: "/settings", label: tr("Settings", "ಸೆಟ್ಟಿಂಗ್‌ಗಳು"), icon: Settings },
         ],
       },
     ],
@@ -192,7 +217,7 @@ const AppShell: React.FC = () => {
               {group.heading}
             </div>
             <div className="space-y-1">
-              {group.entries.map(([to, label, icon]) => (
+              {group.entries.map(({ to, label, icon: NavigationIcon }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -205,11 +230,10 @@ const AppShell: React.FC = () => {
                     }`
                   }
                 >
-                  <span
-                    className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-line bg-panel text-[9px] font-bold tracking-tight"
-                    aria-hidden="true"
-                  >
-                    {icon}
+                  <span className={`gov-nav-seal gov-nav-seal-${group.tone}`} aria-hidden="true">
+                    <span className="gov-nav-seal-inner">
+                      <NavigationIcon size={14} strokeWidth={2.15} />
+                    </span>
                   </span>
                   <span className="truncate">{label}</span>
                 </NavLink>
