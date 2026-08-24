@@ -129,7 +129,7 @@ const ChangePassword: React.FC = () => {
               onChange={(event) => setLanguage(event.target.value as "en" | "kn")}
               className="h-10 rounded-lg border border-line bg-shell px-2 text-sm"
             >
-              <option value="en">English</option>
+              <option value="en">{tr("English", "ಇಂಗ್ಲಿಷ್")}</option>
               <option value="kn">ಕನ್ನಡ</option>
             </select>
             <button

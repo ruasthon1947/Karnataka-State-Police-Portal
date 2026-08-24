@@ -133,6 +133,7 @@ const AppShell: React.FC = () => {
       {
         heading: tr("Insights", "ವಿಶ್ಲೇಷಣೆ"),
         entries: [
+          ["/crime-intelligence", tr("Crime Intelligence", "ಅಪರಾಧ ಗುಪ್ತಚರ"), "CI"],
           ["/reports", tr("Reports & Analytics", "ವರದಿಗಳು ಮತ್ತು ವಿಶ್ಲೇಷಣೆ"), "RA"],
           ["/settings", tr("Settings", "ಸೆಟ್ಟಿಂಗ್‌ಗಳು"), "ST"],
         ],
@@ -159,7 +160,7 @@ const AppShell: React.FC = () => {
         <KSPPBrandMark size="lg" />
         <div className="min-w-0">
           <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-brand">
-            KSPP · Official Portal
+            {tr("KSPP · Official Portal", "KSPP · ಅಧಿಕೃತ ಪೋರ್ಟಲ್")}
           </div>
           <div className="mt-1 truncate text-[12px] font-semibold">{KSPP_NAME}</div>
           <div className="mt-0.5 truncate text-[10px] font-medium text-brand">
@@ -180,7 +181,7 @@ const AppShell: React.FC = () => {
       <div className="border-b border-line bg-panel/60 px-4 py-2.5 text-[10px] font-medium text-muted">
         <span className="inline-flex items-center gap-1.5 font-semibold text-brand">
           <span className="h-1.5 w-1.5 rounded-full bg-sage" aria-hidden="true" />
-          ಕರ್ನಾಟಕ ಸರ್ಕಾರ · Government secure workspace
+          {tr("Government of Karnataka · Government secure workspace", "ಕರ್ನಾಟಕ ಸರ್ಕಾರ · ಸರ್ಕಾರಿ ಸುರಕ್ಷಿತ ಕಾರ್ಯಸ್ಥಳ")}
         </span>
       </div>
 
@@ -242,7 +243,7 @@ const AppShell: React.FC = () => {
                 language === "en" ? "bg-brand text-white" : "text-muted hover:bg-panel"
               }`}
             >
-              English
+              {tr("English", "ಇಂಗ್ಲಿಷ್")}
             </button>
           </div>
         </div>
@@ -308,7 +309,7 @@ const AppShell: React.FC = () => {
             <span className="hidden text-white/45 sm:inline"> · {KARNATAKA_GOVERNMENT}</span>
           </span>
           <span className="hidden md:inline">
-            ಕರ್ನಾಟಕ ರಾಜ್ಯ ಪೊಲೀಸ್ · Karnataka State Police
+            {tr("Karnataka State Police", "ಕರ್ನಾಟಕ ರಾಜ್ಯ ಪೊಲೀಸ್")}
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
@@ -373,7 +374,7 @@ const AppShell: React.FC = () => {
             onChange={(event) => setLanguage(event.target.value as "en" | "kn")}
             className="hidden h-10 rounded-lg border border-line bg-panel px-2.5 text-[12px] outline-none focus:border-brand sm:block"
           >
-            <option value="en">English</option>
+            <option value="en">{tr("English", "ಇಂಗ್ಲಿಷ್")}</option>
             <option value="kn">ಕನ್ನಡ</option>
           </select>
 

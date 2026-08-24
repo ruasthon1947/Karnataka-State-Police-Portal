@@ -2,6 +2,7 @@ import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { FirstLoginModal } from "./FirstLoginModal";
+import { useLanguage } from "../../context/LanguageContext";
 
 /**
  * Gates everything that requires login.
@@ -12,6 +13,7 @@ export const RequireAuth: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const { user, isLoading } = useAuth();
+  const { tr } = useLanguage();
   const location = useLocation();
   const onChangePwd = location.pathname.startsWith("/change-password");
 
@@ -22,7 +24,7 @@ export const RequireAuth: React.FC<{ children: React.ReactNode }> = ({
         role="status"
         aria-live="polite"
       >
-        Verifying secure session…
+        {tr("Verifying secure session…", "ಸುರಕ್ಷಿತ ಸೆಷನ್ ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ…")}
       </div>
     );
   }

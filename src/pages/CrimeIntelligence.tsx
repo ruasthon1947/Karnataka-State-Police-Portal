@@ -3,6 +3,7 @@ import { useLanguage } from "../context/LanguageContext";
 import { sendPatrolAlert, useFirRecords } from "../lib/cases";
 import { buildIntelligenceDataset, hotspotScore, Hotspot, MapMode } from "../lib/crimeIntelligence";
 import { displayPlaceName } from "../lib/kannadaPlaces";
+import { displayKnownValue } from "../lib/kannadaValues";
 import type { HotspotTrainingResult } from "../lib/hotspotModel";
 
 const RealCrimeMap = React.lazy(() => import("../components/map/RealCrimeMap"));
@@ -161,14 +162,6 @@ const CrimeIntelligence: React.FC = () => {
     <div className="crime-intelligence-page mx-auto w-full max-w-[1700px] p-4 sm:p-5 lg:p-6">
       <section className="crime-intelligence-hero">
         <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="intelligence-kicker">{tr("KSPP · Data Intelligence", "KSPP · ದತ್ತಾಂಶ ಗುಪ್ತಚರ")}</span>
-            <span className={`neural-status ${forecastReady ? "" : "is-limited"}`} title={training.reason}><i /> {trainingPending
-              ? tr("Training neural model v1.0…", "ನ್ಯೂರಲ್ ಮಾದರಿ v1.0 ತರಬೇತಿಯಾಗುತ್ತಿದೆ…")
-              : forecastReady
-              ? tr("Neural model v1.0 · chronologically validated", "ನ್ಯೂರಲ್ ಮಾದರಿ v1.0 · ಕಾಲಾನುಕ್ರಮವಾಗಿ ಮೌಲ್ಯೀಕರಿಸಲಾಗಿದೆ")
-              : tr("Neural training unavailable · more history required", "ನ್ಯೂರಲ್ ತರಬೇತಿ ಲಭ್ಯವಿಲ್ಲ · ಹೆಚ್ಚಿನ ಇತಿಹಾಸ ಅಗತ್ಯ")}</span>
-          </div>
           <h1>{tr("Crime Intelligence Map", "ಅಪರಾಧ ಗುಪ್ತಚರ ನಕ್ಷೆ")}</h1>
           <p>{tr("Exact FIR coordinates, recorded crime density, and a clearly separated experimental forecast.", "ನಿಖರ ಎಫ್‌ಐಆರ್ ನಿರ್ದೇಶಾಂಕಗಳು, ದಾಖಲಾದ ಅಪರಾಧ ಸಾಂದ್ರತೆ ಮತ್ತು ಸ್ಪಷ್ಟವಾಗಿ ಪ್ರತ್ಯೇಕಿಸಿದ ಪ್ರಾಯೋಗಿಕ ಮುನ್ಸೂಚನೆ.")}</p>
         </div>
@@ -185,7 +178,7 @@ const CrimeIntelligence: React.FC = () => {
         </div>
         <label><span>{tr("Crime type", "ಅಪರಾಧ ಪ್ರಕಾರ")}</span><select value={crimeFilter} onChange={(event) => setCrimeFilter(event.target.value)}>
           <option value={ALL_CRIMES}>{tr("All crime types", "ಎಲ್ಲಾ ಅಪರಾಧ ಪ್ರಕಾರಗಳು")}</option>
-          {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+          {categories.map((category) => <option key={category} value={category}>{displayKnownValue(category, language)}</option>)}
         </select></label>
         <label><span>{tr("Prediction window", "ಮುನ್ಸೂಚನೆ ಅವಧಿ")}</span><select value={horizonDays} onChange={(event) => setHorizonDays(Number(event.target.value))} disabled={activeMode === "live"}>
           <option value={1}>{tr("Next 24 hours", "ಮುಂದಿನ 24 ಗಂಟೆಗಳು")}</option>
@@ -227,7 +220,7 @@ const CrimeIntelligence: React.FC = () => {
           </div>
           <div className={`time-intelligence ${activeMode === "live" ? "is-disabled" : ""}`}>
             <div className="time-readout"><span>{tr("FORECAST TIME", "ಮುನ್ಸೂಚನೆ ಸಮಯ")}</span><strong>{String(hour).padStart(2, "0")}:00</strong></div>
-            <div className="time-track"><input type="range" min="0" max="23" value={hour} disabled={activeMode === "live"} onChange={(event) => setHour(Number(event.target.value))} aria-label={tr("Forecast time of day", "ದಿನದ ಮುನ್ಸೂಚನೆ ಸಮಯ")} /><div><span>12 AM</span><span>6 AM</span><span>12 PM</span><span>6 PM</span><span>11 PM</span></div></div>
+            <div className="time-track"><input type="range" min="0" max="23" value={hour} disabled={activeMode === "live"} onChange={(event) => setHour(Number(event.target.value))} aria-label={tr("Forecast time of day", "ದಿನದ ಮುನ್ಸೂಚನೆ ಸಮಯ")} /><div><span>{tr("12 AM", "ರಾತ್ರಿ 12")}</span><span>{tr("6 AM", "ಬೆಳಗ್ಗೆ 6")}</span><span>{tr("12 PM", "ಮಧ್ಯಾಹ್ನ 12")}</span><span>{tr("6 PM", "ಸಂಜೆ 6")}</span><span>{tr("11 PM", "ರಾತ್ರಿ 11")}</span></div></div>
           </div>
         </div>
 
@@ -236,7 +229,7 @@ const CrimeIntelligence: React.FC = () => {
             <div className="panel-eyebrow">{tr("SELECTED EXACT FIR LOCATION", "ಆಯ್ದ ನಿಖರ ಎಫ್‌ಐಆರ್ ಸ್ಥಳ")}</div>
             <h2>{displayPlaceName(selected.name, language)}</h2><p>{displayPlaceName(selected.station, language)} · {selected.latitude.toFixed(6)}, {selected.longitude.toFixed(6)}</p>
             <RiskRing risk={selectedRisk} label={scoreLabel(selectedRisk)} />
-            <div className="prediction-primary"><span>{tr("Dominant recorded pattern", "ಪ್ರಮುಖ ದಾಖಲಾದ ಮಾದರಿ")}</span><strong>{selected.category}</strong><div><span>{tr("Peak recorded window", "ಗರಿಷ್ಠ ದಾಖಲಾದ ಅವಧಿ")}</span><b>{selected.peakWindow}</b></div></div>
+            <div className="prediction-primary"><span>{tr("Dominant recorded pattern", "ಪ್ರಮುಖ ದಾಖಲಾದ ಮಾದರಿ")}</span><strong>{displayKnownValue(selected.category, language)}</strong><div><span>{tr("Peak recorded window", "ಗರಿಷ್ಠ ದಾಖಲಾದ ಅವಧಿ")}</span><b>{selected.peakWindow}</b></div></div>
             <div className="prediction-metrics"><div><span>{tr("Nearby FIRs", "ಹತ್ತಿರದ ಎಫ್‌ಐಆರ್‌ಗಳು")}</span><strong>{selected.nearbyCases}</strong></div><div><span>{tr("7-day trend", "7 ದಿನಗಳ ಪ್ರವೃತ್ತಿ")}</span><strong className={selected.trend > 0 ? "trend-up" : ""}>{selected.trend > 0 ? "↗" : "↘"} {Math.abs(selected.trend)}%</strong></div></div>
             <div className="prediction-drivers"><h3>{tr("How this score was calculated", "ಈ ಅಂಕವನ್ನು ಹೇಗೆ ಲೆಕ್ಕ ಹಾಕಲಾಗಿದೆ")}</h3>{selectedDrivers(selected).map((driver, index) => <div key={driver}><span>{index + 1}</span><p>{driver}</p></div>)}</div>
             <div className="patrol-recommendation">

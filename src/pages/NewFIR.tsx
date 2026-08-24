@@ -191,31 +191,85 @@ const buildPayload = (form: FormState, user?: { employeeId: string } | null): Ca
 const inputClass =
   "w-full bg-shell border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-muted outline-none focus:border-brand/50 focus:ring-2 focus:ring-brand/15 disabled:opacity-55 disabled:cursor-not-allowed";
 
+const NEW_FIR_KANNADA: Record<string, string> = {
+  "Case identity": "ಪ್ರಕರಣದ ಗುರುತು",
+  "Case basics": "ಪ್ರಕರಣದ ಮೂಲ ವಿವರಗಳು",
+  "Officer assignment": "ಅಧಿಕಾರಿ ನಿಯೋಜನೆ",
+  CaseMasterID: "ಪ್ರಕರಣ ಮಾಸ್ಟರ್ ಐಡಿ",
+  CaseNo: "ಪ್ರಕರಣ ಸಂಖ್ಯೆ",
+  CrimeNo: "ಅಪರಾಧ ಸಂಖ್ಯೆ",
+  CrimeRegisteredDate: "ಅಪರಾಧ ನೋಂದಣಿ ದಿನಾಂಕ",
+  PoliceStation: "ಪೊಲೀಸ್ ಠಾಣೆ",
+  PoliceStationType: "ಪೊಲೀಸ್ ಠಾಣೆಯ ಪ್ರಕಾರ",
+  CrimeHead: "ಅಪರಾಧ ಶೀರ್ಷಿಕೆ",
+  CrimeSubHead: "ಅಪರಾಧ ಉಪಶೀರ್ಷಿಕೆ",
+  District: "ಜಿಲ್ಲೆ",
+  CaseCategory: "ಪ್ರಕರಣ ವರ್ಗ",
+  Gravity: "ಗಂಭೀರತೆ",
+  Status: "ಸ್ಥಿತಿ",
+  Court: "ನ್ಯಾಯಾಲಯ",
+  EmployeeID: "ಉದ್ಯೋಗಿ ಐಡಿ",
+  Officer: "ಅಧಿಕಾರಿ",
+  OfficerRank: "ಅಧಿಕಾರಿ ಹುದ್ದೆ",
+  OfficerDesignation: "ಅಧಿಕಾರಿ ಪದನಾಮ",
+  BriefFacts: "ಸಂಕ್ಷಿಪ್ತ ಸಂಗತಿಗಳು",
+  InfoReceivedPSDate: "ಠಾಣೆಗೆ ಮಾಹಿತಿ ಬಂದ ದಿನಾಂಕ",
+  IncidentFromDate: "ಘಟನೆ ಆರಂಭ ದಿನಾಂಕ",
+  IncidentToDate: "ಘಟನೆ ಅಂತ್ಯ ದಿನಾಂಕ",
+  Latitude: "ಅಕ್ಷಾಂಶ",
+  Longitude: "ರೇಖಾಂಶ",
+  Complainant: "ದೂರುದಾರ",
+  VictimNames: "ಸಂತ್ರಸ್ತರ ಹೆಸರುಗಳು",
+  VictimCount: "ಸಂತ್ರಸ್ತರ ಸಂಖ್ಯೆ",
+  AccusedNames: "ಆರೋಪಿತರ ಹೆಸರುಗಳು",
+  AccusedCount: "ಆರೋಪಿತರ ಸಂಖ್ಯೆ",
+  Acts: "ಕಾಯ್ದೆಗಳು",
+  Sections: "ಸೆಕ್ಷನ್‌ಗಳು",
+  ArrestCount: "ಬಂಧನಗಳ ಸಂಖ್ಯೆ",
+  ChargesheetCount: "ಆರೋಪಪಟ್ಟಿಗಳ ಸಂಖ್ಯೆ",
+  LatestChargesheetDate: "ಇತ್ತೀಚಿನ ಆರೋಪಪಟ್ಟಿ ದಿನಾಂಕ",
+  ChargesheetStatus: "ಆರೋಪಪಟ್ಟಿ ಸ್ಥಿತಿ",
+  "Select or type": "ಆಯ್ಕೆ ಮಾಡಿ ಅಥವಾ ಟೈಪ್ ಮಾಡಿ",
+  "Select or type crime head": "ಅಪರಾಧ ಶೀರ್ಷಿಕೆಯನ್ನು ಆಯ್ಕೆ ಮಾಡಿ ಅಥವಾ ಟೈಪ್ ಮಾಡಿ",
+  "Select or type crime sub-head": "ಅಪರಾಧ ಉಪಶೀರ್ಷಿಕೆಯನ್ನು ಆಯ್ಕೆ ಮಾಡಿ ಅಥವಾ ಟೈಪ್ ಮಾಡಿ",
+  "Select or type court": "ನ್ಯಾಯಾಲಯವನ್ನು ಆಯ್ಕೆ ಮಾಡಿ ಅಥವಾ ಟೈಪ್ ಮಾಡಿ",
+  "Select or type; separate multiple acts with semicolons": "ಆಯ್ಕೆ ಮಾಡಿ ಅಥವಾ ಟೈಪ್ ಮಾಡಿ; ಅನೇಕ ಕಾಯ್ದೆಗಳನ್ನು ಅರ್ಧವಿರಾಮದಿಂದ ಬೇರ್ಪಡಿಸಿ",
+  "Select or type; separate multiple sections with semicolons": "ಆಯ್ಕೆ ಮಾಡಿ ಅಥವಾ ಟೈಪ್ ಮಾಡಿ; ಅನೇಕ ಸೆಕ್ಷನ್‌ಗಳನ್ನು ಅರ್ಧವಿರಾಮದಿಂದ ಬೇರ್ಪಡಿಸಿ",
+  "This maps directly to the BriefFacts column.": "ಇದು ನೇರವಾಗಿ BriefFacts ಕಾಲಮ್‌ಗೆ ಹೊಂದಿಕೆಯಾಗುತ್ತದೆ.",
+  "Consolidated_Cases stores one complainant text value.": "Consolidated_Cases ಒಬ್ಬ ದೂರುದಾರರ ಪಠ್ಯ ಮೌಲ್ಯವನ್ನು ಸಂಗ್ರಹಿಸುತ್ತದೆ.",
+  "Enter one victim per line. Press Enter for each new name. Spaces in names are fully supported.": "ಪ್ರತಿ ಸಾಲಿನಲ್ಲಿ ಒಬ್ಬ ಸಂತ್ರಸ್ತರ ಹೆಸರನ್ನು ನಮೂದಿಸಿ. ಪ್ರತಿ ಹೊಸ ಹೆಸರಿಗೆ Enter ಒತ್ತಿರಿ.",
+  "Enter one accused per line. Press Enter for each new name. Spaces in names are fully supported.": "ಪ್ರತಿ ಸಾಲಿನಲ್ಲಿ ಒಬ್ಬ ಆರೋಪಿಯ ಹೆಸರನ್ನು ನಮೂದಿಸಿ. ಪ್ರತಿ ಹೊಸ ಹೆಸರಿಗೆ Enter ಒತ್ತಿರಿ.",
+};
+
+const newFirCopy = (english: string) => NEW_FIR_KANNADA[english] || english;
+
 const Section: React.FC<{ title?: string; children: React.ReactNode }> = ({
   title,
   children,
-}) => (
-  <div className="mb-5">
+}) => {
+  const { tr } = useLanguage();
+  return <div className="mb-5">
     {title && (
       <div className="text-xs text-muted mb-2 uppercase tracking-wide">
-        {title}
+        {tr(title, newFirCopy(title))}
       </div>
     )}
     {children}
-  </div>
-);
+  </div>;
+};
 
 const Field: React.FC<{
   label: string;
   children: React.ReactNode;
   hint?: string;
-}> = ({ label, children, hint }) => (
-  <label className="block">
-    <span className="block text-xs text-muted mb-1.5">{label}</span>
+}> = ({ label, children, hint }) => {
+  const { tr } = useLanguage();
+  return <label className="block">
+    <span className="block text-xs text-muted mb-1.5">{tr(label, newFirCopy(label))}</span>
     {children}
-    {hint && <span className="block text-[11px] text-muted mt-1">{hint}</span>}
-  </label>
-);
+    {hint && <span className="block text-[11px] text-muted mt-1">{tr(hint, newFirCopy(hint))}</span>}
+  </label>;
+};
 
 const OptionInput: React.FC<{
   label: string;
@@ -227,6 +281,7 @@ const OptionInput: React.FC<{
   disabled?: boolean;
   onOptionsOpen?: () => void;
 }> = ({ label, value, onChange, options, field, placeholder, disabled, onOptionsOpen }) => {
+  const { tr } = useLanguage();
   const listId = `fir-${field}-${React.useId().replace(/:/g, "")}`;
   const suggestions = useMemo(() => dedupeOptionValues(options), [options]);
 
@@ -242,7 +297,7 @@ const OptionInput: React.FC<{
           onFocus={onOptionsOpen}
           disabled={disabled}
           autoComplete="off"
-          placeholder={placeholder || "Select or type"}
+          placeholder={tr(placeholder || "Select or type", newFirCopy(placeholder || "Select or type"))}
           className={`${inputClass} new-fir-option-input pr-9`}
         />
         <span
@@ -321,8 +376,15 @@ const notificationMessage = (
     sent: number;
     failed: number;
   } | null,
+  language: "en" | "kn" = "en",
 ) => {
   if (!notifications) return "";
+  if (language === "kn") {
+    if (notifications.sent > 0 && notifications.failed === 0) return ` ${notifications.sent} ಅಧಿಕಾರಿಗೆ SMS ಎಚ್ಚರಿಕೆ ಕಳುಹಿಸಲಾಗಿದೆ.`;
+    if (notifications.sent > 0) return ` SMS ಎಚ್ಚರಿಕೆಗಳು: ${notifications.sent} ಕಳುಹಿಸಲಾಗಿದೆ, ${notifications.failed} ವಿಫಲವಾಗಿದೆ.`;
+    if (notifications.failed > 0) return " ಎಫ್‌ಐಆರ್ ಉಳಿಸಲಾಗಿದೆ, ಆದರೆ SMS ವಿತರಣೆ ವಿಫಲವಾಗಿದೆ. SMS ಸಂರಚನೆಯನ್ನು ಪರಿಶೀಲಿಸಿ.";
+    return " ದೃಢೀಕೃತ ಮತ್ತು ಒಪ್ಪಿಗೆ ನೀಡಿದ ಯಾವುದೇ ಅಧಿಕಾರಿ ಈ ಎಚ್ಚರಿಕೆಗೆ ಹೊಂದಿಕೆಯಾಗಲಿಲ್ಲ.";
+  }
   if (notifications.sent > 0 && notifications.failed === 0) {
     return ` SMS alert sent to ${notifications.sent} officer${notifications.sent === 1 ? "" : "s"}.`;
   }
@@ -343,11 +405,18 @@ const syncMessage = (
     sent: number;
     failed: number;
   } | null,
+  language: "en" | "kn" = "en",
 ) => {
+  if (language === "kn") {
+    if (sync.ok) return sync.skipped
+      ? "ಸ್ಥಳೀಯ ಕರಡು ಉಳಿಸಲಾಗಿದೆ. ಎಫ್‌ಐಆರ್ ಸಲ್ಲಿಸಿದಾಗ Google Sheets ನವೀಕರಿಸುತ್ತದೆ."
+      : `ಎಫ್‌ಐಆರ್ ಸಲ್ಲಿಸಲಾಗಿದೆ. Google Sheets ಮಾಸ್ಟರ್ ನವೀಕರಿಸಲಾಗಿದೆ.${notificationMessage(notifications, language)}`;
+    return `ಸ್ಥಳೀಯ ಉಳಿಸುವಿಕೆ ಪೂರ್ಣವಾಗಿದೆ, ಆದರೆ Google ಸಿಂಕ್‌ಗೆ ಗಮನ ಅಗತ್ಯ: ${sync.stderr || sync.message || "ಸ್ಕ್ರಿಪ್ಟ್ ವಿಫಲವಾಗಿದೆ"}`;
+  }
   if (sync.ok) {
     return sync.skipped
       ? "Local draft saved. Google Sheets will update once you click Submit FIR."
-      : `FIR submitted. Google Sheets master was updated.${notificationMessage(notifications)}`;
+      : `FIR submitted. Google Sheets master was updated.${notificationMessage(notifications, language)}`;
   }
   return `Local save complete, but Google sync needs attention: ${sync.stderr || sync.message || "script failed"}`;
 };
@@ -385,7 +454,7 @@ const readDraft = (key: string): FirDraft | null => {
 };
 
 const NewFIR: React.FC = () => {
-  const { tr } = useLanguage();
+  const { language, tr } = useLanguage();
   const navigate = useNavigate();
   const { id } = useParams();
   const editing = Boolean(id);
@@ -499,7 +568,7 @@ const NewFIR: React.FC = () => {
     if (!form.CrimeRegisteredDate || !form.PoliceStation || !form.CrimeHead) {
       setSaveState({
         status: "error",
-        message: "CrimeRegisteredDate, PoliceStation, and CrimeHead are required before the case row can be saved.",
+        message: tr("CrimeRegisteredDate, PoliceStation, and CrimeHead are required before the case row can be saved.", "ಪ್ರಕರಣದ ಸಾಲನ್ನು ಉಳಿಸುವ ಮೊದಲು ಅಪರಾಧ ನೋಂದಣಿ ದಿನಾಂಕ, ಪೊಲೀಸ್ ಠಾಣೆ ಮತ್ತು ಅಪರಾಧ ಶೀರ್ಷಿಕೆ ಅಗತ್ಯವಿದೆ."),
       });
       return null;
     }
@@ -518,7 +587,7 @@ const NewFIR: React.FC = () => {
         );
         setSaveState({
           status: "saved",
-          message: "Draft saved in this browser tab. Submit FIR to update Google Sheets.",
+          message: tr("Draft saved in this browser tab. Submit FIR to update Google Sheets.", "ಕರಡನ್ನು ಈ ಬ್ರೌಸರ್ ಟ್ಯಾಬ್‌ನಲ್ಲಿ ಉಳಿಸಲಾಗಿದೆ. Google Sheets ನವೀಕರಿಸಲು ಎಫ್‌ಐಆರ್ ಸಲ್ಲಿಸಿ."),
         });
         return {
           ok: true,
@@ -532,7 +601,7 @@ const NewFIR: React.FC = () => {
       } catch {
         setSaveState({
           status: "error",
-          message: "This browser could not save the draft. Keep this page open and try again.",
+          message: tr("This browser could not save the draft. Keep this page open and try again.", "ಈ ಬ್ರೌಸರ್ ಕರಡನ್ನು ಉಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ಈ ಪುಟವನ್ನು ತೆರೆದಿರಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."),
         });
         return null;
       }
@@ -540,7 +609,7 @@ const NewFIR: React.FC = () => {
 
     setSaveState({
       status: "saving",
-      message: "Submitting FIR and updating Google Sheets...",
+      message: tr("Submitting FIR and updating Google Sheets...", "ಎಫ್‌ಐಆರ್ ಸಲ್ಲಿಸಿ Google Sheets ನವೀಕರಿಸಲಾಗುತ್ತಿದೆ..."),
     });
 
     try {
@@ -557,7 +626,7 @@ const NewFIR: React.FC = () => {
       setLoadedKey(nextKey);
       setSaveState({
         status: result.sync.ok ? "saved" : "error",
-        message: syncMessage(result.sync, result.notifications),
+        message: syncMessage(result.sync, result.notifications, language),
       });
       await reload();
       return result;
@@ -586,7 +655,7 @@ const NewFIR: React.FC = () => {
     const result = await saveCurrentStep(true);
     if (result?.sync.ok) {
       sessionStorage.removeItem(draftKey);
-      setSuccessNotice(notificationMessage(result.notifications).trim());
+      setSuccessNotice(notificationMessage(result.notifications, language).trim());
       setSuccessRoute(`/fir/${caseRoute(result.case)}`);
     }
   };
@@ -689,13 +758,13 @@ const NewFIR: React.FC = () => {
       setAiReady(true);
       setSaveState({ 
         status: "saved", 
-        message: "AI Assistant extracted the available details. Review every field before saving or submitting."
+        message: tr("AI Assistant extracted the available details. Review every field before saving or submitting.", "ಎಐ ಸಹಾಯಕ ಲಭ್ಯವಿರುವ ವಿವರಗಳನ್ನು ಹೊರತೆಗೆದಿದೆ. ಉಳಿಸುವ ಅಥವಾ ಸಲ್ಲಿಸುವ ಮೊದಲು ಪ್ರತಿ ಕ್ಷೇತ್ರವನ್ನು ಪರಿಶೀಲಿಸಿ.")
       });
     } catch (err: any) {
       console.error("[Autonomous Auto-Fill Failure]:", err);
       setSaveState({ 
         status: "error", 
-        message: `AI Draft extraction error: ${err.message || "Failed to parse JSON format"}. Please review fields manually.`
+        message: tr(`AI Draft extraction error: ${err.message || "Failed to parse JSON format"}. Please review fields manually.`, "ಎಐ ಕರಡು ವಿವರ ಹೊರತೆಗೆಯುವಲ್ಲಿ ದೋಷವಾಗಿದೆ. ದಯವಿಟ್ಟು ಕ್ಷೇತ್ರಗಳನ್ನು ಕೈಯಾರೆ ಪರಿಶೀಲಿಸಿ.")
       });
     } finally {
       setAiLoading(false);
@@ -812,24 +881,24 @@ const NewFIR: React.FC = () => {
   };
 
   if (loading && editing && !existingCase) {
-    return <div className="p-6 text-sm text-muted">Loading case from Google Sheets...</div>;
+    return <div className="p-6 text-sm text-muted">{tr("Loading case from Google Sheets...", "Google Sheets ನಿಂದ ಪ್ರಕರಣ ಲೋಡ್ ಆಗುತ್ತಿದೆ...")}</div>;
   }
  
   if (error && editing && !existingCase) {
     return <div className="p-6 text-sm text-rose">{error}</div>;
   }
   if (editing && !loading && !existingCase) {
-    return <div className="p-6 text-sm text-muted">Case not found in Google Sheets master.</div>;
+    return <div className="p-6 text-sm text-muted">{tr("Case not found in Google Sheets master.", "Google Sheets ಮಾಸ್ಟರ್‌ನಲ್ಲಿ ಪ್ರಕರಣ ಕಂಡುಬಂದಿಲ್ಲ.")}</div>;
   }
 
   return (
     <div className="new-fir-page min-h-full overflow-x-hidden bg-ink text-white">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-ink px-4 py-3 sm:px-6">
         <h2 className="text-white text-sm font-medium">
-          {editing ? "Edit FIR" : "New FIR"}
+          {editing ? tr("Edit FIR", "ಎಫ್‌ಐಆರ್ ಸಂಪಾದಿಸಿ") : tr("New FIR", "ಹೊಸ ಎಫ್‌ಐಆರ್")}
         </h2>
         <div className="text-[11px] text-muted sm:text-xs">
-          Options: <span className="text-white">Live from Google Sheets</span>
+          {tr("Options", "ಆಯ್ಕೆಗಳು")}: <span className="text-white">{tr("Live from Google Sheets", "Google Sheets ನಿಂದ ನೇರ ಮಾಹಿತಿ")}</span>
         </div>
       </div>
 
@@ -842,24 +911,24 @@ const NewFIR: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-2 text-rose font-semibold text-base">
                     <AlertTriangle className="text-rose" size={20} />
-                    <span>Similar Case{duplicateCases.length > 1 ? 's' : ''} Found</span>
+                    <span>{tr(`Similar Case${duplicateCases.length > 1 ? "s" : ""} Found`, `ಹೋಲುವ ${duplicateCases.length > 1 ? "ಪ್ರಕರಣಗಳು" : "ಪ್ರಕರಣ"} ಕಂಡುಬಂದಿದೆ`)}</span>
                   </div>
                   <p className="text-xs text-muted mt-1">
-                    The details you entered match {duplicateCases.length} existing FIR{duplicateCases.length > 1 ? 's' : ''}. Review before submitting to avoid duplicates.
+                    {tr(`The details you entered match ${duplicateCases.length} existing FIR${duplicateCases.length > 1 ? "s" : ""}. Review before submitting to avoid duplicates.`, `ನೀವು ನಮೂದಿಸಿದ ವಿವರಗಳು ಈಗಿರುವ ${duplicateCases.length} ಎಫ್‌ಐಆರ್‌ಗೆ ಹೊಂದಿಕೆಯಾಗುತ್ತವೆ. ನಕಲು ತಪ್ಪಿಸಲು ಸಲ್ಲಿಸುವ ಮೊದಲು ಪರಿಶೀಲಿಸಿ.`)}
                   </p>
                 </div>
                 <button
                   onClick={() => setDuplicateModalOpen(false)}
                   className="shrink-0 text-muted hover:text-white text-xl leading-none"
-                  aria-label="Close"
+                  aria-label={tr("Close", "ಮುಚ್ಚಿ")}
                 >×</button>
               </div>
               <div className="overflow-y-auto max-h-[60vh] divide-y divide-line">
                 {duplicateCases.map((dc) => (
                   <div key={dc.CaseMasterID} className="px-6 py-4">
                     <div className="flex flex-wrap items-center gap-2 mb-3">
-                      <span className="text-white font-semibold text-sm">FIR No: {dc.CrimeNo || '—'}</span>
-                      <span className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted">ID: {dc.CaseMasterID}</span>
+                      <span className="text-white font-semibold text-sm">{tr("FIR No", "ಎಫ್‌ಐಆರ್ ಸಂಖ್ಯೆ")}: {dc.CrimeNo || '—'}</span>
+                      <span className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted">{tr("ID", "ಐಡಿ")}: {dc.CaseMasterID}</span>
                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                         (dc.Status || '').toLowerCase().includes('solved') || (dc.Status || '').toLowerCase().includes('closed')
                           ? 'bg-sage/15 text-sage' : 'bg-amber/15 text-amber'
@@ -871,19 +940,19 @@ const NewFIR: React.FC = () => {
                         }}
                         className="ml-auto px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose/20 text-rose border border-rose/30 hover:bg-rose/30"
                       >
-                        View Case
+                        {tr("View Case", "ಪ್ರಕರಣ ನೋಡಿ")}
                       </button>
                     </div>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
                       {[
-                        ['Police Station', dc.PoliceStation],
-                        ['Crime Head', dc.CrimeHead],
-                        ['Crime Sub-Head', dc.CrimeSubHead],
-                        ['Registered Date', dc.CrimeRegisteredDate],
-                        ['Complainant', dc.Complainant],
-                        ['Officer', dc.Officer],
-                        ['Accused', dc.AccusedNames],
-                        ['Victims', dc.VictimNames],
+                        [tr('Police Station', 'ಪೊಲೀಸ್ ಠಾಣೆ'), dc.PoliceStation],
+                        [tr('Crime Head', 'ಅಪರಾಧ ಶೀರ್ಷಿಕೆ'), dc.CrimeHead],
+                        [tr('Crime Sub-Head', 'ಅಪರಾಧ ಉಪಶೀರ್ಷಿಕೆ'), dc.CrimeSubHead],
+                        [tr('Registered Date', 'ನೋಂದಣಿ ದಿನಾಂಕ'), dc.CrimeRegisteredDate],
+                        [tr('Complainant', 'ದೂರುದಾರ'), dc.Complainant],
+                        [tr('Officer', 'ಅಧಿಕಾರಿ'), dc.Officer],
+                        [tr('Accused', 'ಆರೋಪಿತರು'), dc.AccusedNames],
+                        [tr('Victims', 'ಸಂತ್ರಸ್ತರು'), dc.VictimNames],
                       ].map(([label, val]) => val ? (
                         <div key={label} className="flex gap-1">
                           <span className="text-muted shrink-0">{label}:</span>
@@ -899,7 +968,7 @@ const NewFIR: React.FC = () => {
                   onClick={() => setDuplicateModalOpen(false)}
                   className="px-4 py-2 text-sm font-semibold rounded-lg border border-line text-muted hover:text-white hover:bg-panel"
                 >
-                  Continue Anyway
+                  {tr("Continue Anyway", "ಆದರೂ ಮುಂದುವರಿಸಿ")}
                 </button>
               </div>
             </div>
@@ -910,7 +979,7 @@ const NewFIR: React.FC = () => {
             onClick={() => setDuplicateModalOpen(true)}
             className="mx-auto max-w-6xl mb-4 w-full text-left rounded-xl border border-rose/30 bg-rose/10 px-4 py-3 text-sm text-rose hover:bg-rose/15 transition"
           >
-            <strong>{duplicateCases.length} similar case{duplicateCases.length > 1 ? 's' : ''} found</strong> — FIR {duplicateCases.map(d => d.CrimeNo).join(', ')}. Click to review.
+            <strong>{tr(`${duplicateCases.length} similar case${duplicateCases.length > 1 ? "s" : ""} found`, `${duplicateCases.length} ಹೋಲುವ ${duplicateCases.length > 1 ? "ಪ್ರಕರಣಗಳು" : "ಪ್ರಕರಣ"} ಕಂಡುಬಂದಿದೆ`)}</strong> — {tr("FIR", "ಎಫ್‌ಐಆರ್")} {duplicateCases.map(d => d.CrimeNo).join(', ')}. {tr("Click to review.", "ಪರಿಶೀಲಿಸಲು ಕ್ಲಿಕ್ ಮಾಡಿ.")}
           </button>
         )}
 
@@ -918,18 +987,18 @@ const NewFIR: React.FC = () => {
           <div className="flex flex-col gap-3 min-[600px]:flex-row min-[600px]:items-start min-[600px]:justify-between">
             <div className="min-w-0">
               <h1 className="text-lg font-semibold text-white">
-                {tr("AI FIR Draft Assistant", "AI FIR Draft Assistant")}
+                {tr("AI FIR Draft Assistant", "ಎಐ ಎಫ್‌ಐಆರ್ ಕರಡು ಸಹಾಯಕ")}
               </h1>
               <p className="text-xs text-muted mt-1">
-                Enter a complaint draft and review each step. Drafts stay in this browser tab; Submit FIR updates Google Sheets once.
+                {tr("Enter a complaint draft and review each step. Drafts stay in this browser tab; Submit FIR updates Google Sheets once.", "ದೂರಿನ ಕರಡನ್ನು ನಮೂದಿಸಿ ಮತ್ತು ಪ್ರತಿ ಹಂತವನ್ನು ಪರಿಶೀಲಿಸಿ. ಕರಡುಗಳು ಈ ಬ್ರೌಸರ್ ಟ್ಯಾಬ್‌ನಲ್ಲಿ ಉಳಿಯುತ್ತವೆ; ಎಫ್‌ಐಆರ್ ಸಲ್ಲಿಸಿದಾಗ Google Sheets ಒಮ್ಮೆ ನವೀಕರಿಸುತ್ತದೆ.")}
               </p>
             </div>
             <span className="max-w-full self-start break-all rounded-full border border-line px-2.5 py-1 text-[10px] text-muted">
               {editing
-                ? `Editing case: ${form.CaseMasterID || persistedCaseId}`
+                ? tr(`Editing case: ${form.CaseMasterID || persistedCaseId}`, `ಪ್ರಕರಣ ಸಂಪಾದಿಸಲಾಗುತ್ತಿದೆ: ${form.CaseMasterID || persistedCaseId}`)
                 : persisted
-                  ? "Local draft saved"
-                  : "New local draft"}
+                  ? tr("Local draft saved", "ಸ್ಥಳೀಯ ಕರಡು ಉಳಿಸಲಾಗಿದೆ")
+                  : tr("New local draft", "ಹೊಸ ಸ್ಥಳೀಯ ಕರಡು")}
             </span>
           </div>
 
@@ -938,7 +1007,7 @@ const NewFIR: React.FC = () => {
               value={complaint}
               onChange={(event) => setComplaint(event.target.value)}
               rows={3}
-              placeholder="Describe what happened, who reported it, where and when..."
+              placeholder={tr("Describe what happened, who reported it, where and when...", "ಏನಾಯಿತು, ಯಾರು ವರದಿ ಮಾಡಿದರು, ಎಲ್ಲಿ ಮತ್ತು ಯಾವಾಗ ಎಂದು ವಿವರಿಸಿ...")}
               className="w-full resize-none bg-panel border border-line rounded-xl p-3 text-sm text-white placeholder-muted outline-none focus:border-brand/50"
             />
            <button
@@ -947,7 +1016,7 @@ const NewFIR: React.FC = () => {
             disabled={!complaint.trim() || aiLoading}
             className="lg:w-48 rounded-xl bg-brand px-5 py-3 text-sm font-medium text-white disabled:opacity-40 transition hover:bg-brand/90"
             >
-            {aiLoading ? "Analyzing text..." : aiReady ? "Refresh Auto-Fill" : "Run Autonomous Fill"}
+            {aiLoading ? tr("Analyzing text...", "ಪಠ್ಯ ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ...") : aiReady ? tr("Refresh Auto-Fill", "ಸ್ವಯಂ ಭರ್ತಿ ನವೀಕರಿಸಿ") : tr("Run Autonomous Fill", "ಸ್ವಯಂ ಭರ್ತಿ ಪ್ರಾರಂಭಿಸಿ")}
           </button>
           </div>
 
@@ -1000,9 +1069,9 @@ const NewFIR: React.FC = () => {
                     </div>
                     <div className="min-w-0">
                       <div className={`text-sm font-medium ${active ? "text-white" : "text-muted"}`}>
-                        {item.title}
+                        {tr(item.title, ["", "ಪ್ರಕರಣದ ಮೂಲ ವಿವರಗಳು", "ಘಟನೆಯ ವಿವರಗಳು", "ದೂರುದಾರ", "ಸಂತ್ರಸ್ತರು", "ಆರೋಪಿತರು", "ಕಾಯ್ದೆಗಳು ಮತ್ತು ಸೆಕ್ಷನ್‌ಗಳು", "ಪರಿಶೀಲಿಸಿ ಮತ್ತು ಸಲ್ಲಿಸಿ"][item.id])}
                       </div>
-                      <div className="text-[11px] text-muted mt-0.5">{item.subtitle}</div>
+                      <div className="text-[11px] text-muted mt-0.5">{tr(item.subtitle, ["", "ಸಂಬಂಧಿತ ವಿವರಗಳನ್ನು ನಮೂದಿಸುವ ಮೊದಲು ಪ್ರಕರಣದ ಸಾಲನ್ನು ಉಳಿಸಿ", "ಸಂಗತಿಗಳು, ವರದಿ ದಿನಾಂಕ, ಘಟನೆ ಅವಧಿ ಮತ್ತು ಸ್ಥಳ", "ದೂರು ಸಲ್ಲಿಸಿದ ವ್ಯಕ್ತಿ ಅಥವಾ ಸಂಸ್ಥೆ", "ಸಂತ್ರಸ್ತರ ಹೆಸರುಗಳನ್ನು Consolidated_Cases ಸಾಲಿನಲ್ಲಿ ಸಂಗ್ರಹಿಸಲಾಗುತ್ತದೆ", "ಪ್ರಕರಣ ಅಸ್ತಿತ್ವದಲ್ಲಿದ್ದ ಬಳಿಕವೇ ಆರೋಪಿತರ ವಿವರಗಳು ತೆರೆಯುತ್ತವೆ", "ಕಾಯ್ದೆಗಳು, ಸೆಕ್ಷನ್‌ಗಳು, ಬಂಧನಗಳು ಮತ್ತು ಆರೋಪಪಟ್ಟಿ ಕ್ಷೇತ್ರಗಳು", "Google Sheets ಮಾಸ್ಟರ್ ನವೀಕರಿಸಲು ಒಮ್ಮೆ ಸಲ್ಲಿಸಿ"][item.id])}</div>
                     </div>
                   </div>
                 </button>
@@ -1016,12 +1085,12 @@ const NewFIR: React.FC = () => {
              <div className="mb-5 flex flex-col gap-2 min-[480px]:flex-row min-[480px]:items-start min-[480px]:justify-between sm:mb-6">
                <div className="min-w-0">
                  <h1 className="text-2xl font-schibsted text-white font-semibold">
-                  {meta.title}
+                  {tr(meta.title, ["", "ಪ್ರಕರಣದ ಮೂಲ ವಿವರಗಳು", "ಘಟನೆಯ ವಿವರಗಳು", "ದೂರುದಾರ", "ಸಂತ್ರಸ್ತರು", "ಆರೋಪಿತರು", "ಕಾಯ್ದೆಗಳು ಮತ್ತು ಸೆಕ್ಷನ್‌ಗಳು", "ಪರಿಶೀಲಿಸಿ ಮತ್ತು ಸಲ್ಲಿಸಿ"][step])}
                 </h1>
-                <p className="text-muted text-sm mt-1">{meta.subtitle}</p>
+                <p className="text-muted text-sm mt-1">{tr(meta.subtitle, ["", "ಸಂಬಂಧಿತ ವಿವರಗಳನ್ನು ನಮೂದಿಸುವ ಮೊದಲು ಪ್ರಕರಣದ ಸಾಲನ್ನು ಉಳಿಸಿ", "ಸಂಗತಿಗಳು, ವರದಿ ದಿನಾಂಕ, ಘಟನೆ ಅವಧಿ ಮತ್ತು ಸ್ಥಳ", "ದೂರು ಸಲ್ಲಿಸಿದ ವ್ಯಕ್ತಿ ಅಥವಾ ಸಂಸ್ಥೆ", "ಸಂತ್ರಸ್ತರ ಹೆಸರುಗಳನ್ನು Consolidated_Cases ಸಾಲಿನಲ್ಲಿ ಸಂಗ್ರಹಿಸಲಾಗುತ್ತದೆ", "ಪ್ರಕರಣ ಅಸ್ತಿತ್ವದಲ್ಲಿದ್ದ ಬಳಿಕವೇ ಆರೋಪಿತರ ವಿವರಗಳು ತೆರೆಯುತ್ತವೆ", "ಕಾಯ್ದೆಗಳು, ಸೆಕ್ಷನ್‌ಗಳು, ಬಂಧನಗಳು ಮತ್ತು ಆರೋಪಪಟ್ಟಿ ಕ್ಷೇತ್ರಗಳು", "Google Sheets ಮಾಸ್ಟರ್ ನವೀಕರಿಸಲು ಒಮ್ಮೆ ಸಲ್ಲಿಸಿ"][step])}</p>
               </div>
               <div className="text-xs text-muted">
-                Step <span className="text-white font-semibold">{step}</span> of {STEPS.length}
+                {tr("Step", "ಹಂತ")} <span className="text-white font-semibold">{step}</span> {tr("of", "ರಲ್ಲಿ")} {STEPS.length}
               </div>
             </div>
 
@@ -1065,7 +1134,7 @@ const NewFIR: React.FC = () => {
                 disabled={step === 1 || saveState.status === "saving"}
                 className="self-start px-3 py-2 text-sm text-muted hover:text-white disabled:opacity-40"
               >
-                &lt;- Previous
+                {tr("← Previous", "← ಹಿಂದಿನದು")}
               </button>
 
                <div className="new-fir-actions grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-3">
@@ -1074,7 +1143,7 @@ const NewFIR: React.FC = () => {
                   disabled={saveState.status === "saving"}
                    className="h-10 rounded-lg border border-brand/40 px-3 text-sm text-brand hover:bg-brand/10 disabled:opacity-40 sm:px-4"
                 >
-                  Fill demo
+                  {tr("Fill demo", "ಮಾದರಿ ತುಂಬಿಸಿ")}
                 </button>
 
                 <button
@@ -1082,7 +1151,7 @@ const NewFIR: React.FC = () => {
                   disabled={saveState.status === "saving"}
                    className="h-10 rounded-lg border border-line px-3 text-sm text-muted hover:text-white disabled:opacity-40 sm:px-4"
                 >
-                  {saveState.status === "saving" ? "Saving..." : "Save draft"}
+                  {saveState.status === "saving" ? tr("Saving...", "ಉಳಿಸಲಾಗುತ್ತಿದೆ...") : tr("Save draft", "ಕರಡು ಉಳಿಸಿ")}
                 </button>
 
                 {step < STEPS.length ? (
@@ -1091,7 +1160,7 @@ const NewFIR: React.FC = () => {
                     disabled={saveState.status === "saving"}
                      className="col-span-2 min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white shadow-glow hover:bg-brand/90 disabled:opacity-40 sm:px-5"
                   >
-                    Save draft & continue -&gt;
+                    {tr("Save draft & continue →", "ಕರಡು ಉಳಿಸಿ ಮತ್ತು ಮುಂದುವರಿಸಿ →")}
                   </button>
                 ) : (
                   <button
@@ -1099,7 +1168,7 @@ const NewFIR: React.FC = () => {
                     disabled={saveState.status === "saving"}
                      className="col-span-2 min-h-10 rounded-lg bg-sage px-4 py-2 text-sm font-medium text-white hover:bg-sage/90 disabled:opacity-40 sm:px-5"
                   >
-                    Submit FIR
+                    {tr("Submit FIR", "ಎಫ್‌ಐಆರ್ ಸಲ್ಲಿಸಿ")}
                   </button>
                 )}
               </div>
@@ -1114,9 +1183,9 @@ const NewFIR: React.FC = () => {
             <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-sage/15 text-sage border border-sage/30">
               OK
             </div>
-            <h2 className="text-center text-xl font-semibold text-white">FIR successfully submitted</h2>
+            <h2 className="text-center text-xl font-semibold text-white">{tr("FIR successfully submitted", "ಎಫ್‌ಐಆರ್ ಯಶಸ್ವಿಯಾಗಿ ಸಲ್ಲಿಸಲಾಗಿದೆ")}</h2>
             <p className="mt-2 text-center text-sm text-muted">
-              The FIR and its related details were saved to Google Sheets.
+              {tr("The FIR and its related details were saved to Google Sheets.", "ಎಫ್‌ಐಆರ್ ಮತ್ತು ಅದರ ಸಂಬಂಧಿತ ವಿವರಗಳನ್ನು Google Sheets ನಲ್ಲಿ ಉಳಿಸಲಾಗಿದೆ.")}
               {successNotice ? ` ${successNotice}` : ""}
             </p>
             <div className="mt-6 flex justify-center">
@@ -1125,7 +1194,7 @@ const NewFIR: React.FC = () => {
                 onClick={() => navigate(successRoute)}
                 className="h-10 rounded-lg bg-sage px-5 text-sm font-medium text-white hover:bg-sage/90"
               >
-                View FIR
+                {tr("View FIR", "ಎಫ್‌ಐಆರ್ ನೋಡಿ")}
               </button>
             </div>
           </div>
@@ -1153,7 +1222,9 @@ const Step1: React.FC<{
   crimeHeadOptions,
   crimeSubHeadOptions,
   refreshOptions,
-}) => (
+}) => {
+  const { tr } = useLanguage();
+  return (
   <>
     <Section title="Case identity">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1161,7 +1232,7 @@ const Step1: React.FC<{
           <input 
             value={form.CaseMasterID} 
             onChange={(event) => update("CaseMasterID", event.target.value)} 
-            placeholder="Enter random ID or auto-assign" 
+            placeholder={tr("Enter random ID or auto-assign", "ಯಾದೃಚ್ಛಿಕ ಐಡಿ ನಮೂದಿಸಿ ಅಥವಾ ಸ್ವಯಂ ನಿಯೋಜಿಸಿ")} 
             className={inputClass} 
           />
         </Field>
@@ -1169,7 +1240,7 @@ const Step1: React.FC<{
           <input
             value={form.CaseNo}
             onChange={(event) => update("CaseNo", event.target.value)}
-            placeholder="Enter random Case No"
+            placeholder={tr("Enter random Case No", "ಯಾದೃಚ್ಛಿಕ ಪ್ರಕರಣ ಸಂಖ್ಯೆ ನಮೂದಿಸಿ")}
             className={inputClass}
           />
         </Field>
@@ -1177,7 +1248,7 @@ const Step1: React.FC<{
           <input
             value={form.CrimeNo}
             onChange={(event) => update("CrimeNo", event.target.value)}
-            placeholder="Enter random Crime No"
+            placeholder={tr("Enter random Crime No", "ಯಾದೃಚ್ಛಿಕ ಅಪರಾಧ ಸಂಖ್ಯೆ ನಮೂದಿಸಿ")}
             className={inputClass}
           />
         </Field>
@@ -1186,7 +1257,7 @@ const Step1: React.FC<{
 
     <Section title="Case basics">
       <p className="mb-3 text-xs text-muted">
-        Suggestions refresh from Google Sheets when a field is opened. Select a suggestion or type a new value.
+        {tr("Suggestions refresh from Google Sheets when a field is opened. Select a suggestion or type a new value.", "ಕ್ಷೇತ್ರವನ್ನು ತೆರೆದಾಗ Google Sheets ನಿಂದ ಸಲಹೆಗಳು ನವೀಕರಿಸುತ್ತವೆ. ಸಲಹೆಯನ್ನು ಆಯ್ಕೆ ಮಾಡಿ ಅಥವಾ ಹೊಸ ಮೌಲ್ಯವನ್ನು ಟೈಪ್ ಮಾಡಿ.")}
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label="CrimeRegisteredDate">
@@ -1205,7 +1276,7 @@ const Step1: React.FC<{
             className={inputClass}
             onFocus={refreshOptions}
           >
-            <option value="">— Select Police Station —</option>
+            <option value="">— {tr("Select Police Station", "ಪೊಲೀಸ್ ಠಾಣೆ ಆಯ್ಕೆ ಮಾಡಿ")} —</option>
             {stationOptions.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
@@ -1320,7 +1391,8 @@ const Step1: React.FC<{
       </div>
     </Section>
   </>
-);
+  );
+};
 
 const Step2: React.FC<{ form: FormState; update: (field: string, value: string) => void }> = ({
   form,
@@ -1395,7 +1467,9 @@ const Step4: React.FC<{
   form: FormState;
   update: (field: string, value: string) => void;
   victimCount: number;
-}> = ({ form, update, victimCount }) => (
+}> = ({ form, update, victimCount }) => {
+  const { tr } = useLanguage();
+  return (
   <>
     <Field label="VictimNames" hint="Enter one victim per line. Press Enter for each new name. Spaces in names are fully supported.">
       <textarea
@@ -1406,21 +1480,24 @@ const Step4: React.FC<{
       />
     </Field>
     <div className="text-xs text-muted mt-3">
-      VictimCount will be saved as <span className="text-white font-semibold">{victimCount}</span>.
+      {tr("VictimCount will be saved as", "ಸಂತ್ರಸ್ತರ ಸಂಖ್ಯೆಯನ್ನು ಹೀಗೆ ಉಳಿಸಲಾಗುತ್ತದೆ")} <span className="text-white font-semibold">{victimCount}</span>.
     </div>
   </>
-);
+  );
+};
 
 const Step5: React.FC<{
   form: FormState;
   update: (field: string, value: string) => void;
   disabled: boolean;
   accusedCount: number;
-}> = ({ form, update, disabled, accusedCount }) => (
+}> = ({ form, update, disabled, accusedCount }) => {
+  const { tr } = useLanguage();
+  return (
   <>
     {disabled && (
       <div className="mb-4 rounded-lg border border-amber/30 bg-amber/10 text-amber text-sm px-4 py-3">
-        Save Case Basics first. Accused details cannot be entered until the case row exists.
+        {tr("Save Case Basics first. Accused details cannot be entered until the case row exists.", "ಮೊದಲು ಪ್ರಕರಣದ ಮೂಲ ವಿವರಗಳನ್ನು ಉಳಿಸಿ. ಪ್ರಕರಣದ ಸಾಲು ಅಸ್ತಿತ್ವದಲ್ಲಿರುವವರೆಗೆ ಆರೋಪಿತರ ವಿವರಗಳನ್ನು ನಮೂದಿಸಲು ಸಾಧ್ಯವಿಲ್ಲ.")}
       </div>
     )}
     <Field label="AccusedNames" hint="Enter one accused per line. Press Enter for each new name. Spaces in names are fully supported.">
@@ -1433,20 +1510,23 @@ const Step5: React.FC<{
       />
     </Field>
     <div className="text-xs text-muted mt-3">
-      AccusedCount will be saved as <span className="text-white font-semibold">{accusedCount}</span>.
+      {tr("AccusedCount will be saved as", "ಆರೋಪಿತರ ಸಂಖ್ಯೆಯನ್ನು ಹೀಗೆ ಉಳಿಸಲಾಗುತ್ತದೆ")} <span className="text-white font-semibold">{accusedCount}</span>.
     </div>
   </>
-);
+  );
+};
 
 const Step6: React.FC<{
   form: FormState;
   update: (field: string, value: string) => void;
   options: CaseOptions;
   refreshOptions: () => void;
-}> = ({ form, update, options, refreshOptions }) => (
+}> = ({ form, update, options, refreshOptions }) => {
+  const { tr } = useLanguage();
+  return (
   <>
     <p className="mb-4 text-xs text-muted">
-      Suggestions refresh from Google Sheets when a field is opened. You can also type values and separate multiple entries with semicolons.
+      {tr("Suggestions refresh from Google Sheets when a field is opened. You can also type values and separate multiple entries with semicolons.", "ಕ್ಷೇತ್ರವನ್ನು ತೆರೆದಾಗ Google Sheets ನಿಂದ ಸಲಹೆಗಳು ನವೀಕರಿಸುತ್ತವೆ. ಮೌಲ್ಯಗಳನ್ನು ಟೈಪ್ ಮಾಡಬಹುದು ಮತ್ತು ಅನೇಕ ನಮೂದುಗಳನ್ನು ಅರ್ಧವಿರಾಮ ಚಿಹ್ನೆಯಿಂದ ಬೇರ್ಪಡಿಸಬಹುದು.")}
     </p>
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <OptionInput
@@ -1499,9 +1579,11 @@ const Step6: React.FC<{
       />
     </div>
   </>
-);
+  );
+};
 
 const Step7: React.FC<{ form: FormState; persisted: boolean }> = ({ form, persisted }) => {
+  const { tr } = useLanguage();
   const summary = [
     ["CaseMasterID", form.CaseMasterID || "Assigned on save"],
     ["CaseNo", form.CaseNo || "Assigned on save"],
@@ -1518,19 +1600,19 @@ const Step7: React.FC<{ form: FormState; persisted: boolean }> = ({ form, persis
   return (
     <>
       <p className="text-sm text-muted mb-4">
-        Review the row before submission. Earlier steps are kept in this browser tab; Submit FIR writes to Google Sheets once.
+        {tr("Review the row before submission. Earlier steps are kept in this browser tab; Submit FIR writes to Google Sheets once.", "ಸಲ್ಲಿಸುವ ಮೊದಲು ಸಾಲನ್ನು ಪರಿಶೀಲಿಸಿ. ಹಿಂದಿನ ಹಂತಗಳು ಈ ಬ್ರೌಸರ್ ಟ್ಯಾಬ್‌ನಲ್ಲಿ ಉಳಿಯುತ್ತವೆ; ಎಫ್‌ಐಆರ್ ಸಲ್ಲಿಸಿದಾಗ Google Sheets ಗೆ ಒಮ್ಮೆ ಬರೆಯಲಾಗುತ್ತದೆ.")}
       </p>
 
       {!persisted && (
         <div className="mb-4 rounded-lg border border-amber/30 bg-amber/10 text-amber text-sm px-4 py-3">
-          Case Basics have not been saved as a local draft yet.
+          {tr("Case Basics have not been saved as a local draft yet.", "ಪ್ರಕರಣದ ಮೂಲ ವಿವರಗಳನ್ನು ಇನ್ನೂ ಸ್ಥಳೀಯ ಕರಡಾಗಿ ಉಳಿಸಲಾಗಿಲ್ಲ.")}
         </div>
       )}
 
       <div className="bg-panel border border-line rounded-lg divide-y divide-line">
         {summary.map(([label, value]) => (
           <div key={label} className="grid grid-cols-1 gap-1 px-4 py-2.5 sm:grid-cols-3 sm:gap-0">
-            <div className="text-xs text-muted uppercase tracking-wide">{label}</div>
+            <div className="text-xs text-muted uppercase tracking-wide">{tr(label, newFirCopy(label))}</div>
             <div className="break-words text-sm text-white sm:col-span-2">{value || "-"}</div>
           </div>
         ))}

@@ -25,6 +25,8 @@ import {
   GeneratedTask,
   TaskPriority,
   TaskCategory,
+  displayGeneratedTaskTitle,
+  displayGeneratedTaskContext,
 } from "../lib/taskEngine";
 import { useCompletedTasks, usePinnedTasks } from "../lib/pinnedTasks";
 
@@ -82,6 +84,7 @@ const getInitials = (name: string) => {
 };
 
 const TaskDescription: React.FC<{ text: string }> = ({ text }) => {
+  const { tr } = useLanguage();
   const [expanded, setExpanded] = useState(false);
   if (!text) return null;
   if (text.length < 120) {
@@ -100,7 +103,7 @@ const TaskDescription: React.FC<{ text: string }> = ({ text }) => {
         }} 
         className="inline-flex items-center gap-1 text-xs font-bold text-brand dark:text-steel hover:text-brand/80 dark:hover:text-steel/80 transition-colors focus:outline-none"
       >
-        <span>{expanded ? "Show Less" : "Show More"}</span>
+        <span>{expanded ? tr("Show Less", "ಕಡಿಮೆ ತೋರಿಸಿ") : tr("Show More", "ಇನ್ನಷ್ಟು ತೋರಿಸಿ")}</span>
         {expanded ? <ChevronUp size={12} strokeWidth={2.5} /> : <ChevronDown size={12} strokeWidth={2.5} />}
       </button>
     </div>
@@ -110,6 +113,7 @@ const TaskDescription: React.FC<{ text: string }> = ({ text }) => {
 // ─── Priority Badges ──────────────────────────────────────────────────────────
 
 const PriorityBadge: React.FC<{ priority: TaskPriority }> = ({ priority }) => {
+  const { tr } = useLanguage();
   const styles: Record<TaskPriority, { bg: string; text: string; dot: string; border: string }> = {
     critical: {
       bg: "bg-rose-50 dark:bg-rose/10",
@@ -142,7 +146,7 @@ const PriorityBadge: React.FC<{ priority: TaskPriority }> = ({ priority }) => {
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wider border ${style.bg} ${style.text} ${style.border}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-      {priority}
+      {tr(priority, { low: "ಕಡಿಮೆ", medium: "ಮಧ್ಯಮ", high: "ಹೆಚ್ಚು", critical: "ನಿರ್ಣಾಯಕ" }[priority])}
     </span>
   );
 };
@@ -164,6 +168,7 @@ const GeneratedTaskCard: React.FC<{
   onComplete: () => void;
 }> = ({ task, today, isPinned, onTogglePinned, onComplete }) => {
   const navigate = useNavigate();
+  const { language, tr } = useLanguage();
   const todayIso = today.toLocaleDateString("sv");
   const isOverdue = task.dueDate ? task.dueDate < todayIso : false;
   const openCase = () => navigate(`/fir/${encodeURIComponent(task.linkedFirNumber)}`);
@@ -183,7 +188,7 @@ const GeneratedTaskCard: React.FC<{
               onComplete();
             }}
             className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded border-2 border-line bg-panel text-transparent transition-colors hover:border-brand hover:text-brand/50"
-            aria-label={`Complete ${formatTaskTitle(task)}`}
+            aria-label={tr(`Complete ${formatTaskTitle(task)}`, `${displayGeneratedTaskTitle(task, "kn")} ಪೂರ್ಣಗೊಳಿಸಿ`)}
           >
             <Check size={12} strokeWidth={3} className="opacity-0 transition-opacity group-hover:opacity-40" />
           </button>
@@ -192,7 +197,7 @@ const GeneratedTaskCard: React.FC<{
             <div className="flex items-center gap-2 flex-wrap">
               <h3>
                 <button type="button" onClick={openCase} className="text-left text-sm font-bold tracking-tight text-ink transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:text-white dark:hover:text-steel">
-                  {formatTaskTitle(task)}
+                  {displayGeneratedTaskTitle(task, language)}
                 </button>
               </h3>
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -200,14 +205,14 @@ const GeneratedTaskCard: React.FC<{
                 {isOverdue && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:border-rose/25 dark:bg-rose/10 dark:text-rose">
                     <Clock size={10} className="animate-pulse" />
-                    Overdue
+                    {tr("Overdue", "ಅವಧಿ ಮೀರಿದೆ")}
                   </span>
                 )}
               </div>
             </div>
 
             <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300 font-medium">
-              {task.dueContext}
+              {displayGeneratedTaskContext(task, language)}
             </p>
           </div>
         </div>
@@ -225,8 +230,8 @@ const GeneratedTaskCard: React.FC<{
                 ? "border-amber/30 bg-amber/10 text-amber"
                 : "border-line text-muted hover:bg-panel hover:text-amber"
             }`}
-            aria-label={isPinned ? `Unpin ${task.title}` : `Pin ${task.title}`}
-            title={isPinned ? "Unpin task" : "Pin task"}
+            aria-label={isPinned ? tr(`Unpin ${task.title}`, `${displayGeneratedTaskTitle(task, "kn")} ಪಿನ್ ತೆಗೆದುಹಾಕಿ`) : tr(`Pin ${task.title}`, `${displayGeneratedTaskTitle(task, "kn")} ಪಿನ್ ಮಾಡಿ`)}
+            title={isPinned ? tr("Unpin task", "ಕಾರ್ಯದ ಪಿನ್ ತೆಗೆದುಹಾಕಿ") : tr("Pin task", "ಕಾರ್ಯ ಪಿನ್ ಮಾಡಿ")}
           >
             <Pin size={14} fill={isPinned ? "currentColor" : "none"} className={isPinned ? "rotate-45 transition-transform" : "transition-transform"} />
           </button>
@@ -238,8 +243,8 @@ const GeneratedTaskCard: React.FC<{
               openCase();
             }}
             className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted transition-colors hover:bg-panel hover:text-brand"
-            title="View Case Details"
-            aria-label={`View case details for FIR ${task.displayFirNumber}`}
+            title={tr("View Case Details", "ಪ್ರಕರಣದ ವಿವರಗಳನ್ನು ನೋಡಿ")}
+            aria-label={tr(`View case details for FIR ${task.displayFirNumber}`, `ಎಫ್‌ಐಆರ್ ${task.displayFirNumber} ಪ್ರಕರಣದ ವಿವರಗಳನ್ನು ನೋಡಿ`)}
           >
             <Activity size={14} />
           </button>
@@ -261,8 +266,9 @@ const ManualTaskCard: React.FC<{
   onDelete: () => void;
   onTogglePinned: () => void;
 }> = ({ task, isPinned, isOverdue, isDueToday, isDueTomorrow, onComplete, onDelete, onTogglePinned }) => {
+  const { language, tr } = useLanguage();
   const addedAtLabel = task.source === "manual" && task.createdAt
-    ? `Added ${new Date(task.createdAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`
+    ? tr(`Added ${new Date(task.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`, `${new Date(task.createdAt).toLocaleString("kn-IN", { dateStyle: "medium", timeStyle: "short" })} ಸೇರಿಸಲಾಗಿದೆ`)
     : "";
 
   return (
@@ -302,26 +308,26 @@ const ManualTaskCard: React.FC<{
               
               {task.source === "google_sheets" && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                  Imported
+                  {tr("Imported", "ಆಮದು ಮಾಡಲಾಗಿದೆ")}
                 </span>
               )}
               
               {isOverdue && task.status !== "completed" && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:border-rose/25 dark:bg-rose/10 dark:text-rose">
                   <Clock size={10} className="animate-pulse" />
-                  Overdue
+                  {tr("Overdue", "ಅವಧಿ ಮೀರಿದೆ")}
                 </span>
               )}
               
               {isDueToday && task.status !== "completed" && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:border-amber/25 dark:bg-amber/10 dark:text-amber-200">
-                  Due Today
+                  {tr("Due Today", "ಇಂದು ಗಡುವು")}
                 </span>
               )}
               
               {isDueTomorrow && task.status !== "completed" && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/5 dark:text-steel">
-                  Due Tomorrow
+                  {tr("Due Tomorrow", "ನಾಳೆ ಗಡುವು")}
                 </span>
               )}
             </div>
@@ -333,7 +339,7 @@ const ManualTaskCard: React.FC<{
             {task.dueDate && (
               <span className={`flex items-center gap-1.5 ${isOverdue ? "text-rose font-bold" : (isDueToday || isDueTomorrow) ? "text-amber font-bold" : ""}`}>
                 <Calendar size={13} strokeWidth={2.5} />
-                {new Date(task.dueDate).toLocaleDateString()}
+                {new Date(task.dueDate).toLocaleDateString(language === "kn" ? "kn-IN" : "en-IN")}
               </span>
             )}
             
@@ -370,7 +376,7 @@ const ManualTaskCard: React.FC<{
             onClick={onDelete}
             className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted transition-colors hover:bg-rose/10 hover:text-rose"
             aria-label={`Delete ${task.title}`}
-            title="Delete task"
+            title={tr("Delete task", "ಕಾರ್ಯ ಅಳಿಸಿ")}
           >
             <Trash2 size={14} />
           </button>
@@ -382,8 +388,8 @@ const ManualTaskCard: React.FC<{
                 ? "border-amber/30 bg-amber/10 text-amber"
                 : "border-line text-muted hover:bg-panel hover:text-amber"
             }`}
-            aria-label={isPinned ? `Unpin ${task.title}` : `Pin ${task.title}`}
-            title={isPinned ? "Unpin task" : "Pin task"}
+            aria-label={isPinned ? tr(`Unpin ${task.title}`, `${task.title} ಪಿನ್ ತೆಗೆದುಹಾಕಿ`) : tr(`Pin ${task.title}`, `${task.title} ಪಿನ್ ಮಾಡಿ`)}
+            title={isPinned ? tr("Unpin task", "ಕಾರ್ಯದ ಪಿನ್ ತೆಗೆದುಹಾಕಿ") : tr("Pin task", "ಕಾರ್ಯ ಪಿನ್ ಮಾಡಿ")}
           >
             <Pin size={14} fill={isPinned ? "currentColor" : "none"} className={isPinned ? "rotate-45" : ""} />
           </button>
@@ -417,7 +423,7 @@ const EmptyState: React.FC<{
 
 const TodoList: React.FC = () => {
   const { user } = useAuth();
-  const { tr } = useLanguage();
+  const { language, tr } = useLanguage();
   const { isPinned, togglePinned } = usePinnedTasks(user?.employeeId);
   const { isCompleted, markCompleted } = useCompletedTasks(user?.employeeId);
 
@@ -687,10 +693,10 @@ const TodoList: React.FC = () => {
                   </div>
                   <div className="min-w-0">
                     <h3 id="task-action-title" className="text-base font-bold text-ink dark:text-white">
-                      {deleting ? "Delete this task?" : "Mark as completed?"}
+                      {deleting ? tr("Delete this task?", "ಈ ಕಾರ್ಯವನ್ನು ಅಳಿಸಬೇಕೆ?") : tr("Mark as completed?", "ಪೂರ್ಣಗೊಂಡಿದೆ ಎಂದು ಗುರುತಿಸಬೇಕೆ?")}
                     </h3>
                     <p className="mt-1 text-sm leading-relaxed text-muted">
-                      {deleting ? "It will be removed from the shared list." : "It will leave your active task list."}
+                      {deleting ? tr("It will be removed from the shared list.", "ಇದನ್ನು ಹಂಚಿಕೆಯ ಪಟ್ಟಿಯಿಂದ ತೆಗೆದುಹಾಕಲಾಗುತ್ತದೆ.") : tr("It will leave your active task list.", "ಇದು ನಿಮ್ಮ ಸಕ್ರಿಯ ಕಾರ್ಯಪಟ್ಟಿಯಿಂದ ಹೊರಹೋಗುತ್ತದೆ.")}
                     </p>
                   </div>
                 </div>
@@ -699,10 +705,10 @@ const TodoList: React.FC = () => {
                 </p>
                 <div className="mt-4 grid grid-cols-2 gap-2.5">
                   <button type="button" onClick={() => setPendingAction(null)} className="h-9 rounded-lg border border-line px-4 text-sm font-semibold text-muted transition-colors hover:bg-panel hover:text-ink">
-                    Keep task
+                    {tr("Keep task", "ಕಾರ್ಯ ಉಳಿಸಿಕೊಳ್ಳಿ")}
                   </button>
                   <button type="button" onClick={() => void confirmPendingAction()} className={`h-9 rounded-lg px-4 text-sm font-semibold text-white transition-colors ${deleting ? "bg-rose hover:bg-rose/90" : "bg-brand hover:bg-brand/90"}`}>
-                    {deleting ? "Delete" : "Complete"}
+                    {deleting ? tr("Delete", "ಅಳಿಸಿ") : tr("Complete", "ಪೂರ್ಣಗೊಳಿಸಿ")}
                   </button>
                 </div>
               </div>
@@ -741,8 +747,8 @@ const TodoList: React.FC = () => {
               onClick={() => void handleSync()}
               disabled={syncing}
               className={`grid h-9 w-9 place-items-center rounded-lg border border-line text-muted transition-colors ${syncing ? "cursor-wait opacity-70" : "hover:bg-panel hover:text-ink"}`}
-              aria-label="Sync latest tasks"
-              title="Sync latest tasks"
+              aria-label={tr("Sync latest tasks", "ಇತ್ತೀಚಿನ ಕಾರ್ಯಗಳನ್ನು ಸಿಂಕ್ ಮಾಡಿ")}
+              title={tr("Sync latest tasks", "ಇತ್ತೀಚಿನ ಕಾರ್ಯಗಳನ್ನು ಸಿಂಕ್ ಮಾಡಿ")}
             >
               <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
             </button>
@@ -900,7 +906,7 @@ const TodoList: React.FC = () => {
                         <div className="flex items-center gap-2.5">
                           <span className={`h-2 w-2 rounded-full ${group.dot}`} aria-hidden="true" />
                           <h2 id={`task-group-${group.category}`} className="text-xs font-semibold uppercase tracking-wide text-ink">
-                            {tr(group.label, group.label)}
+                            {tr(group.label, { "Chargesheet Deadlines": "ಆರೋಪಪಟ್ಟಿ ಗಡುವುಗಳು", "Court Appearances": "ನ್ಯಾಯಾಲಯ ಹಾಜರಾತಿಗಳು", "Stalled Investigations": "ಸ್ಥಗಿತಗೊಂಡ ತನಿಖೆಗಳು", "Active Investigations": "ಸಕ್ರಿಯ ತನಿಖೆಗಳು" }[group.label] || group.label)}
                           </h2>
                           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-panel border border-line/30 text-muted">
                             {group.tasks.length} {group.tasks.length === 1 ? tr("task", "ಕಾರ್ಯ") : tr("tasks", "ಕಾರ್ಯಗಳು")}
@@ -1136,7 +1142,7 @@ const TodoList: React.FC = () => {
                                 <div className="space-y-1.5">
                                   <div className="flex items-center justify-between text-[10px] font-bold text-muted/80">
                                     <span>{barPct}%</span>
-                                    <span>{officer.total} / {maxTasks} max</span>
+                                    <span>{officer.total} / {maxTasks} {tr("max", "ಗರಿಷ್ಠ")}</span>
                                   </div>
                                   <div className="h-2 rounded-full bg-panel overflow-hidden border border-line/10">
                                     <div
@@ -1175,13 +1181,13 @@ const TodoList: React.FC = () => {
                 <h2 id="create-task-title" className="text-lg font-semibold text-ink">
                   {tr("Add a task", "ಕಾರ್ಯ ಸೇರಿಸಿ")}
                 </h2>
-                <p className="mt-0.5 text-sm text-muted">A quick reminder for your active list.</p>
+                <p className="mt-0.5 text-sm text-muted">{tr("A quick reminder for your active list.", "ನಿಮ್ಮ ಸಕ್ರಿಯ ಪಟ್ಟಿಗೆ ತ್ವರಿತ ಜ್ಞಾಪನೆ.")}</p>
               </div>
               <button 
                 type="button"
                 onClick={() => setShowNewTaskModal(false)} 
                 className="grid h-8 w-8 place-items-center rounded-lg text-muted transition-colors hover:bg-panel hover:text-ink"
-                aria-label="Close dialog"
+                aria-label={tr("Close dialog", "ಸಂವಾದ ಮುಚ್ಚಿ")}
               >
                 <X size={16} />
               </button>

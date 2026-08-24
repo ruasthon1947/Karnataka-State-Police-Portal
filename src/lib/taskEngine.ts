@@ -54,6 +54,32 @@ export type GeneratedTaskStats = {
   topTask: GeneratedTask | null;
 };
 
+/** Localizes generated task copy at render time without changing persisted data. */
+export function displayGeneratedTaskTitle(task: GeneratedTask, language: "en" | "kn") {
+  if (language !== "kn") return task.title;
+  const fir = `ಎಫ್‌ಐಆರ್ ${task.displayFirNumber}`;
+  if (task.category === "investigation") return `${fir} ತನಿಖೆ ಮಾಡಿ`;
+  if (task.category === "court") return `${fir} ನ್ಯಾಯಾಲಯ ಹಾಜರಾತಿಗೆ ಸಿದ್ಧತೆ ಮಾಡಿ`;
+  if (task.category === "followup") return `${fir} ಸ್ಥಗಿತಗೊಂಡ ತನಿಖೆಯನ್ನು ಅನುಸರಿಸಿ`;
+  return `${fir} ಆರೋಪಪಟ್ಟಿ ಸಲ್ಲಿಸಿ`;
+}
+
+export function displayGeneratedTaskContext(task: GeneratedTask, language: "en" | "kn") {
+  if (language !== "kn") return task.dueContext;
+  const numbers = task.dueContext.match(/\d+/g) || [];
+  if (task.category === "investigation") return "ಸ್ಥಿತಿ: ತನಿಖೆಯಲ್ಲಿದೆ";
+  if (task.category === "court") {
+    if (/TODAY/i.test(task.dueContext)) return "ನ್ಯಾಯಾಲಯದ ದಿನಾಂಕ ಇಂದು — ತಕ್ಷಣದ ಕ್ರಮ ಅಗತ್ಯ";
+    if (/TOMORROW/i.test(task.dueContext)) return "ನ್ಯಾಯಾಲಯ ಹಾಜರಾತಿ ನಾಳೆ";
+    if (/was/i.test(task.dueContext)) return `ನ್ಯಾಯಾಲಯದ ದಿನಾಂಕ ${numbers[0] || 0} ದಿನಗಳ ಹಿಂದೆ ಇತ್ತು — ತಕ್ಷಣ ಅನುಸರಿಸಿ`;
+    return `${numbers[0] || 0} ದಿನಗಳಲ್ಲಿ ನ್ಯಾಯಾಲಯ ಹಾಜರಾತಿ`;
+  }
+  if (task.category === "followup") return `${numbers[0] || 0} ದಿನಗಳ ಹಿಂದೆ ಸಲ್ಲಿಸಲಾಗಿದೆ — ಇನ್ನೂ ತೆರೆದಿದೆ`;
+  if (/OVERDUE/i.test(task.dueContext)) return `ಆರೋಪಪಟ್ಟಿ ${numbers[0] || 0} ದಿನ ವಿಳಂಬವಾಗಿದೆ — CrPC ಸೆ.167 ಉಲ್ಲಂಘನೆ`;
+  if (/TODAY/i.test(task.dueContext)) return `ಆರೋಪಪಟ್ಟಿ ಇಂದು ಸಲ್ಲಿಸಬೇಕು (${numbers[0] || 0} ದಿನಗಳ CrPC ಮಿತಿ)`;
+  return `${numbers[0] || 0} ದಿನಗಳಲ್ಲಿ ಆರೋಪಪಟ್ಟಿ ಸಲ್ಲಿಸಬೇಕು — ${numbers[1] || 0} ದಿನಗಳ CrPC ಮಿತಿ`;
+}
+
 // ─── Date Utilities ───────────────────────────────────────────────────────────
 
 /** Returns today as a local-timezone YYYY-MM-DD string. */

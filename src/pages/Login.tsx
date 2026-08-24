@@ -77,7 +77,7 @@ const Login: React.FC = () => {
             <span className="hidden leading-tight md:block">
               <span className="block font-semibold text-white">ಪೊಲೀಸ್ ಇಲಾಖೆ</span>
               <span className="block text-[9px] uppercase tracking-wide text-white/60">
-                Department of Police
+                {tr("Department of Police", "ಪೊಲೀಸ್ ಇಲಾಖೆ")}
               </span>
             </span>
           </div>
@@ -92,7 +92,7 @@ const Login: React.FC = () => {
               onChange={(event) => setLanguage(event.target.value as "en" | "kn")}
               className="gov-utility-control h-9 rounded-lg border border-white/20 bg-white/10 px-2.5 text-xs outline-none focus:border-gov-gold"
             >
-              <option value="en">English</option>
+              <option value="en">{tr("English", "ಇಂಗ್ಲಿಷ್")}</option>
               <option value="kn">ಕನ್ನಡ</option>
             </select>
             <button
@@ -188,7 +188,7 @@ const Login: React.FC = () => {
                 <input
                   value={id}
                   onChange={(event) => setId(event.target.value)}
-                  placeholder="e.g. KA-SI-10427"
+                  placeholder={tr("e.g. KA-SI-10427", "ಉದಾ. KA-SI-10427")}
                   autoComplete="username"
                   inputMode="text"
                   className="mt-2 h-11 w-full rounded-lg border border-line bg-panel px-3.5 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15"
@@ -234,7 +234,7 @@ const Login: React.FC = () => {
                     {tr("Access assistance", "ಪ್ರವೇಶ ಸಹಾಯ")}
                   </div>
                   <span className="shrink-0 rounded bg-amber/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber">
-                    Help
+                    {tr("Help", "ಸಹಾಯ")}
                   </span>
                 </div>
                 <div className="mt-2 grid gap-1 sm:grid-cols-2">
@@ -258,7 +258,7 @@ const Login: React.FC = () => {
           © ಕರ್ನಾಟಕ ಸರ್ಕಾರ · ಕರ್ನಾಟಕ ರಾಜ್ಯ ಪೊಲೀಸ್
         </div>
         <div className="mt-0.5">
-          Government of Karnataka · Karnataka State Police
+          {tr("Government of Karnataka · Karnataka State Police", "ಕರ್ನಾಟಕ ಸರ್ಕಾರ · ಕರ್ನಾಟಕ ರಾಜ್ಯ ಪೊಲೀಸ್")}
         </div>
         <div className="mt-1">
           {tr(
