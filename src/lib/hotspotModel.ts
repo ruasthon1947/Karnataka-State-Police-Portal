@@ -13,17 +13,22 @@ export type HotspotModelMetrics = {
   balancedAccuracy: number;
   precision: number;
   recall: number;
+  specificity: number;
   brierScore: number;
   validationSamples: number;
   validationPositives: number;
+  validationFrom: number;
+  validationThrough: number;
   trainingSamples: number;
   trainingPositives: number;
+  trainingThrough: number;
 };
 
 export type TrainedHotspotModel = {
-  version: "1.0";
+  version: "1.1";
   dataFingerprint: string;
   dataThrough: number;
+  trainedAt: number;
   hiddenWeights: number[][];
   hiddenBiases: number[];
   outputWeights: number[];
@@ -49,6 +54,7 @@ type ModelEvent = {
 
 type TrainingSample = {
   cutoff: number;
+  outcomeThrough: number;
   features: number[];
   target: 0 | 1;
 };
@@ -138,14 +144,18 @@ const createSamples = (events: ModelEvent[]) => {
 
     for (const cell of cells) {
       const cellEvents = byCell.get(cell) || [];
+      const priorEvents = cellEvents.filter((event) => event.occurredAt <= cutoff);
+      // A cell becomes eligible only after its first recorded FIR. Quiet later
+      // windows are real negative examples and must not be discarded.
+      if (!priorEvents.length) continue;
       const history30 = cellEvents.filter((event) => event.occurredAt <= cutoff && event.occurredAt > cutoff - (30 * DAY_MS));
       const recent7 = history30.filter((event) => event.occurredAt > cutoff - (7 * DAY_MS));
       const previous7 = history30.filter((event) => event.occurredAt <= cutoff - (7 * DAY_MS) && event.occurredAt > cutoff - (14 * DAY_MS));
-      if (!history30.length) continue;
       const trend = previous7.length
         ? ((recent7.length - previous7.length) / previous7.length) * 100
         : (recent7.length ? 100 : 0);
-      const severity = history30.reduce((sum, event) => sum + event.severity, 0) / history30.length;
+      const severityHistory = history30.length ? history30 : priorEvents.slice(-20);
+      const severity = severityHistory.reduce((sum, event) => sum + event.severity, 0) / severityHistory.length;
 
       for (const horizonDays of [1, 7, 30]) {
         if (cutoff + (horizonDays * DAY_MS) > lastDate) continue;
@@ -157,6 +167,7 @@ const createSamples = (events: ModelEvent[]) => {
           }, 0);
           samples.push({
             cutoff,
+            outcomeThrough: cutoff + (horizonDays * DAY_MS),
             features: rawFeatureVector({
               liveRisk: (history30.length / maximumHistory) * 100,
               recentCases: history30.length,
@@ -230,11 +241,15 @@ const validationMetrics = (model: TrainedHotspotModel, samples: TrainingSample[]
     balancedAccuracy: Math.round(((recall + specificity) / 2) * 100),
     precision: Math.round(precision * 100),
     recall: Math.round(recall * 100),
+    specificity: Math.round(specificity * 100),
     brierScore: Number((brierTotal / Math.max(samples.length, 1)).toFixed(3)),
     validationSamples: samples.length,
     validationPositives: samples.reduce((sum, sample) => sum + sample.target, 0),
+    validationFrom: Math.min(...samples.map((sample) => sample.cutoff)),
+    validationThrough: Math.max(...samples.map((sample) => sample.outcomeThrough)),
     trainingSamples: trainingSamples.length,
     trainingPositives: trainingSamples.reduce((sum, sample) => sum + sample.target, 0),
+    trainingThrough: Math.max(...trainingSamples.map((sample) => sample.outcomeThrough)),
   };
 };
 
@@ -252,9 +267,15 @@ export const trainHotspotModel = (records: FirRecord[]): HotspotTrainingResult =
   if (samples.length < 100) {
     return { model: null, reason: "The available history did not produce enough training windows.", datedGeocodedRecords: events.length, historyDays };
   }
-  const splitIndex = Math.floor(samples.length * 0.8);
-  const trainingSamples = samples.slice(0, splitIndex);
-  const validationSamples = samples.slice(splitIndex);
+  const cutoffs = Array.from(new Set(samples.map((sample) => sample.cutoff))).sort((left, right) => left - right);
+  const validationStart = cutoffs[Math.min(cutoffs.length - 1, Math.max(1, Math.floor(cutoffs.length * 0.8)))];
+  // Purge samples whose outcome window reaches into the holdout period. This
+  // prevents a 30-day training label from seeing incidents used by validation.
+  const trainingSamples = samples.filter((sample) => sample.outcomeThrough < validationStart);
+  const validationSamples = samples.filter((sample) => sample.cutoff >= validationStart);
+  if (trainingSamples.length < 80 || validationSamples.length < 20) {
+    return { model: null, reason: "The available history did not leave enough non-overlapping chronological validation windows.", datedGeocodedRecords: events.length, historyDays };
+  }
   const trainPositives = trainingSamples.reduce((sum, sample) => sum + sample.target, 0);
   const validationPositives = validationSamples.reduce((sum, sample) => sum + sample.target, 0);
   if (trainPositives < 10 || trainingSamples.length - trainPositives < 10 || validationPositives < 3 || validationSamples.length - validationPositives < 3) {
@@ -313,9 +334,10 @@ export const trainHotspotModel = (records: FirRecord[]): HotspotTrainingResult =
   }
 
   const model: TrainedHotspotModel = {
-    version: "1.0",
+    version: "1.1",
     dataFingerprint: modelFingerprint,
     dataThrough: events[events.length - 1].occurredAt,
+    trainedAt: Date.now(),
     hiddenWeights,
     hiddenBiases,
     outputWeights,
@@ -326,11 +348,15 @@ export const trainHotspotModel = (records: FirRecord[]): HotspotTrainingResult =
       balancedAccuracy: 0,
       precision: 0,
       recall: 0,
+      specificity: 0,
       brierScore: 0,
       validationSamples: 0,
       validationPositives: 0,
+      validationFrom: 0,
+      validationThrough: 0,
       trainingSamples: 0,
       trainingPositives: 0,
+      trainingThrough: 0,
     },
   };
   model.metrics = validationMetrics(model, validationSamples, trainingSamples);

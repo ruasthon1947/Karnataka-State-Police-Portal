@@ -180,6 +180,8 @@ export async function createTodo(req, taskData) {
 }
 
 export async function updateTodo(req, taskId, updates) {
+  const session = req?.session;
+  if (!session) throw httpError(401, "Your session has expired. Please sign in again.");
   const sheetId = getSheetId();
   updates = sanitizeTodoUpdates(updates);
   const tableData = await readTable(sheetId, TODO_TAB);
@@ -195,7 +197,6 @@ export async function updateTodo(req, taskId, updates) {
   }
   
   const existingTask = tableData.rows[idx];
-  const { session } = req;
   const stationLookup = await buildStationLookup();
   const withinStation = sameStation(existingTask.policeStation, session.policeStation, stationLookup);
   
@@ -225,6 +226,8 @@ export async function updateTodo(req, taskId, updates) {
 }
 
 export async function deleteTodo(req, taskId) {
+  const session = req?.session;
+  if (!session) throw httpError(401, "Your session has expired. Please sign in again.");
   const sheetId = getSheetId();
   const tableData = await readTable(sheetId, TODO_TAB);
 
@@ -232,7 +235,6 @@ export async function deleteTodo(req, taskId) {
     return { ok: true, deleted: false };
   }
 
-  const { session } = req;
   const taskToDelete = tableData.rows.find((r) => String(r.taskId).trim() === String(taskId).trim());
 
   if (!taskToDelete) {

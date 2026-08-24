@@ -677,6 +677,37 @@ html.dark .crime-intelligence-page {
 .intelligence-toolbar select:focus { border-color: var(--intel-cyan); }
 .intelligence-toolbar select:disabled { opacity: 0.45; }
 
+.live-sync-control {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(77, 226, 167, 0.3);
+  border-radius: 0.55rem;
+  background: rgba(77, 226, 167, 0.07);
+  padding: 0 0.75rem;
+  color: #20b978;
+  font-size: 0.65rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.live-sync-control i {
+  width: 0.48rem;
+  height: 0.48rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #4de2a7;
+  box-shadow: 0 0 0 4px rgba(77, 226, 167, 0.1), 0 0 13px rgba(77, 226, 167, 0.7);
+}
+
+.live-sync-control.is-syncing i { animation: live-sync-pulse 0.8s ease-in-out infinite alternate; }
+.live-sync-control:disabled { cursor: wait; opacity: 0.72; }
+
+@keyframes live-sync-pulse {
+  to { opacity: 0.35; transform: scale(0.7); }
+}
+
 .tilt-toggle {
   margin-left: auto;
   border: 1px solid var(--line);

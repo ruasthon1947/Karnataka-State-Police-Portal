@@ -1,13 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { todoFilterForSession } from "./localDbPlugin.mjs";
+import { attachSessionToRequest, todoFilterForSession } from "./localDbPlugin.mjs";
 import {
   computeTodoStats,
+  deleteTodo,
   filterTodosForAccess,
   sanitizeTodoCreate,
   sanitizeTodoUpdates,
+  updateTodo,
 } from "./todoService.mjs";
+
+test("verified sessions are attached before task updates and deletes", async () => {
+  const request = {};
+  const session = { employeeId: "5", role: "Constable", policeStation: "100" };
+  assert.equal(attachSessionToRequest(request, session), request);
+  assert.equal(request.session, session);
+  await assert.rejects(() => deleteTodo({}, "task-1"), /session has expired/i);
+  await assert.rejects(() => updateTodo({}, "task-1", { status: "completed" }), /session has expired/i);
+});
 
 test("constables only request their own station tasks while supervisors retain their scope", () => {
   const constable = {

@@ -244,6 +244,11 @@ export function todoFilterForSession(session) {
   return {};
 }
 
+export function attachSessionToRequest(req, session) {
+  req.session = session;
+  return req;
+}
+
 function clientKey(req) {
   const forwarded = String(req.headers["x-forwarded-for"] || "")
     .split(",")[0]
@@ -361,6 +366,9 @@ export async function handleApi(req, res, next) {
 
     const session = requireSession(req, res);
     if (!session) return;
+    // Todo service authorization reads the verified session from the request.
+    // Attach it once here so PATCH/DELETE cannot dereference an undefined user.
+    attachSessionToRequest(req, session);
 
     const todoFilter = todoFilterForSession(session);
 

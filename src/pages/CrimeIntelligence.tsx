@@ -44,7 +44,7 @@ const RiskRing: React.FC<{ risk: number; label: string }> = ({ risk, label }) =>
 
 const CrimeIntelligence: React.FC = () => {
   const { language, tr } = useLanguage();
-  const { records, loading, error } = useFirRecords();
+  const { records, loading, refreshing, lastUpdatedAt, error, reload } = useFirRecords();
   const [mode, setMode] = useState<MapMode>("live");
   const [crimeFilter, setCrimeFilter] = useState(ALL_CRIMES);
   const [horizonDays, setHorizonDays] = useState(7);
@@ -91,6 +91,13 @@ const CrimeIntelligence: React.FC = () => {
   const latestDate = dataset.latestRecordDate
     ? new Date(dataset.latestRecordDate).toLocaleDateString(language === "kn" ? "kn-IN" : "en-IN")
     : tr("Not available", "ಲಭ್ಯವಿಲ್ಲ");
+  const locale = language === "kn" ? "kn-IN" : "en-IN";
+  const lastSyncLabel = lastUpdatedAt
+    ? new Date(lastUpdatedAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : tr("Not synced", "ಸಿಂಕ್ ಆಗಿಲ್ಲ");
+  const validationRange = trainedModel
+    ? `${new Date(trainedModel.metrics.validationFrom).toLocaleDateString(locale)} – ${new Date(trainedModel.metrics.validationThrough).toLocaleDateString(locale)}`
+    : "";
 
   const mapPoints = useMemo(() => filteredHotspots.map((hotspot) => ({
     id: hotspot.id,
@@ -122,7 +129,7 @@ const CrimeIntelligence: React.FC = () => {
         station: selected.station,
         zone: selected.name,
         risk: selectedRisk,
-        mode: activeMode === "live" ? "Live FIR density" : `${horizonDays}-day AI forecast v${trainedModel?.version}`,
+        mode: activeMode === "live" ? "Live FIR density" : `${horizonDays}-day AI forecast`,
         peakWindow: selected.peakWindow,
       });
       const { sent, failed, eligible } = result.notifications;
@@ -167,14 +174,14 @@ const CrimeIntelligence: React.FC = () => {
         </div>
         <div className="model-signal" aria-label={forecastReady ? tr("Neural network validation result", "ನ್ಯೂರಲ್ ನೆಟ್‌ವರ್ಕ್ ಮೌಲ್ಯೀಕರಣ ಫಲಿತಾಂಶ") : tr("Seven-day FIR activity and geocoding coverage", "ಏಳು ದಿನಗಳ ಎಫ್‌ಐಆರ್ ಚಟುವಟಿಕೆ ಮತ್ತು ಜಿಯೋ-ಕೋಡಿಂಗ್ ವ್ಯಾಪ್ತಿ")}>
           {signalBars.map((signal, index) => <span key={index} title={`${signal.count}`} style={{ height: `${signal.height}%` }} />)}
-          <div><strong>{trainedModel ? trainedModel.metrics.balancedAccuracy : dataset.coveragePercentage}%</strong><small>{trainedModel ? tr("VALIDATED ACCURACY", "ಮೌಲ್ಯೀಕರಿಸಿದ ನಿಖರತೆ") : tr("GEOCODED FIRs", "ಜಿಯೋ-ಕೋಡ್ ಎಫ್‌ಐಆರ್‌ಗಳು")}</small></div>
+          <div><strong>{trainedModel ? trainedModel.metrics.balancedAccuracy : dataset.coveragePercentage}%</strong><small>{trainedModel ? tr("HOLDOUT BALANCED ACCURACY", "ಹೋಲ್ಡ್‌ಔಟ್ ಸಮತೋಲಿತ ನಿಖರತೆ") : tr("GEOCODED FIRs", "ಜಿಯೋ-ಕೋಡ್ ಎಫ್‌ಐಆರ್‌ಗಳು")}</small></div>
         </div>
       </section>
 
       <section className="intelligence-toolbar" aria-label={tr("Crime intelligence filters", "ಅಪರಾಧ ಗುಪ್ತಚರ ಫಿಲ್ಟರ್‌ಗಳು")}>
         <div className="mode-switch" role="group" aria-label={tr("Map mode", "ನಕ್ಷೆ ವಿಧಾನ")}>
           <button type="button" aria-pressed={activeMode === "live"} onClick={() => setMode("live")}>● {tr("Live crime", "ಲೈವ್ ಅಪರಾಧ")}</button>
-          <button type="button" disabled={!forecastReady || trainingPending} title={forecastReady ? undefined : training.reason} aria-pressed={activeMode === "forecast"} onClick={() => setMode("forecast")}>✦ {trainingPending ? tr("Training…", "ತರಬೇತಿ…") : tr("AI forecast v1.0", "ಎಐ ಮುನ್ಸೂಚನೆ v1.0")}</button>
+          <button type="button" disabled={!forecastReady || trainingPending} title={forecastReady ? undefined : training.reason} aria-pressed={activeMode === "forecast"} onClick={() => setMode("forecast")}>✦ {trainingPending ? tr("Training…", "ತರಬೇತಿ…") : tr("AI forecast", "ಎಐ ಮುನ್ಸೂಚನೆ")}</button>
         </div>
         <label><span>{tr("Crime type", "ಅಪರಾಧ ಪ್ರಕಾರ")}</span><select value={crimeFilter} onChange={(event) => setCrimeFilter(event.target.value)}>
           <option value={ALL_CRIMES}>{tr("All crime types", "ಎಲ್ಲಾ ಅಪರಾಧ ಪ್ರಕಾರಗಳು")}</option>
@@ -185,23 +192,9 @@ const CrimeIntelligence: React.FC = () => {
           <option value={7}>{tr("Next 7 days", "ಮುಂದಿನ 7 ದಿನಗಳು")}</option>
           <option value={30}>{tr("Next 30 days", "ಮುಂದಿನ 30 ದಿನಗಳು")}</option>
         </select></label>
+        <button type="button" className={`live-sync-control ${refreshing ? "is-syncing" : ""}`} disabled={loading || refreshing} onClick={() => void reload(true)} title={tr("Automatically checks the connected FIR register every 60 seconds", "ಸಂಪರ್ಕಿತ ಎಫ್‌ಐಆರ್ ದಾಖಲೆಯನ್ನು ಪ್ರತಿ 60 ಸೆಕೆಂಡಿಗೆ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪರಿಶೀಲಿಸುತ್ತದೆ")}><i /> <span>{refreshing ? tr("Syncing…", "ಸಿಂಕ್ ಆಗುತ್ತಿದೆ…") : tr(`Live sync · ${lastSyncLabel}`, `ಲೈವ್ ಸಿಂಕ್ · ${lastSyncLabel}`)}</span></button>
         <button type="button" className="tilt-toggle" aria-pressed={tilted} onClick={() => setTilted((value) => !value)}><span>◇</span> {tilted ? tr("3D explore", "3D ಅನ್ವೇಷಣೆ") : tr("2D overview", "2D ಅವಲೋಕನ")}</button>
       </section>
-
-      <div className={`intelligence-notice mode-definition ${activeMode === "forecast" ? "is-forecast" : "is-live"}`} role="status">
-        <span>{activeMode === "live" ? tr("LIVE DATA", "ಲೈವ್ ದತ್ತಾಂಶ") : tr("NEURAL FORECAST v1.0", "ನ್ಯೂರಲ್ ಮುನ್ಸೂಚನೆ v1.0")}</span>
-        {activeMode === "live"
-          ? tr("Dots use the exact latitude and longitude stored in Google Sheets. Percentages are relative 1.5 km FIR density scores from recorded data.", "ಚುಕ್ಕೆಗಳು Google Sheets ನಲ್ಲಿ ಸಂಗ್ರಹಿಸಿದ ನಿಖರ ಅಕ್ಷಾಂಶ ಮತ್ತು ರೇಖಾಂಶವನ್ನು ಬಳಸುತ್ತವೆ. ಶೇಕಡಾವಾರು ದಾಖಲಾದ ದತ್ತಾಂಶದಿಂದ 1.5 ಕಿ.ಮೀ ಸಂಬಂಧಿತ ಎಫ್‌ಐಆರ್ ಸಾಂದ್ರತೆ ಅಂಕಗಳಾಗಿವೆ.")
-          : tr(`Trained on ${trainedModel?.metrics.trainingSamples} historical windows and validated on ${trainedModel?.metrics.validationSamples} later windows. Balanced accuracy: ${trainedModel?.metrics.balancedAccuracy}%.`, `${trainedModel?.metrics.trainingSamples} ಐತಿಹಾಸಿಕ ಅವಧಿಗಳಲ್ಲಿ ತರಬೇತಿ ನೀಡಲಾಗಿದೆ ಮತ್ತು ನಂತರದ ${trainedModel?.metrics.validationSamples} ಅವಧಿಗಳಲ್ಲಿ ಮೌಲ್ಯೀಕರಿಸಲಾಗಿದೆ. ಸಮತೋಲಿತ ನಿಖರತೆ: ${trainedModel?.metrics.balancedAccuracy}%.`)}
-      </div>
-
-      {!loading && !trainingPending && !error && dataset.geocodedRecords > 0 && !trainedModel ? <div className="intelligence-notice model-training-notice" role="status">
-        <span>{tr("NEURAL TRAINING", "ನ್ಯೂರಲ್ ತರಬೇತಿ")}</span>
-        {tr(
-          `${training.reason} Available: ${training.datedGeocodedRecords} dated geocoded FIRs across ${training.historyDays} days.`,
-          `ನೈಜ ತರಬೇತಿ ಮತ್ತು ಕಾಲಾನುಕ್ರಮ ಮೌಲ್ಯೀಕರಣಕ್ಕೆ ಇನ್ನಷ್ಟು ದತ್ತಾಂಶ ಅಗತ್ಯವಿದೆ. ಪ್ರಸ್ತುತ: ${training.datedGeocodedRecords} ದಿನಾಂಕ ಹೊಂದಿರುವ ಜಿಯೋ-ಕೋಡ್ ಎಫ್‌ಐಆರ್‌ಗಳು, ${training.historyDays} ದಿನಗಳ ಇತಿಹಾಸ.`,
-        )}
-      </div> : null}
 
       {!loading && (error || dataset.geocodedRecords === 0) ? <div className="intelligence-notice data-warning" role="alert">
         <span>{tr("NO LIVE MAP DATA", "ಲೈವ್ ನಕ್ಷೆ ದತ್ತಾಂಶವಿಲ್ಲ")}</span>
@@ -246,9 +239,9 @@ const CrimeIntelligence: React.FC = () => {
         <div><span>{tr("High-score locations", "ಹೆಚ್ಚಿನ ಅಂಕದ ಸ್ಥಳಗಳು")}</span><strong>{highRiskCount}</strong><small>{tr("exact coordinates requiring attention", "ಗಮನ ಅಗತ್ಯವಿರುವ ನಿಖರ ನಿರ್ದೇಶಾಂಕಗಳು")}</small></div>
         <div><span>{tr("Average score", "ಸರಾಸರಿ ಅಂಕ")}</span><strong>{averageRisk}%</strong><small>{activeMode === "forecast" ? tr(`${horizonDays}-day neural forecast`, `${horizonDays} ದಿನಗಳ ನ್ಯೂರಲ್ ಮುನ್ಸೂಚನೆ`) : tr("recorded relative density", "ದಾಖಲಾದ ಸಂಬಂಧಿತ ಸಾಂದ್ರತೆ")}</small></div>
         <div><span>{tr("FIR rows analysed", "ವಿಶ್ಲೇಷಿಸಿದ ಎಫ್‌ಐಆರ್ ಸಾಲುಗಳು")}</span><strong>{records.length.toLocaleString(language === "kn" ? "kn-IN" : "en-IN")}</strong><small>{dataset.geocodedRecords.toLocaleString(language === "kn" ? "kn-IN" : "en-IN")} {tr("valid Bengaluru coordinates", "ಮಾನ್ಯ ಬೆಂಗಳೂರು ನಿರ್ದೇಶಾಂಕಗಳು")}</small></div>
-        <div><span>{trainedModel ? tr("Neural validation", "ನ್ಯೂರಲ್ ಮೌಲ್ಯೀಕರಣ") : tr("Latest FIR date", "ಇತ್ತೀಚಿನ ಎಫ್‌ಐಆರ್ ದಿನಾಂಕ")}</span><strong className="model-ready">{trainedModel ? `${trainedModel.metrics.balancedAccuracy}%` : latestDate}</strong><small>{trainedModel ? tr(`${trainedModel.metrics.validationSamples} chronological holdout samples · Brier ${trainedModel.metrics.brierScore}`, `${trainedModel.metrics.validationSamples} ಕಾಲಾನುಕ್ರಮ ಹೋಲ್ಡ್‌ಔಟ್ ಮಾದರಿಗಳು · ಬ್ರೈಯರ್ ${trainedModel.metrics.brierScore}`) : tr("from the connected case register", "ಸಂಪರ್ಕಿತ ಪ್ರಕರಣ ದಾಖಲೆಯಿಂದ")}</small></div>
+        <div><span>{trainedModel ? tr("Real holdout validation", "ನೈಜ ಹೋಲ್ಡ್‌ಔಟ್ ಮೌಲ್ಯೀಕರಣ") : tr("Latest FIR date", "ಇತ್ತೀಚಿನ ಎಫ್‌ಐಆರ್ ದಿನಾಂಕ")}</span><strong className="model-ready">{trainedModel ? `${trainedModel.metrics.balancedAccuracy}%` : latestDate}</strong><small>{trainedModel ? tr(`${validationRange} · ${trainedModel.metrics.validationSamples} matured outcomes · Brier ${trainedModel.metrics.brierScore}`, `${validationRange} · ${trainedModel.metrics.validationSamples} ಪೂರ್ಣಗೊಂಡ ಫಲಿತಾಂಶಗಳು · ಬ್ರೈಯರ್ ${trainedModel.metrics.brierScore}`) : tr(`Case register synced at ${lastSyncLabel}`, `ಪ್ರಕರಣ ದಾಖಲೆ ${lastSyncLabel}ಕ್ಕೆ ಸಿಂಕ್ ಆಗಿದೆ`)}</small></div>
       </section>
-      <p className="intelligence-disclaimer">{tr("Live scores are relative density calculations from recorded FIRs. AI forecasts are experimental operational aids, do not identify individuals, and never replace officer judgment.", "ಲೈವ್ ಅಂಕಗಳು ದಾಖಲಾದ ಎಫ್‌ಐಆರ್‌ಗಳಿಂದ ಸಂಬಂಧಿತ ಸಾಂದ್ರತೆ ಲೆಕ್ಕಾಚಾರಗಳಾಗಿವೆ. ಎಐ ಮುನ್ಸೂಚನೆಗಳು ಪ್ರಾಯೋಗಿಕ ಕಾರ್ಯಾಚರಣಾ ಸಹಾಯಕಗಳು; ಅವು ವ್ಯಕ್ತಿಗಳನ್ನು ಗುರುತಿಸುವುದಿಲ್ಲ ಮತ್ತು ಅಧಿಕಾರಿಯ ನಿರ್ಣಯವನ್ನು ಎಂದಿಗೂ ಬದಲಿಸುವುದಿಲ್ಲ.")}</p>
+      <p className="intelligence-disclaimer">{tr("The case register auto-syncs every 60 seconds and retrains only from dated, geocoded FIR outcomes. Displayed validation metrics come exclusively from later, matured, non-overlapping historical outcomes. AI forecasts remain operational aids and never replace officer judgment.", "ಪ್ರಕರಣ ದಾಖಲೆ ಪ್ರತಿ 60 ಸೆಕೆಂಡಿಗೆ ಸ್ವಯಂ-ಸಿಂಕ್ ಆಗುತ್ತದೆ ಮತ್ತು ದಿನಾಂಕ ಹೊಂದಿರುವ, ಜಿಯೋ-ಕೋಡ್ ಮಾಡಿದ ಎಫ್‌ಐಆರ್ ಫಲಿತಾಂಶಗಳಿಂದ ಮಾತ್ರ ಮರುತರಬೇತಿ ಪಡೆಯುತ್ತದೆ. ಪ್ರದರ್ಶಿಸಲಾದ ಮೌಲ್ಯೀಕರಣ ಅಳತೆಗಳು ನಂತರದ, ಪೂರ್ಣಗೊಂಡ, ಅತಿಕ್ರಮಿಸದ ಐತಿಹಾಸಿಕ ಫಲಿತಾಂಶಗಳಿಂದ ಮಾತ್ರ ಬರುತ್ತವೆ. ಎಐ ಮುನ್ಸೂಚನೆಗಳು ಅಧಿಕಾರಿಯ ನಿರ್ಣಯವನ್ನು ಬದಲಿಸುವುದಿಲ್ಲ.")}</p>
     </div>
   );
 };
