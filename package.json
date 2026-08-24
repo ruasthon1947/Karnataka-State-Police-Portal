@@ -1,0 +1,44 @@
+{
+  "name": "kspp-portal",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node catalyst-server.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test server/*.test.mjs",
+    "verify": "npm run typecheck && npm test && npm run build",
+    "appsail:prepare": "npm run build && node scripts/prepare-appsail.mjs"
+  },
+  "dependencies": {
+    "@google-cloud/speech": "^7.5.0",
+    "@google/genai": "^2.12.0",
+    "better-sqlite3": "^12.11.1",
+    "csv-parse": "^7.0.1",
+    "dotenv": "^17.4.2",
+    "firebase": "^12.16.0",
+    "google-auth-library": "^10.9.0",
+    "html2pdf.js": "^0.14.0",
+    "lucide-react": "^1.33.0",
+    "maplibre-gl": "^6.4.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.0",
+    "recharts": "^2.12.7",
+    "twilio": "^6.0.2"
+  },
+  "devDependencies": {
+    "@types/html2pdf.js": "^0.10.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.6",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.4"
+  }
+}

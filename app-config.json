@@ -1,0 +1,14 @@
+{
+  "command": "node catalyst-server.mjs",
+  "build_path": "./appsail-build",
+  "stack": "node20",
+  "env_variables": {
+    "NODE_ENV": "production"
+  },
+  "memory": 512,
+  "scripts": {
+    "preserve": "npm run build && node scripts/prepare-appsail.mjs",
+    "predeploy": "npm run build && node scripts/prepare-appsail.mjs"
+  },
+  "raw": {}
+}
