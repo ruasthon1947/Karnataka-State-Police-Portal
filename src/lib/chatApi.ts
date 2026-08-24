@@ -1,10 +1,27 @@
+// src/lib/chatApi.ts
+import { collection, deleteDoc, doc, getDocs, orderBy, query, setDoc } from "firebase/firestore";
 import { fetchCases } from "./cases";
+import { db } from "../firebase";
 
 export type ChatAttachment = {
   name: string;
   mimeType: string;
   content?: string;
   data?: string;
+};
+
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  ts: number;
+};
+
+export type FirestoreChatSession = {
+  id: string;
+  title: string;
+  timestamp: number;
+  messages: ChatMessage[];
 };
 
 function normalizedCrimeNumber(value: string): string {
@@ -94,4 +111,50 @@ export async function requestFirDraft(
     throw new Error("The AI did not return a valid FIR draft.");
   }
   return data.draft as Record<string, string>;
+}
+
+// -------------------------------------------------------------------
+// FIREBASE FIRESTORE SYNC HELPERS
+// -------------------------------------------------------------------
+
+/**
+ * Fetch all chat sessions for a logged-in user ordered by most recent
+ */
+export async function fetchUserChatsFromFirebase(userId: string): Promise<FirestoreChatSession[]> {
+  if (!userId) return [];
+  try {
+    const chatsRef = collection(db, "users", userId, "chat_sessions");
+    const q = query(chatsRef, orderBy("timestamp", "desc"));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map((docSnap) => docSnap.data() as FirestoreChatSession);
+  } catch (error) {
+    console.error("Error fetching chats from Firestore:", error);
+    return [];
+  }
+}
+
+/**
+ * Create or overwrite/merge a chat session for a logged-in user
+ */
+export async function saveChatToFirebase(userId: string, session: FirestoreChatSession): Promise<void> {
+  if (!userId || !session.id) return;
+  try {
+    const sessionRef = doc(db, "users", userId, "chat_sessions", session.id);
+    await setDoc(sessionRef, session, { merge: true });
+  } catch (error) {
+    console.error("Error saving chat to Firestore:", error);
+  }
+}
+
+/**
+ * Delete a chat session for a logged-in user
+ */
+export async function deleteChatFromFirebase(userId: string, sessionId: string): Promise<void> {
+  if (!userId || !sessionId) return;
+  try {
+    const sessionRef = doc(db, "users", userId, "chat_sessions", sessionId);
+    await deleteDoc(sessionRef);
+  } catch (error) {
+    console.error("Error deleting chat from Firestore:", error);
+  }
 }

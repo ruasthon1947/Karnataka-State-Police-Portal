@@ -5,6 +5,9 @@ import { GoogleGenAI } from "@google/genai";
 import { readExplicitTabRecords } from "./sheetsStore.mjs";
 import { casesFromGoogle } from "./googleSheets.mjs";
 
+// In-memory chat history storage (Replace with your database collection/table as needed)
+const chatHistoryStore = new Map();
+
 const GEMINI_KEYS = (process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || "")
   .split(",")
   .map((k) => k.trim())
@@ -50,11 +53,11 @@ export function normalizeCrimeNo(str) {
   const cleaned = String(str)
     .trim()
     .toUpperCase()
-    .replace(/^CR-?/i, ""); // Strip leading "CR-" or "CR"
+    .replace(/^CR-?/i, "");
 
   const parts = cleaned.split("/");
   if (parts.length === 2) {
-    const seq = parts[0].replace(/^0+/, ""); // Strip leading zeros from sequence
+    const seq = parts[0].replace(/^0+/, "");
     return `${seq}/${parts[1]}`;
   }
   return cleaned;
@@ -144,7 +147,6 @@ async function generateWithFallback(
 ) {
   let lastError = null;
 
-  // 1. Try Gemini API keys
   for (const modelName of FALLBACK_GEMINI_MODELS) {
     for (let i = 0; i < GEMINI_KEYS.length; i++) {
       const key = GEMINI_KEYS[i];
@@ -188,20 +190,16 @@ async function generateWithFallback(
         if (!continuation) throw new Error("Gemini returned an empty continuation.");
         return joinContinuation(text, continuation);
       } catch (err) {
-        const errorMsg = err.message || String(err);
         console.warn(`[Copilot Engine] ⚠️ Gemini Key #${i + 1} failed on '${modelName}' (${err.status || 'Quota/404'}). Retrying...`);
         lastError = err;
       }
     }
   }
 
-  // 2. Groq is a text fallback. Binary PDFs/images stay on the multimodal
-  // Gemini path so the assistant never pretends to have inspected a file.
   if (attachment?.data) {
     throw new Error(`All multimodal AI providers failed. Last error: ${lastError?.message}`);
   }
 
-  // 3. Try Groq API keys as fallback engine
   for (let i = 0; i < GROQ_KEYS.length; i++) {
     const key = GROQ_KEYS[i];
     try {
@@ -241,7 +239,6 @@ export function findMatchingCases(question, allCases) {
 
   const matched = new Set();
 
-  // 1. Direct CaseNo, CaseMasterID, CrimeNo exact matching
   for (const c of allCases) {
     if (!c) continue;
     const caseNo = String(c.CaseNo || "").toLowerCase().trim();
@@ -249,13 +246,11 @@ export function findMatchingCases(question, allCases) {
     const caseMasterId = String(c.CaseMasterID || "").toLowerCase().trim();
     const normCrime = normalizeCrimeNo(c.CrimeNo).toLowerCase();
 
-    // Check CaseNo
     if (caseNo && (qLower.includes(caseNo) || qClean.includes(caseNo))) {
       matched.add(c);
       continue;
     }
 
-    // Check CaseNo without FIR/ prefix (e.g. 2026/1042)
     if (caseNo.startsWith("fir/")) {
       const bareNo = caseNo.replace(/^fir\//i, "");
       if (bareNo && (qLower.includes(bareNo) || qClean.includes(bareNo))) {
@@ -264,7 +259,6 @@ export function findMatchingCases(question, allCases) {
       }
     }
 
-    // Check CaseMasterID as full standalone word
     if (caseMasterId) {
       const re = new RegExp(`\\b${caseMasterId}\\b`, "i");
       if (re.test(qClean)) {
@@ -273,16 +267,12 @@ export function findMatchingCases(question, allCases) {
       }
     }
 
-    // Check CrimeNo
     if (crimeNo && (qLower.includes(crimeNo) || qClean.includes(crimeNo))) {
       matched.add(c);
       continue;
     }
 
-    // Check normalized CrimeNo (e.g. CR-6114/2026 -> 6114/2026)
     if (normCrime && normCrime.length >= 4) {
-      // Compare complete crime-number tokens. A substring comparison makes
-      // 1/2026 incorrectly match a query for 11/2026.
       if (queryCrimeNumbers.includes(normCrime)) {
         matched.add(c);
         continue;
@@ -292,7 +282,6 @@ export function findMatchingCases(question, allCases) {
 
   if (matched.size > 0) return Array.from(matched);
 
-  // 2. Token numeric matching for whole numeric tokens in query
   const numbersInQuery = qClean.match(/\b\d{3,16}\b/g) || [];
   if (numbersInQuery.length > 0) {
     for (const c of allCases) {
@@ -302,7 +291,7 @@ export function findMatchingCases(question, allCases) {
       const crimeNo = String(c.CrimeNo || "").toLowerCase().trim();
 
       for (const num of numbersInQuery) {
-        if (num === "2026") continue; // skip common current year standalone token
+        if (num === "2026") continue;
         if (caseMasterId === num || caseNo === num || caseNo.endsWith(`/${num}`) || crimeNo === num || crimeNo.endsWith(`/${num}`)) {
           matched.add(c);
         }
@@ -311,7 +300,6 @@ export function findMatchingCases(question, allCases) {
     if (matched.size > 0) return Array.from(matched);
   }
 
-  // 3. Date / Timeframe query matching ("this week", "today", "this month")
   const now = new Date();
   const todayStr = now.toISOString().split("T")[0];
 
@@ -340,8 +328,6 @@ export function findMatchingCases(question, allCases) {
       }
     }
 
-    // A timeframe must not discard the rest of the query. For example,
-    // "FIRs in Whitefield last week" must remain restricted to Whitefield.
     const filterTerms = qClean
       .split(/\s+/)
       .map(normalizeLocationOrTerm)
@@ -353,10 +339,8 @@ export function findMatchingCases(question, allCases) {
     });
   }
 
-  // 4. Multi-term Category / Station search matching (e.g. kidnapping in whitefield)
   const tokens = qClean.split(/\s+/).map(normalizeLocationOrTerm).filter(t => t.length > 2 && !STOP_WORDS.has(t));
   if (tokens.length > 0) {
-    // Try matching ALL search tokens in the row
     for (const c of allCases) {
       const rowStr = Object.values(c).join(" ").toLowerCase();
       if (tokens.every(term => {
@@ -370,7 +354,6 @@ export function findMatchingCases(question, allCases) {
     }
     if (matched.size > 0) return Array.from(matched);
 
-    // Fallback: match ANY significant search token
     for (const c of allCases) {
       const rowStr = Object.values(c).join(" ").toLowerCase();
       if (tokens.some(term => {
@@ -388,9 +371,6 @@ export function findMatchingCases(question, allCases) {
   return [];
 }
 
-/**
- * Dedicated FIR Auto-Fill Exporter for NewFIR
- */
 const FIR_DRAFT_FIELDS = [
   "CaseMasterID", "CaseNo", "CrimeNo", "CrimeRegisteredDate",
   "CrimeHead", "CrimeSubHead", "PoliceStation", "PoliceStationType",
@@ -554,9 +534,6 @@ ${JSON.stringify(String(unstructuredText || "").slice(0, 30_000))}`;
   try {
     return normalizeFirDraft(parseFirDraftJson(rawDraft), unstructuredText, context);
   } catch {
-    // Some providers occasionally emit an otherwise correct object with an
-    // unescaped quote in a narrative field.  Repair it before returning any
-    // draft to the browser, rather than making the officer handle AI syntax.
     const repairedDraft = await generateWithFallback(
       `Return a valid JSON object only. Repair the following FIR draft without changing its facts. Escape all quotes and line breaks inside string values.\n\n${rawDraft}`,
       1500,
@@ -622,6 +599,68 @@ export function isCaseRecordQuestion(question) {
     .test(question);
 }
 
+// ==========================================
+// CHAT SESSION & HISTORY MANAGEMENT HELPERS
+// ==========================================
+
+/**
+ * Saves or updates a user chat session.
+ */
+export async function saveChatSession(userId, sessionId, messages, title = "New Session") {
+  if (!userId || !sessionId) return null;
+  const userKey = String(userId);
+  const userSessions = chatHistoryStore.get(userKey) || [];
+  
+  const updatedTitle = messages.length > 0 && messages[0].content 
+    ? messages[0].content.slice(0, 30) + (messages[0].content.length > 30 ? "..." : "")
+    : title;
+
+  const existingIdx = userSessions.findIndex((s) => s.id === sessionId);
+  const sessionData = {
+    id: sessionId,
+    userId: userKey,
+    title: updatedTitle,
+    messages,
+    updatedAt: new Date().toISOString()
+  };
+
+  if (existingIdx >= 0) {
+    userSessions[existingIdx] = sessionData;
+  } else {
+    userSessions.unshift(sessionData);
+  }
+
+  chatHistoryStore.set(userKey, userSessions);
+  return sessionData;
+}
+
+/**
+ * Gets all saved sessions for a given user.
+ */
+export async function getUserChatHistory(userId) {
+  if (!userId) return [];
+  return chatHistoryStore.get(String(userId)) || [];
+}
+
+/**
+ * Gets a specific session by ID.
+ */
+export async function getSessionById(userId, sessionId) {
+  const userSessions = await getUserChatHistory(userId);
+  return userSessions.find((s) => s.id === sessionId) || null;
+}
+
+/**
+ * Deletes a session by ID.
+ */
+export async function deleteChatSession(userId, sessionId) {
+  const userKey = String(userId);
+  const userSessions = chatHistoryStore.get(userKey) || [];
+  const filtered = userSessions.filter((s) => s.id !== sessionId);
+  chatHistoryStore.set(userKey, filtered);
+  return true;
+}
+
 export async function handleChatQuery({
   question,
   role,
@@ -630,9 +669,10 @@ export async function handleChatQuery({
   language,
   history,
   attachment,
+  sessionId,
+  userId
 }) {
   try {
-    // Check if the query is an FIR draft auto-fill request
     if (String(question || "").toLowerCase().includes("extract fir details into json format")) {
       return JSON.stringify(await generateFirDraft(question));
     }
@@ -655,8 +695,8 @@ ${attachment.content}
 Inspect it directly and answer only what was asked. Do not transcribe the entire file unless explicitly requested.`
       : "No file is attached.";
 
-    // General questions do not need a database round trip or case data in the
-    // prompt. This makes them faster, cheaper, and independent of Sheets uptime.
+    let answer = "";
+
     if (!asksForCaseRecords) {
       const generalPrompt = `You are the Karnataka Police Copilot for authorized officers.
 ${languageInstruction}
@@ -669,108 +709,92 @@ ${conversationText(recentHistory)}
 ${attachmentInstruction}
 
 Current officer question: ${JSON.stringify(question)}`;
-      return await generateWithFallback(
+
+      answer = await generateWithFallback(
         generalPrompt,
         question.length > 300 ? 1100 : 800,
         false,
         attachment,
       );
-    }
+    } else {
+      const [caseMasterRows, accusedRows, complainantRows, consolidatedData] = await Promise.all([
+        readExplicitTabRecords("CaseMaster").catch(() => []),
+        readExplicitTabRecords("Accused").catch(() => []),
+        readExplicitTabRecords("ComplainantDetails").catch(() => []),
+        casesFromGoogle().catch(() => ({ rows: [] }))
+      ]);
 
-    // 1. Fetch tables simultaneously
-    const [caseMasterRows, accusedRows, complainantRows, consolidatedData] = await Promise.all([
-      readExplicitTabRecords("CaseMaster").catch(() => []),
-      readExplicitTabRecords("Accused").catch(() => []),
-      readExplicitTabRecords("ComplainantDetails").catch(() => []),
-      casesFromGoogle().catch(() => ({ rows: [] }))
-    ]);
+      const sourceCases = consolidatedData.rows && consolidatedData.rows.length > 0
+        ? consolidatedData.rows
+        : caseMasterRows;
+      const allCases = sourceCases;
 
-    // Use consolidated rows as primary case records since it merges CaseMaster and full details
-    const sourceCases = consolidatedData.rows && consolidatedData.rows.length > 0
-      ? consolidatedData.rows
-      : caseMasterRows;
-    // The assistant powers the same shared statewide case lookup as the
-    // dashboard.  Do not reduce its source to the signed-in officer's small
-    // assignment list, otherwise valid FIR queries incorrectly return zero.
-    const allCases = sourceCases;
+      let contextualRows = findMatchingCases(searchQuestion, allCases);
+      const matchingCount = contextualRows.length;
 
-    let contextualRows = findMatchingCases(searchQuestion, allCases);
-    const matchingCount = contextualRows.length;
+      if (matchingCount === 0) {
+        answer = language === "kn"
+          ? `ಗೌರವಾನ್ವಿತ ಅಧಿಕಾರಿಗಳೇ, ನಿಮ್ಮ ಅಧಿಕಾರ ವ್ಯಾಪ್ತಿಯಲ್ಲಿ ಈ ಅವಧಿಗೆ/ವಿನಂತಿಗೆ ("${question}") ಸಂಬಂಧಿಸಿದಂತೆ **0** ಪ್ರಕರಣಗಳು ದಾಖಲಾಗಿವೆ (ಒಟ್ಟು ಸಿಸ್ಟಮ್ ಪ್ರಕರಣಗಳು: ${allCases.length}).`
+          : `Officer, based on verified database records, there are currently **0** cases registered matching your request ("${question}"). (Total system cases: ${allCases.length}).`;
+      } else {
+        const asksForComplainant = /\bcomplainant\b/i.test(question || "");
+        const asksForAccused = /\baccused|\baccuse[d]?\b/i.test(question || "");
 
-    if (matchingCount === 0) {
-      return language === "kn"
-        ? `ಗೌರವಾನ್ವಿತ ಅಧಿಕಾರಿಗಳೇ, ನಿಮ್ಮ ಅಧಿಕಾರ ವ್ಯಾಪ್ತಿಯಲ್ಲಿ ಈ ಅವಧಿಗೆ/ವಿನಂತಿಗೆ ("${question}") ಸಂಬಂಧಿಸಿದಂತೆ **0** ಪ್ರಕರಣಗಳು ದಾಖಲಾಗಿವೆ (ಒಟ್ಟು ಸಿಸ್ಟಮ್ ಪ್ರಕರಣಗಳು: ${allCases.length}).`
-        : `Officer, based on verified database records, there are currently **0** cases registered matching your request ("${question}"). (Total system cases: ${allCases.length}).`;
-    }
+        if (matchingCount === 1 && asksForComplainant && asksForAccused) {
+          const record = contextualRows[0];
+          const reference = record.CrimeNo || record.CaseNo || record.CaseMasterID || "Matched case";
+          const complainant = record.Complainant || "Not recorded";
+          const accused = record.AccusedNames || "Not recorded";
+          answer = `📌 **Case:** ${reference}\n👤 **Complainant:** ${complainant}\n🚨 **Accused:** ${accused}`;
+        } else {
+          contextualRows = contextualRows.slice(0, 3).map(cCase => {
+            if (!cCase) return {};
+            const caseId = String(cCase.CaseMasterID || "").trim();
+            
+            const relatedAccusedList = accusedRows
+              .filter(a => a && String(a.CaseMasterID || "").trim() === caseId)
+              .map(a => `${a.AccusedName || "Unknown"}${a.AgeYear ? ` (${a.AgeYear}y)` : ""}`)
+              .join(", ");
 
-    // Factual identity lookups should be answered from the matched row, not
-    // generated by a model. This preserves the exact complainant/accused
-    // names and avoids partial or truncated chat responses.
-    const asksForComplainant = /\bcomplainant\b/i.test(question || "");
-    const asksForAccused = /\baccused|\baccuse[d]?\b/i.test(question || "");
-    if (matchingCount === 1 && asksForComplainant && asksForAccused) {
-      const record = contextualRows[0];
-      const reference = record.CrimeNo || record.CaseNo || record.CaseMasterID || "Matched case";
-      const complainant = record.Complainant || "Not recorded";
-      const accused = record.AccusedNames || "Not recorded";
-      return `📌 **Case:** ${reference}\n👤 **Complainant:** ${complainant}\n🚨 **Accused:** ${accused}`;
-    }
+            const relatedComplainants = complainantRows
+              .filter(c => c && String(c.CaseMasterID || "").trim() === caseId)
+              .map(c => `${c.ComplainantName || "N/A"}${c.AgeYear ? ` (${c.AgeYear}y)` : ""}`)
+              .join(", ");
+            
+            return {
+              ...cCase,
+              LinkedAccusedProfiles: cCase.AccusedNames || relatedAccusedList || "None listed.",
+              TargetComplainantDetails: cCase.Complainant || relatedComplainants || "None listed."
+            };
+          });
 
-    // 2. Inject relational details onto the case blocks safely (concise 1-liners)
-    contextualRows = contextualRows.slice(0, 3).map(cCase => {
-      if (!cCase) return {};
-      const caseId = String(cCase.CaseMasterID || "").trim();
-      
-      const relatedAccusedList = accusedRows
-        .filter(a => a && String(a.CaseMasterID || "").trim() === caseId)
-        .map(a => `${a.AccusedName || "Unknown"}${a.AgeYear ? ` (${a.AgeYear}y)` : ""}`)
-        .join(", ");
+          const finalFilteredRows = contextualRows;
 
-      const relatedComplainants = complainantRows
-        .filter(c => c && String(c.CaseMasterID || "").trim() === caseId)
-        .map(c => `${c.ComplainantName || "N/A"}${c.AgeYear ? ` (${c.AgeYear}y)` : ""}`)
-        .join(", ");
-      
-      return {
-        ...cCase,
-        LinkedAccusedProfiles: cCase.AccusedNames || relatedAccusedList || "None listed.",
-        TargetComplainantDetails: cCase.Complainant || relatedComplainants || "None listed."
-      };
-    });
+          const IMPORTANT_KEYS = [
+            "CaseNo", "CrimeNo", "CrimeHead", "CrimeSubHead", "Gravity",
+            "PoliceStation", "Status", "Court", "ChargesheetStatus",
+            "IncidentFromDate", "CrimeRegisteredDate", "Complainant", "AccusedNames",
+            "VictimNames", "Acts", "Sections", "Officer", "EmployeeID", "BriefFacts"
+          ];
 
-    const finalFilteredRows = contextualRows;
+          const formattedContext = finalFilteredRows.map((row, i) => {
+            const parts = [];
+            for (const k of IMPORTANT_KEYS) {
+              if (k in row) {
+                let v = String(row[k] ?? "").trim();
+                if (!v || v === "N/A" || v === "None listed.") continue;
+                v = v.replace(/\s+/g, " ").slice(0, 500);
+                parts.push(`${k}: ${v}`);
+              }
+            }
+            return `[Case ${i + 1}] ${parts.join(" | ")}`;
+          }).join("\n");
 
-    // 3. Build a bounded prompt: recent conversation plus at most three
-    // relevant records. Full match counts are retained even when rows are sampled.
-    const IMPORTANT_KEYS = [
-      "CaseNo", "CrimeNo", "CrimeHead", "CrimeSubHead", "Gravity",
-      "PoliceStation", "Status", "Court", "ChargesheetStatus",
-      "IncidentFromDate", "CrimeRegisteredDate", "Complainant", "AccusedNames",
-      "VictimNames", "Acts", "Sections", "Officer", "EmployeeID", "BriefFacts"
-    ];
+          const totalSystemCount = allCases.length;
+          const todayStr = new Date().toISOString().split("T")[0];
+          const todayCount = allCases.filter(r => String(r.CrimeRegisteredDate || "").startsWith(todayStr)).length;
 
-    const formattedContext = finalFilteredRows.map((row, i) => {
-      const parts = [];
-      const usedKeys = new Set();
-
-      for (const k of IMPORTANT_KEYS) {
-        if (k in row) {
-          let v = String(row[k] ?? "").trim();
-          if (!v || v === "N/A" || v === "None listed.") continue;
-          v = v.replace(/\s+/g, " ").slice(0, 500);
-          parts.push(`${k}: ${v}`);
-          usedKeys.add(k);
-        }
-      }
-
-      return `[Case ${i + 1}] ${parts.join(" | ")}`;
-    }).join("\n");
-
-    const totalSystemCount = allCases.length;
-    const todayStr = new Date().toISOString().split("T")[0];
-    const todayCount = allCases.filter(r => String(r.CrimeRegisteredDate || "").startsWith(todayStr)).length;
-
-    const dataInstruction = `Verified database facts are provided below. Use only these facts for case-specific claims.
+          const dataInstruction = `Verified database facts are provided below. Use only these facts for case-specific claims.
 Total system cases: ${totalSystemCount}. Registered today: ${todayCount}. Full matching count: ${matchingCount}.
 Only ${finalFilteredRows.length} representative matching record(s) are included to control token usage. If there are more matches, state the full count and clearly say that only the first ${finalFilteredRows.length} are shown.
 Answer the officer's actual question directly. Include only relevant fields; do not force a fixed template, invent missing values, or display bracket placeholders.
@@ -778,7 +802,7 @@ Answer the officer's actual question directly. Include only relevant fields; do 
 Verified records:
 ${formattedContext}`;
 
-    const prompt = `You are the Karnataka Police Copilot for authorized officers.
+          const prompt = `You are the Karnataka Police Copilot for authorized officers.
 ${languageInstruction}
 Be direct, well-structured, and complete. Prefer a concise answer, but do not stop mid-sentence or omit a part explicitly requested by the officer.
 
@@ -791,8 +815,23 @@ ${dataInstruction}
 
 Current officer question: ${JSON.stringify(question)}`;
 
-    const outputBudget = matchingCount > 1 || question.length > 300 ? 1100 : 800;
-    return await generateWithFallback(prompt, outputBudget, false, attachment);
+          const outputBudget = matchingCount > 1 || question.length > 300 ? 1100 : 800;
+          answer = await generateWithFallback(prompt, outputBudget, false, attachment);
+        }
+      }
+    }
+
+    // Auto-save history if session and user context are available
+    if (userId && sessionId) {
+      const updatedMessages = [
+        ...(history || []),
+        { role: "user", content: question },
+        { role: "assistant", content: answer }
+      ];
+      await saveChatSession(userId, sessionId, updatedMessages);
+    }
+
+    return answer;
   } catch (err) {
     console.error("[Copilot Engine] Generation failed.", err);
     throw new Error("Copilot could not complete this request.");

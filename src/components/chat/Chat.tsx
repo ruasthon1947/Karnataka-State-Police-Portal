@@ -1,14 +1,18 @@
-// src/pages/Chat.tsx
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-// @ts-ignore - html2pdf fallback import for environments without strict type declarations
 import { KSPPBrandMark } from "../brand/KSPPBrand";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
-import { askCopilot, type ChatAttachment } from "../../lib/chatApi";
+import {
+  askCopilot,
+  fetchUserChatsFromFirebase,
+  saveChatToFirebase,
+  deleteChatFromFirebase,
+  type ChatAttachment,
+  type FirestoreChatSession,
+  type ChatMessage,
+} from "../../lib/chatApi";
 import { VoiceButton } from "./VoiceButton";
-
-type Msg = { id: string; role: "user" | "assistant"; content: string; ts: number };
 
 const timeOfDay = () => {
   const h = new Date().getHours();
@@ -19,32 +23,137 @@ export const Chat: React.FC = () => {
   const { user, chatHistory, setChatHistory, isChatBusy, setIsChatBusy } = useAuth();
   const { language, tr } = useLanguage();
   const navigate = useNavigate();
+
+  // Safely extract Firebase User ID (handles both id and uid properties)
+  const userId = (user as any)?.uid || (user as any)?.id || "";
+
   const [input, setInput] = useState("");
   const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
   const [attachmentError, setAttachmentError] = useState("");
 
-  // References for scrolling and target PDF export element
+  // History Sidebar & Edit States
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [savedSessions, setSavedSessions] = useState<FirestoreChatSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editTitleInput, setEditTitleInput] = useState("");
+
   const endRef = useRef<HTMLDivElement | null>(null);
   const chatListRef = useRef<HTMLDivElement | null>(null);
   const [, force] = useState(0);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory, isChatBusy]);
-  useEffect(() => { const id = setInterval(() => force((n) => n + 1), 60_000); return () => clearInterval(id); }, []);
+  // 1. Fetch User Chats from Firebase on Auth / Mount
+  useEffect(() => {
+    let isSubscribed = true;
+    if (userId) {
+      fetchUserChatsFromFirebase(userId).then((chats) => {
+        if (isSubscribed) {
+          setSavedSessions(chats);
+        }
+      });
+    } else {
+      setSavedSessions([]);
+    }
+    return () => {
+      isSubscribed = false;
+    };
+  }, [userId]);
 
-  // 🚀 PDF Export Handler
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory, isChatBusy]);
+
+  useEffect(() => {
+    const id = setInterval(() => force((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // 2. Auto-sync Active Chat to Firebase & State
+  useEffect(() => {
+    if (chatHistory.length === 0 || !userId) return;
+
+    const activeId = currentSessionId || crypto.randomUUID();
+    if (!currentSessionId) setCurrentSessionId(activeId);
+
+    const firstUserMsg = chatHistory.find((m) => m.role === "user")?.content || "New Conversation";
+    const defaultTitle = firstUserMsg.length > 25 ? `${firstUserMsg.slice(0, 25)}...` : firstUserMsg;
+
+    setSavedSessions((prev) => {
+      const existing = prev.find((s) => s.id === activeId);
+      const sessionTitle = existing ? existing.title : defaultTitle;
+      const timestamp = existing ? existing.timestamp : Date.now();
+
+      const updatedSession: FirestoreChatSession = {
+        id: activeId,
+        title: sessionTitle,
+        timestamp,
+        messages: chatHistory as ChatMessage[],
+      };
+
+      // Push to Firebase
+      saveChatToFirebase(userId, updatedSession);
+
+      const existingIndex = prev.findIndex((s) => s.id === activeId);
+      if (existingIndex >= 0) {
+        const copy = [...prev];
+        copy[existingIndex] = updatedSession;
+        return copy;
+      }
+      return [updatedSession, ...prev];
+    });
+  }, [chatHistory, currentSessionId, userId]);
+
+  const startNewSession = () => {
+    setChatHistory([]);
+    setCurrentSessionId(null);
+    setIsChatBusy(false);
+  };
+
+  const loadSession = (session: FirestoreChatSession) => {
+    setCurrentSessionId(session.id);
+    setChatHistory(session.messages);
+  };
+
+  const startEditingTitle = (session: FirestoreChatSession, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingSessionId(session.id);
+    setEditTitleInput(session.title);
+  };
+
+  const saveTitle = (id: string) => {
+    const trimmed = editTitleInput.trim();
+    if (trimmed && userId) {
+      const target = savedSessions.find((s) => s.id === id);
+      if (target) {
+        const updated = { ...target, title: trimmed };
+        setSavedSessions((prev) => prev.map((s) => (s.id === id ? updated : s)));
+        saveChatToFirebase(userId, updated);
+      }
+    }
+    setEditingSessionId(null);
+  };
+
+  const handleDeleteSession = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!userId) return;
+
+    deleteChatFromFirebase(userId, id);
+    setSavedSessions((prev) => prev.filter((s) => s.id !== id));
+    if (currentSessionId === id) {
+      startNewSession();
+    }
+  };
+
   const exportChatToPDF = async () => {
     const element = chatListRef.current;
-    if (!element) {
-      console.warn("Chat container element not found for export.");
-      return;
-    }
+    if (!element) return;
 
     const opt = {
-      margin: [10, 10, 10, 10], // top, left, bottom, right margins in mm
+      margin: [10, 10, 10, 10],
       filename: `Karnataka_Police_Chat_Report_${new Date().toISOString().slice(0, 10)}.pdf`,
       image: { type: "jpeg", quality: 0.98 },
       html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
     };
 
     try {
@@ -57,13 +166,13 @@ export const Chat: React.FC = () => {
   };
 
   const send = async (text?: string) => {
-    const trimmed = (text ?? input).trim() ||
+    const trimmed =
+      (text ?? input).trim() ||
       (attachment ? "Please analyze the attached file and summarize the relevant information." : "");
     if (!trimmed || isChatBusy) return;
+
     const outgoingAttachment = attachment;
-    const recentHistory = chatHistory
-      .slice(-6)
-      .map(({ role, content }) => ({ role, content }));
+    const recentHistory = chatHistory.slice(-6).map(({ role, content }) => ({ role, content }));
     const visibleQuestion = outgoingAttachment
       ? `${trimmed}\n📎 **Attachment:** ${outgoingAttachment.name}`
       : trimmed;
@@ -149,19 +258,29 @@ export const Chat: React.FC = () => {
     } catch (fileError) {
       setAttachment(null);
       setAttachmentError(
-        fileError instanceof Error ? fileError.message : "The selected file could not be read.",
+        fileError instanceof Error ? fileError.message : "The selected file could not be read."
       );
     }
   };
 
   const tod = timeOfDay();
   const firstName = (user?.name ?? "Officer").split(/\s+/)[0];
-  const greeting = language === "kn"
-    ? (tod === "morning" ? "ಶುಭೋದಯ, ಅಧಿಕಾರಿಯವರೇ." : tod === "afternoon" ? "ಶುಭ ಮಧ್ಯಾಹ್ನ, ಅಧಿಕಾರಿಯವರೇ." : "ಶುಭ ಸಂಜೆ, ಅಧಿಕಾರಿಯವರೇ.")
-    : (tod === "morning" ? `Good morning, ${firstName}.` : tod === "afternoon" ? `Good afternoon, ${firstName}.` : `Good evening, ${firstName}.`);
+  const greeting =
+    language === "kn"
+      ? tod === "morning"
+        ? "ಶುಭೋದಯ, ಅಧಿಕಾರಿಯವರೇ."
+        : tod === "afternoon"
+        ? "ಶುಭ ಮಧ್ಯಾಹ್ನ, ಅಧಿಕಾರಿಯವರೇ."
+        : "ಶುಭ ಸಂಜೆ, ಅಧಿಕಾರಿಯವರೇ."
+      : tod === "morning"
+      ? `Good morning, ${firstName}.`
+      : tod === "afternoon"
+      ? `Good afternoon, ${firstName}.`
+      : `Good evening, ${firstName}.`;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-ink text-white">
+      {/* Top Header */}
       <div className="flex items-center gap-3 border-b border-line bg-ink px-3 py-3 sm:px-6">
         <div className="flex items-center gap-2 text-sm">
           <KSPPBrandMark size="sm" decorative />
@@ -180,48 +299,153 @@ export const Chat: React.FC = () => {
           onClick={exportChatToPDF}
           disabled={chatHistory.length === 0}
           className="min-h-9 rounded-md border border-line bg-panel px-3 py-1.5 text-xs font-medium text-white transition hover:bg-shell disabled:cursor-not-allowed disabled:opacity-40"
-          title={tr("Generate PDF from chat history", "ಸಂಭಾಷಣೆಯಿಂದ PDF ರಚಿಸಿ")}
         >
           {tr("Export PDF", "PDF ರಫ್ತು")}
         </button>
-        <button onClick={() => { setChatHistory([]); setIsChatBusy(false); }} className="min-h-9 rounded-md border border-brand/30 bg-brand/15 px-3 py-1.5 text-xs text-white transition hover:bg-brand/25">
+        <button
+          onClick={startNewSession}
+          className="min-h-9 rounded-md border border-brand/30 bg-brand/15 px-3 py-1.5 text-xs text-white transition hover:bg-brand/25"
+        >
           {tr("New session", "ಹೊಸ ಸೆಷನ್")}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+          className="min-h-9 min-w-9 grid place-items-center rounded-md border border-line bg-panel text-white transition hover:bg-shell"
+        >
+          {isHistoryOpen ? "✕" : "☰"}
         </button>
       </div>
 
-      {chatHistory.length === 0 ? (
-        <EmptyCanvas greeting={greeting} help={tr("How can I help you today?", "ಇಂದು ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?")} />
-      ) : (
-        <MessageList ref={chatListRef} messages={chatHistory} busy={isChatBusy} tr={tr} />
-      )}
-      <div ref={endRef} />
+      {/* Main Workspace */}
+      <div className="flex min-h-0 flex-1 overflow-hidden relative">
+        <div className="flex flex-1 flex-col min-h-0 min-w-0">
+          {chatHistory.length === 0 ? (
+            <EmptyCanvas greeting={greeting} help={tr("How can I help you today?", "ಇಂದು ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?")} />
+          ) : (
+            <MessageList ref={chatListRef} messages={chatHistory} busy={isChatBusy} tr={tr} />
+          )}
+          <div ref={endRef} />
 
-      <div className="shrink-0 px-3 pb-4 pt-3 sm:px-6 sm:pb-7 sm:pt-4">
-        <div className="max-w-3xl mx-auto">
-          <Composer
-            value={input}
-            onChange={setInput}
-            onSend={() => send()}
-            onVoiceResult={(text) => send(text)}
-            attachment={attachment}
-            attachmentError={attachmentError}
-            onAttachmentSelected={selectAttachment}
-            onRemoveAttachment={() => {
-              setAttachment(null);
-              setAttachmentError("");
-            }}
-            busy={isChatBusy}
-            tr={tr}
-            language={language === "kn" ? "kn" : "en"}
-          />
+          <div className="shrink-0 px-3 pb-4 pt-3 sm:px-6 sm:pb-7 sm:pt-4">
+            <div className="max-w-3xl mx-auto">
+              <Composer
+                value={input}
+                onChange={setInput}
+                onSend={() => send()}
+                onVoiceResult={(text) => send(text)}
+                attachment={attachment}
+                attachmentError={attachmentError}
+                onAttachmentSelected={selectAttachment}
+                onRemoveAttachment={() => {
+                  setAttachment(null);
+                  setAttachmentError("");
+                }}
+                busy={isChatBusy}
+                tr={tr}
+                language={language === "kn" ? "kn" : "en"}
+              />
 
-          <p className="text-[11px] text-muted text-center mt-2">
-            {tr(
-              "Copilot generates drafts and queries - verify against source records before any official action.",
-              "ಕೋಪೈಲಟ್ ಕರಡುಗಳು ಮತ್ತು ಪ್ರಶ್ನೆಗಳನ್ನು ರಚಿಸುತ್ತದೆ - ಯಾವುದೇ ಅಧಿಕೃತ ಕ್ರಮಕ್ಕೂ ಮೊದಲು ಮೂಲ ದಾಖಲೆಗಳೊಂದಿಗೆ ಪರಿಶೀಲಿಸಿ."
-            )}
-          </p>
+              <p className="text-[11px] text-muted text-center mt-2">
+                {tr(
+                  "Copilot generates drafts and queries - verify against source records before any official action.",
+                  "ಕೋಪೈಲಟ್ ಕರಡುಗಳು ಮತ್ತು ಪ್ರಶ್ನೆಗಳನ್ನು ರಚಿಸುತ್ತದೆ - ಯಾವುದೇ ಅಧಿಕೃತ ಕ್ರಮಕ್ಕೂ ಮೊದಲು ಮೂಲ ದಾಖಲೆಗಳೊಂದಿಗೆ ಪರಿಶೀಲಿಸಿ."
+                )}
+              </p>
+            </div>
+          </div>
         </div>
+
+        {/* 🎨 Theme-Compatible Chat History Sidebar */}
+        {isHistoryOpen && (
+          <aside className="w-80 border-l border-line bg-panel p-4 flex flex-col h-full shrink-0 shadow-xl backdrop-blur-md transition-all">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-line">
+              <h3 className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-2">
+                <span>💬</span> {tr("Chat History", "ಸಂಭಾಷಣೆ ಇತಿಹಾಸ")}
+              </h3>
+              <span className="text-[10px] bg-ink border border-line text-muted px-2 py-0.5 rounded-full font-medium">
+                {savedSessions.length}
+              </span>
+            </div>
+
+            <div className="flex-1 space-y-2 overflow-y-auto pr-1">
+              {savedSessions.length === 0 ? (
+                <div className="text-center py-8 text-muted">
+                  <p className="text-xs font-medium">{tr("No previous sessions", "ಯಾವುದೇ ಹಿಂದಿನ ಸೆಷನ್‌ಗಳಿಲ್ಲ")}</p>
+                  <p className="text-[11px] opacity-75 mt-1">
+                    {tr("Start chatting to build history", "ಇತಿಹಾಸವನ್ನು ರಚಿಸಲು ಸಂಭಾಷಣೆಯನ್ನು ಪ್ರಾರಂಭಿಸಿ")}
+                  </p>
+                </div>
+              ) : (
+                savedSessions.map((session) => {
+                  const isActive = currentSessionId === session.id;
+                  const isEditing = editingSessionId === session.id;
+
+                  return (
+                    <div
+                      key={session.id}
+                      onClick={() => loadSession(session)}
+                      className={`group relative flex items-center justify-between p-3 rounded-xl border text-xs cursor-pointer transition-all duration-150 ${
+                        isActive
+                          ? "bg-brand/20 border-brand text-slate-900 dark:text-white font-semibold shadow-sm ring-1 ring-brand/30"
+                          : "bg-slate-500/10 border-slate-400/20 text-slate-800 dark:text-slate-100 hover:bg-slate-500/20 hover:border-slate-400/40"
+                      }`}
+                    >
+                      {isActive && <div className="absolute left-0 top-2 bottom-2 w-1 bg-brand rounded-r" />}
+
+                      <div className="flex-1 min-w-0 pr-2 pl-1">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editTitleInput}
+                            onChange={(e) => setEditTitleInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveTitle(session.id);
+                              if (e.key === "Escape") setEditingSessionId(null);
+                            }}
+                            onBlur={() => saveTitle(session.id)}
+                            autoFocus
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full bg-ink border border-brand text-slate-900 dark:text-white rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-brand"
+                          />
+                        ) : (
+                          <>
+                            <p className="font-semibold truncate text-slate-900 dark:text-slate-100">{session.title}</p>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                              {new Date(session.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </>
+                        )}
+                      </div>
+
+                      {!isEditing && (
+                        <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={(e) => startEditingTitle(session, e)}
+                            className="p-1.5 rounded hover:bg-slate-400/20 text-slate-700 dark:text-slate-300 transition"
+                            title={tr("Rename Chat", "ಸೆಷನ್ ಮರುನಾಮಕರಣ ಮಾಡಿ")}
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSession(session.id, e)}
+                            className="p-1.5 rounded hover:bg-red-500/20 text-red-500 transition"
+                            title={tr("Delete Chat", "ಸೆಷನ್ ಅಳಿಸಿ")}
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </aside>
+        )}
       </div>
     </div>
   );
@@ -237,26 +461,28 @@ const EmptyCanvas: React.FC<{ greeting: string; help: string }> = ({ greeting, h
   </div>
 );
 
-const MessageList = React.forwardRef<HTMLDivElement, { messages: Msg[]; busy: boolean; tr: (en: string, kn: string) => string }>(
-  ({ messages, busy, tr }, ref) => (
-    <div ref={ref} className="min-h-0 flex-1 overflow-y-auto bg-ink px-3 py-5 sm:px-6 sm:py-8">
-      <div className="mx-auto max-w-3xl space-y-5 sm:space-y-6">
-        {/* PDF Document Header (Renders inside exported PDF) */}
-        <div className="hidden print:block pb-4 mb-6 border-b border-line text-white">
-          <h1 className="text-xl font-bold">{tr("KSPP Assistant", "KSPP ಸಹಾಯಕ")}</h1>
-          <p className="text-xs text-muted">{tr("Official Chat Conversation Transcript", "ಅಧಿಕೃತ ಸಂಭಾಷಣೆ ಪ್ರತಿ")}</p>
-          <p className="text-[10px] text-muted mt-1">{tr("Generated on:", "ರಚಿಸಿದ ದಿನಾಂಕ:")} {new Date().toLocaleString()}</p>
-        </div>
-
-        {messages.map((m) => <Bubble key={m.id} msg={m} />)}
-        {busy && <TypingBubble />}
+const MessageList = React.forwardRef<
+  HTMLDivElement,
+  { messages: any[]; busy: boolean; tr: (en: string, kn: string) => string }
+>(({ messages, busy, tr }, ref) => (
+  <div ref={ref} className="min-h-0 flex-1 overflow-y-auto bg-ink px-3 py-5 sm:px-6 sm:py-8">
+    <div className="mx-auto max-w-3xl space-y-5 sm:space-y-6">
+      <div className="hidden print:block pb-4 mb-6 border-b border-line text-white">
+        <h1 className="text-xl font-bold">{tr("KSPP Assistant", "KSPP ಸಹಾಯಕ")}</h1>
+        <p className="text-xs text-muted">{tr("Official Chat Conversation Transcript", "ಅಧಿಕೃತ ಸಂಭಾಷಣೆ ಪ್ರತಿ")}</p>
+        <p className="text-[10px] text-muted mt-1">{tr("Generated on:", "ರಚಿಸಿದ ದಿನಾಂಕ:")} {new Date().toLocaleString()}</p>
       </div>
+
+      {messages.map((m) => (
+        <Bubble key={m.id} msg={m} />
+      ))}
+      {busy && <TypingBubble />}
     </div>
-  )
-);
+  </div>
+));
 MessageList.displayName = "MessageList";
 
-const Bubble: React.FC<{ msg: Msg }> = ({ msg }) => {
+const Bubble: React.FC<{ msg: any }> = ({ msg }) => {
   const isUser = msg.role === "user";
   return (
     <div className={`flex items-start gap-3 ${isUser ? "justify-end" : ""}`}>
@@ -313,74 +539,81 @@ const Composer: React.FC<{
   tr,
   language,
 }) => {
-    const taRef = useRef<HTMLTextAreaElement | null>(null);
-    const fileRef = useRef<HTMLInputElement | null>(null);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
-    useEffect(() => {
-      const ta = taRef.current;
-      if (!ta) return;
-      ta.style.height = "auto";
-      ta.style.height = Math.min(180, ta.scrollHeight) + "px";
-    }, [value]);
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(180, ta.scrollHeight) + "px";
+  }, [value]);
 
-    return (
-      <div className="rounded-2xl border border-line bg-shell px-3 py-2.5 shadow-soft focus-within:border-brand/50 focus-within:ring-2 focus-within:ring-brand/15 sm:px-4 sm:py-3">
-        {attachment && (
-          <div className="mb-2 flex items-center gap-2 rounded-lg border border-brand/30 bg-brand/10 px-3 py-2 text-xs text-white">
-            <span aria-hidden="true">📎</span>
-            <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
-            <button
-              type="button"
-              onClick={onRemoveAttachment}
-              className="rounded px-1.5 py-0.5 text-muted hover:bg-panel hover:text-white"
-              aria-label="Remove attachment"
-            >
-              ×
-            </button>
-          </div>
-        )}
-        {attachmentError && <p className="mb-2 text-xs text-red-300" role="alert">{attachmentError}</p>}
-        <textarea
-          ref={taRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } }}
-          placeholder={tr(
-            "Ask the Copilot - try 'FIRs in Whitefield last week' or 'disposal rate'",
-            "ಕೋಪೈಲಟ್ ಅನ್ನು ಕೇಳಿ - 'ಕಳೆದ ವಾರ ವೈಟ್‌ಫೀಲ್ಡ್‌ನ ಎಫ್‌ಐಆರ್‌ಗಳು' ಅಥವಾ 'ವಿಲೇವಾರಿ ದರ' ಎಂದು ಪ್ರಯತ್ನಿಸಿ"
-          )}
-          rows={1}
-          className="w-full bg-transparent text-white placeholder-muted outline-none resize-none text-sm leading-relaxed"
-        />
-        <div className="flex items-center gap-1 mt-1">
-          <input
-            ref={fileRef}
-            type="file"
-            className="hidden"
-            accept=".txt,.csv,.json,.md,.pdf,.jpg,.jpeg,.png,.webp,text/plain,text/csv,text/markdown,application/json,application/pdf,image/jpeg,image/png,image/webp"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void onAttachmentSelected(file);
-              event.target.value = "";
-            }}
-          />
+  return (
+    <div className="rounded-2xl border border-line bg-shell px-3 py-2.5 shadow-soft focus-within:border-brand/50 focus-within:ring-2 focus-within:ring-brand/15 sm:px-4 sm:py-3">
+      {attachment && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg border border-brand/30 bg-brand/10 px-3 py-2 text-xs text-white">
+          <span aria-hidden="true">📎</span>
+          <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
           <button
             type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-            className="h-8 w-8 grid place-items-center rounded-md text-muted hover:text-white hover:bg-panel transition"
-            title={tr("Attach a file or picture", "ಫೈಲ್ ಅಥವಾ ಚಿತ್ರವನ್ನು ಲಗತ್ತಿಸಿ")}
+            onClick={onRemoveAttachment}
+            className="rounded px-1.5 py-0.5 text-muted hover:bg-panel hover:text-white"
           >
-            ＋
+            ×
           </button>
-
-          <VoiceButton language={language} onResult={(text) => onVoiceResult(text)} disabled={busy} />
-
-          <div className="flex-1" />
-          <button onClick={onSend} disabled={busy || (!value.trim() && !attachment)} className="h-8 w-8 grid place-items-center rounded-full bg-brand text-white disabled:opacity-40 hover:bg-brand/90 transition">↗</button>
         </div>
+      )}
+      {attachmentError && <p className="mb-2 text-xs text-red-300" role="alert">{attachmentError}</p>}
+      <textarea
+        ref={taRef}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            onSend();
+          }
+        }}
+        placeholder={tr(
+          "Ask the Copilot - try 'FIRs in Whitefield last week' or 'disposal rate'",
+          "ಕೋಪೈಲಟ್ ಅನ್ನು ಕೇಳಿ - 'ಕಳೆದ ವಾರ ವೈಟ್‌ಫೀಲ್ಡ್‌ನ ಎಫ್‌ಐಆರ್‌ಗಳು' ಅಥವಾ 'ವಿಲೇವಾರಿ ದರ' ಎಂದು ಪ್ರಯತ್ನಿಸಿ"
+        )}
+        rows={1}
+        className="w-full bg-transparent text-white placeholder-muted outline-none resize-none text-sm leading-relaxed"
+      />
+      <div className="flex items-center gap-1 mt-1">
+        <input
+          ref={fileRef}
+          type="file"
+          className="hidden"
+          accept=".txt,.csv,.json,.md,.pdf,.jpg,.jpeg,.png,.webp,text/plain,text/csv,text/markdown,application/json,application/pdf,image/jpeg,image/png,image/webp"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void onAttachmentSelected(file);
+            event.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          className="h-8 w-8 grid place-items-center rounded-md text-muted hover:text-white hover:bg-panel transition"
+        >
+          ＋
+        </button>
+
+        <VoiceButton language={language} onResult={(text) => onVoiceResult(text)} disabled={busy} />
+
+        <div className="flex-1" />
+        <button
+          onClick={onSend}
+          disabled={busy || (!value.trim() && !attachment)}
+          className="h-8 w-8 grid place-items-center rounded-full bg-brand text-white disabled:opacity-40 hover:bg-brand/90 transition"
+        >
+          ↗
+        </button>
       </div>
-    );
-  };
-
-
+    </div>
+  );
+};
