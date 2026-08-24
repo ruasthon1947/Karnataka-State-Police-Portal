@@ -22,6 +22,7 @@
     "firebase": "^12.16.0",
     "google-auth-library": "^10.9.0",
     "html2pdf.js": "^0.14.0",
+    "lucide-react": "^1.33.0",
     "maplibre-gl": "^6.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

@@ -14,7 +14,6 @@ const Chat = React.lazy(() =>
 const Login = React.lazy(() => import("./pages/Login"));
 const ChangePassword = React.lazy(() => import("./pages/ChangePassword"));
 const NewFIR = React.lazy(() => import("./pages/NewFIR"));
-const CrimeIntelligence = React.lazy(() => import("./pages/CrimeIntelligence"));
 const Dashboard = React.lazy(() =>
   import("./pages/pages").then((module) => ({ default: module.Dashboard })),
 );
@@ -45,6 +44,7 @@ const Reports = React.lazy(() =>
 const Settings = React.lazy(() =>
   import("./pages/pages").then((module) => ({ default: module.Settings })),
 );
+const TodoList = React.lazy(() => import("./pages/TodoList"));
 
 /**
  * Top-level routes.
@@ -89,7 +89,7 @@ const App: React.FC = () => {
         >
           <Route path="/" element={<Chat />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/crime-intelligence" element={<CrimeIntelligence />} />
+          <Route path="/todo" element={<TodoList />} />
 
           <Route path="/fir" element={<FIRList />} />
           <Route path="/fir/new" element={<NewFIR />} />
@@ -106,10 +106,6 @@ const App: React.FC = () => {
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
-
-        {import.meta.env.DEV && (
-          <Route path="/_preview/crime-intelligence" element={<Navigate to="/crime-intelligence" replace />} />
-        )}
 
         <Route
           path="*"

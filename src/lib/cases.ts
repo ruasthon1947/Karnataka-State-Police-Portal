@@ -172,7 +172,7 @@ export function caseLabel(record: CaseRecord): string {
 
 export function splitNames(value: string | undefined): string[] {
   return String(value || "")
-    .split(";")
+    .split(/[;,\r\n]+/)
     .map((item) => item.trim())
     .filter(Boolean);
 }

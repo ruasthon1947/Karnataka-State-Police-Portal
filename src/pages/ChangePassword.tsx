@@ -20,6 +20,7 @@ const ChangePassword: React.FC = () => {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
+    const isCompletingFirstLogin = user?.isFirstLogin === true;
 
     if (!current) {
       setError(tr("Enter your current password.", "ನಿಮ್ಮ ಪ್ರಸ್ತುತ ಪಾಸ್‌ವರ್ಡ್ ನಮೂದಿಸಿ."));
@@ -84,7 +85,12 @@ const ChangePassword: React.FC = () => {
         );
         return;
       }
-      navigate("/", { replace: true });
+      navigate(
+        "/",
+        isCompletingFirstLogin
+          ? { replace: true, state: { showDigest: true } }
+          : { replace: true },
+      );
     } finally {
       setSubmitting(false);
     }

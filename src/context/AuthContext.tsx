@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { clearDigestPending, markDigestPending } from "../lib/digestSession";
 
 export type AuthUser = {
   employeeId: string;
@@ -149,6 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         const now = new Date().toISOString();
         setLastLogin(now);
         localStorage.setItem(LS_LAST_LOGIN, now);
+        markDigestPending(String(data.user?.employeeId || id));
         return { ok: true };
       } catch {
         return {
@@ -198,6 +200,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const logout = useCallback(() => {
     if (user?.employeeId) {
+      clearDigestPending(user.employeeId);
       const prefix = `kpfir.firDraft.${user.employeeId}.`;
       for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
         const key = sessionStorage.key(index);
