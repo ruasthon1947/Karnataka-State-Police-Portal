@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+﻿import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import "dotenv/config";
@@ -80,22 +80,31 @@ async function token() {
   return tokenCache.token;
 }
 
-async function request(url, options = {}) {
-  const response = await fetch(url, { ...options, headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json", ...(options.headers || {}) } });
+async function requestWithAuth(url, options = {}) {
+  // Obtain a fresh access token and include it as a Bearer token in the Authorization header
+  const authToken = await token();
+  const response = await fetch(url, { ...options, headers: { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json", ...(options.headers || {}) } });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`Google Sheets request failed: ${data.error?.message || response.statusText}`);
   return data;
 }
 
-async function ensureTab(sheetId, tab) {
+async function request(url, options = {}) {
+  // Obtain a fresh access token and include it as a Bearer token in the Authorization header
+  const authToken = await token();
+  const response = await fetch(url, { ...options, headers: { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json", ...(options.headers || {}) } });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`Google Sheets request failed: ${data.error?.message || response.statusText}`);
+  return data;
+}async function ensureTab(sheetId, tab) {
   if (!String(sheetId || "").trim()) {
     throw new Error("Google Sheets ID is not configured.");
   }
-  const meta = await request(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}`);
+  const meta = await requestWithAuth(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}`);
   const exists = meta.sheets?.some((s) => s.properties.title === tab);
   if (!exists) {
     console.log(`Creating tab ${tab} in spreadsheet ${sheetId}`);
-    await request(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}:batchUpdate`, {
+    await requestWithAuth(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}:batchUpdate`, {
       method: "POST",
       body: JSON.stringify({ requests: [{ addSheet: { properties: { title: tab } } }] })
     });
@@ -107,7 +116,7 @@ export async function readTable(sheetId, tab) {
     throw new Error("Google Sheets ID is not configured.");
   }
   try {
-    const data = await request(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${quoteRange(tab)}`);
+    const data = await requestWithAuth(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${quoteRange(tab)}`);
     const values = data.values || [];
     const headers = values[0] || [];
     return { headers, rows: values.slice(1).filter((row) => row.some((cell) => String(cell || "").trim())).map((row) => Object.fromEntries(headers.map((header, index) => [header, String(row[index] ?? "")]))) };
@@ -122,8 +131,8 @@ export async function readTable(sheetId, tab) {
 
 export async function writeTable(sheetId, tab, headers, rows) {
   await ensureTab(sheetId, tab);
-  await request(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${quoteRange(tab)}:clear`, { method: "POST", body: "{}" });
-  return request(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${quoteRange(tab, "A1")}?valueInputOption=RAW`, { method: "PUT", body: JSON.stringify({ majorDimension: "ROWS", values: [headers, ...rows.map((row) => headers.map((header) => String(row[header] ?? "")))] }) });
+  await requestWithAuth(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${quoteRange(tab)}:clear`, { method: "POST", body: "{}" });
+  return requestWithAuth(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${quoteRange(tab, "A1")}?valueInputOption=RAW`, { method: "PUT", body: JSON.stringify({ majorDimension: "ROWS", values: [headers, ...rows.map((row) => headers.map((header) => String(row[header] ?? "")))] }) });
 }
 
 export async function appendRow(sheetId, tab, rowArray) {
@@ -136,7 +145,7 @@ export async function appendRow(sheetId, tab, rowArray) {
 
 export async function updateRow(sheetId, tab, sheetRowIndex, rowArray) {
   const range = `${tab}!A${sheetRowIndex}`;
-  return request(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
+  return requestWithAuth(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
     method: "PUT",
     body: JSON.stringify({ majorDimension: "ROWS", values: [rowArray] })
   });
@@ -481,3 +490,12 @@ export async function updateEmployee(employeeId, changes) {
   );
   return updatedRow;
 }
+
+
+
+
+
+
+
+
+

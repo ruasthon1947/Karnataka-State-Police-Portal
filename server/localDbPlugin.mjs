@@ -26,6 +26,14 @@ import {
   verifyFirebaseIdToken,
   verifyPassword,
 } from "./security.mjs";
+import {
+  computeStats,
+  createTodo,
+  deleteTodo,
+  fetchTodos,
+  importFromGoogleSheets,
+  updateTodo,
+} from "./todoService.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -340,6 +348,59 @@ export async function handleApi(req, res, next) {
 
     const session = requireSession(req, res);
     if (!session) return;
+
+    const todoFilter =
+      session.role === "Constable"
+        ? { policeStation: session.policeStation }
+        : session.role === "Inspector"
+          ? { policeStation: session.policeStation }
+          : {};
+
+    if (req.method === "GET" && url.pathname === "/api/todos") {
+      sendJson(res, 200, { ok: true, todos: await fetchTodos(req, todoFilter) });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/todos/stats") {
+      sendJson(res, 200, { ok: true, stats: await computeStats(req, todoFilter) });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/todos") {
+      const taskData = await readBody(req);
+      const todo = await createTodo(req, {
+        ...taskData,
+        assignedTo: session.employeeId,
+        createdBy: session.employeeId,
+        policeStation: session.policeStation,
+      });
+      sendJson(res, 201, { ok: true, todo });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/todos/import") {
+      if (session.role === "Constable") {
+        sendError(res, 403, "Only Inspectors and SP officers can import tasks.");
+        return;
+      }
+      const result = await importFromGoogleSheets(req, session);
+      sendJson(res, 200, { ok: true, ...result });
+      return;
+    }
+
+    const todoMatch = url.pathname.match(/^\/api\/todos\/([^/]+)$/);
+    if (todoMatch && req.method === "PATCH") {
+      const updates = await readBody(req);
+      const todo = await updateTodo(req, decodeURIComponent(todoMatch[1]), updates);
+      sendJson(res, 200, { ok: true, todo });
+      return;
+    }
+
+    if (todoMatch && req.method === "DELETE") {
+      const result = await deleteTodo(req, decodeURIComponent(todoMatch[1]));
+      sendJson(res, 200, result);
+      return;
+    }
 
     if (req.method === "POST" && url.pathname === "/api/session/extend") {
       const extended = setSessionCookie(req, res, sessionUser(session));
@@ -790,15 +851,23 @@ export async function handleApi(req, res, next) {
 
     sendError(res, 404, "Unknown API endpoint.");
   } catch (error) {
-    console.error("[Local DB Handler Exception]:", error);
+    // Log full error for diagnosis
+    console.error("[Local DB Handler Exception]:", error && error.stack ? error.stack : error);
+
     const status = error?.status || 500;
-    sendError(
-      res,
-      status,
-      status >= 500
-        ? "The service could not complete this request. Please try again."
-        : error,
-    );
+
+    // Map known backend failure patterns to more specific, user-friendly messages
+    const message = (function() {
+      const msg = String(error?.message || "").toLowerCase();
+      if (msg.includes('google authentication failed') || msg.includes('google sheets request failed') || msg.includes('failed to write updated table')) {
+        return 'Backend data store error: failed to communicate with Google Sheets. Please check server configuration.';
+      }
+      if (status === 403) return String(error) || 'Forbidden';
+      if (status >= 500) return 'The service could not complete this request. Please try again.';
+      return error;
+    })();
+
+    sendError(res, status, message);
   }
 }
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   KSPPBrandMark,
@@ -10,6 +10,15 @@ import {
 } from "../brand/KSPPBrand";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
+import { MorningDigestModal } from "./MorningDigestModal";
+import { useFirRecords } from "../../lib/cases";
+import {
+  generateTasksForOfficer,
+  computeGeneratedStats,
+} from "../../lib/taskEngine";
+import { clearDigestPending, hasDigestPending } from "../../lib/digestSession";
+
+const digestSeenKey = (employeeId: string) => `kpfir.digestSeenDate.v2.${employeeId}`;
 
 type NavEntry = [string, string, string];
 
@@ -23,6 +32,46 @@ const AppShell: React.FC = () => {
   const [showSessionWarning, setShowSessionWarning] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [portalSearch, setPortalSearch] = useState("");
+
+  // ── Morning Digest (once per officer per day) ───────────────────────────
+  const [showDigest, setShowDigest] = useState(false);
+
+  const { records: firRecords, loading: firsLoading } = useFirRecords();
+  const today = useMemo(() => new Date(), []);
+
+  const digestTasks = useMemo(
+    () =>
+      user?.name ? generateTasksForOfficer(user.name, firRecords, today) : [],
+    [user?.name, firRecords, today]
+  );
+  const digestStats = useMemo(
+    () => computeGeneratedStats(digestTasks, today),
+    [digestTasks, today]
+  );
+
+  useEffect(() => {
+    if (!user?.employeeId) {
+      setShowDigest(false);
+      return;
+    }
+    const todayKey = new Date().toLocaleDateString("sv");
+    const hasSeenToday = localStorage.getItem(digestSeenKey(user.employeeId)) === todayKey;
+    const fromNavigation = Boolean(
+      (location.state as { showDigest?: boolean } | null)?.showDigest,
+    );
+    setShowDigest(!hasSeenToday && (fromNavigation || hasDigestPending(user.employeeId)));
+  }, [user?.employeeId, user?.isFirstLogin, location.state]);
+
+  const dismissDigest = useCallback(() => {
+    if (user?.employeeId) {
+      clearDigestPending(user.employeeId);
+      localStorage.setItem(digestSeenKey(user.employeeId), new Date().toLocaleDateString("sv"));
+    }
+    if ((location.state as { showDigest?: boolean } | null)?.showDigest) {
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+    setShowDigest(false);
+  }, [user?.employeeId, location.pathname, location.state, navigate]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -55,6 +104,7 @@ const AppShell: React.FC = () => {
         entries: [
           ["/", tr("AI Assistant", "ಎಐ ಸಹಾಯಕ"), "AI"],
           ["/dashboard", tr("Dashboard", "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್"), "DB"],
+          ["/todo", tr("To-Do List", "ಕಾರ್ಯಗಳ ಪಟ್ಟಿ"), "TD"],
         ],
       },
       {
@@ -77,7 +127,6 @@ const AppShell: React.FC = () => {
       {
         heading: tr("Insights", "ವಿಶ್ಲೇಷಣೆ"),
         entries: [
-          ["/crime-intelligence", tr("Crime Intelligence", "ಅಪರಾಧ ಗುಪ್ತಚರ"), "CI"],
           ["/reports", tr("Reports & Analytics", "ವರದಿಗಳು ಮತ್ತು ವಿಶ್ಲೇಷಣೆ"), "RA"],
           ["/settings", tr("Settings", "ಸೆಟ್ಟಿಂಗ್‌ಗಳು"), "ST"],
         ],
@@ -357,6 +406,18 @@ const AppShell: React.FC = () => {
           </span>
         </footer>
       </div>
+
+      {/* ── Morning Digest (z-50, below session warning at z-60) ── */}
+      {showDigest && user && (
+        <MorningDigestModal
+          officerName={user.name}
+          employeeId={user.employeeId}
+          tasks={digestTasks}
+          stats={digestStats}
+          isLoading={firsLoading}
+          onClose={dismissDigest}
+        />
+      )}
 
       {showSessionWarning && (
         <div

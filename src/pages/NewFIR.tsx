@@ -18,6 +18,7 @@ import {
 } from "../lib/cases";
 import { useAuth } from "../context/AuthContext";
 import { requestFirDraft } from "../lib/chatApi";
+import { AlertTriangle } from "lucide-react";
 import { KSPPBrandMark } from "../components/brand/KSPPBrand";
 
 function safeJsonParse(rawText: string) {
@@ -260,8 +261,6 @@ const OptionInput: React.FC<{
   );
 };
 
-const namesFromTextarea = (value: string) => joinNames(value.split(/\n|;/));
-const textareaFromNames = (value: string) => splitNames(value).join("\n");
 
 const demoFirstNames = [
   "Aarav",
@@ -445,6 +444,49 @@ const NewFIR: React.FC = () => {
   const meta = STEPS[step - 1];
   const accusedCount = splitNames(form.AccusedNames).length;
   const victimCount = splitNames(form.VictimNames).length;
+
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+
+  const normalizePersonName = (value: string) =>
+    String(value || "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const duplicateCases = useMemo(() => {
+    const formAccused = splitNames(form.AccusedNames).map(normalizePersonName).filter(Boolean);
+    const formVictims = splitNames(form.VictimNames).map(normalizePersonName).filter(Boolean);
+
+    if (formAccused.length === 0 && formVictims.length === 0) return [];
+
+    return cases.filter((c) => {
+      if (form.CaseMasterID && String(c.CaseMasterID) === String(form.CaseMasterID)) return false;
+      if (form.CrimeNo && String(c.CrimeNo) === String(form.CrimeNo)) return false;
+      if (editing && String(c.CaseMasterID) === String(loadedKey)) return false;
+
+      const caseAccused = splitNames(c.AccusedNames).map(normalizePersonName).filter(Boolean);
+      const caseVictims = splitNames(c.VictimNames).map(normalizePersonName).filter(Boolean);
+
+      const accusedOverlap = formAccused.length > 0 && caseAccused.length > 0 &&
+        formAccused.some((n) => n !== "unknown" && caseAccused.some((existing) => existing === n));
+      const victimOverlap = formVictims.length > 0 && caseVictims.length > 0 &&
+        formVictims.some((n) => n !== "unknown" && caseVictims.some((existing) => existing === n));
+
+      return accusedOverlap || victimOverlap;
+    });
+  }, [cases, form.AccusedNames, form.CaseMasterID, form.CrimeNo, form.VictimNames, editing, loadedKey]);
+
+  // Auto-show modal when new duplicates are detected
+  const prevDupCount = React.useRef(0);
+  useEffect(() => {
+    if (duplicateCases.length > 0 && prevDupCount.current === 0) {
+      setDuplicateModalOpen(true);
+    }
+    prevDupCount.current = duplicateCases.length;
+  }, [duplicateCases.length]);
 
   const update = (field: string, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -792,6 +834,86 @@ const NewFIR: React.FC = () => {
       </div>
 
       <div className="px-4 pt-4 sm:px-6 sm:pt-6">
+        {/* Duplicate FIR Modal */}
+        {duplicateModalOpen && duplicateCases.length > 0 && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <div className="w-full max-w-2xl rounded-2xl border border-rose/40 bg-panel shadow-2xl shadow-rose/10">
+              <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-line">
+                <div>
+                  <div className="flex items-center gap-2 text-rose font-semibold text-base">
+                    <AlertTriangle className="text-rose" size={20} />
+                    <span>Similar Case{duplicateCases.length > 1 ? 's' : ''} Found</span>
+                  </div>
+                  <p className="text-xs text-muted mt-1">
+                    The details you entered match {duplicateCases.length} existing FIR{duplicateCases.length > 1 ? 's' : ''}. Review before submitting to avoid duplicates.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setDuplicateModalOpen(false)}
+                  className="shrink-0 text-muted hover:text-white text-xl leading-none"
+                  aria-label="Close"
+                >×</button>
+              </div>
+              <div className="overflow-y-auto max-h-[60vh] divide-y divide-line">
+                {duplicateCases.map((dc) => (
+                  <div key={dc.CaseMasterID} className="px-6 py-4">
+                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                      <span className="text-white font-semibold text-sm">FIR No: {dc.CrimeNo || '—'}</span>
+                      <span className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted">ID: {dc.CaseMasterID}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        (dc.Status || '').toLowerCase().includes('solved') || (dc.Status || '').toLowerCase().includes('closed')
+                          ? 'bg-sage/15 text-sage' : 'bg-amber/15 text-amber'
+                      }`}>{dc.Status || 'Unknown'}</span>
+                      <button
+                        onClick={() => {
+                          setDuplicateModalOpen(false);
+                          navigate(`/fir/${caseRoute(dc)}`);
+                        }}
+                        className="ml-auto px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose/20 text-rose border border-rose/30 hover:bg-rose/30"
+                      >
+                        View Case
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                      {[
+                        ['Police Station', dc.PoliceStation],
+                        ['Crime Head', dc.CrimeHead],
+                        ['Crime Sub-Head', dc.CrimeSubHead],
+                        ['Registered Date', dc.CrimeRegisteredDate],
+                        ['Complainant', dc.Complainant],
+                        ['Officer', dc.Officer],
+                        ['Accused', dc.AccusedNames],
+                        ['Victims', dc.VictimNames],
+                      ].map(([label, val]) => val ? (
+                        <div key={label} className="flex gap-1">
+                          <span className="text-muted shrink-0">{label}:</span>
+                          <span className="text-white">{val}</span>
+                        </div>
+                      ) : null)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-end gap-3 px-6 py-4 border-t border-line">
+                <button
+                  onClick={() => setDuplicateModalOpen(false)}
+                  className="px-4 py-2 text-sm font-semibold rounded-lg border border-line text-muted hover:text-white hover:bg-panel"
+                >
+                  Continue Anyway
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {duplicateCases.length > 0 && !duplicateModalOpen && (
+          <button
+            onClick={() => setDuplicateModalOpen(true)}
+            className="mx-auto max-w-6xl mb-4 w-full text-left rounded-xl border border-rose/30 bg-rose/10 px-4 py-3 text-sm text-rose hover:bg-rose/15 transition"
+          >
+            <strong>{duplicateCases.length} similar case{duplicateCases.length > 1 ? 's' : ''} found</strong> — FIR {duplicateCases.map(d => d.CrimeNo).join(', ')}. Click to review.
+          </button>
+        )}
+
         <div className="mx-auto max-w-6xl rounded-2xl border border-line bg-shell p-4 sm:p-5">
           <div className="flex flex-col gap-3 min-[600px]:flex-row min-[600px]:items-start min-[600px]:justify-between">
             <div className="min-w-0">
@@ -1076,15 +1198,19 @@ const Step1: React.FC<{
           />
         </Field>
 
-        <OptionInput
-          label="PoliceStation"
-          field="PoliceStation"
-          value={form.PoliceStation}
-          onChange={(value) => update("PoliceStation", value)}
-          options={stationOptions}
-          placeholder="Select or type station"
-          onOptionsOpen={refreshOptions}
-        />
+        <Field label="PoliceStation">
+          <select
+            value={form.PoliceStation}
+            onChange={(e) => update("PoliceStation", e.target.value)}
+            className={inputClass}
+            onFocus={refreshOptions}
+          >
+            <option value="">— Select Police Station —</option>
+            {stationOptions.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </Field>
         <OptionInput
           label="CrimeHead"
           field="CrimeHead"
@@ -1271,11 +1397,11 @@ const Step4: React.FC<{
   victimCount: number;
 }> = ({ form, update, victimCount }) => (
   <>
-    <Field label="VictimNames" hint="Enter one victim per line.">
+    <Field label="VictimNames" hint="Enter one victim per line. Press Enter for each new name. Spaces in names are fully supported.">
       <textarea
         rows={6}
-        value={textareaFromNames(form.VictimNames)}
-        onChange={(event) => update("VictimNames", namesFromTextarea(event.target.value))}
+        value={form.VictimNames.replace(/;\s*/g, '\n')}
+        onChange={(e) => update("VictimNames", e.target.value)}
         className={inputClass}
       />
     </Field>
@@ -1297,11 +1423,11 @@ const Step5: React.FC<{
         Save Case Basics first. Accused details cannot be entered until the case row exists.
       </div>
     )}
-    <Field label="AccusedNames" hint="Enter one accused per line. Unknown accused can be entered as Unknown.">
+    <Field label="AccusedNames" hint="Enter one accused per line. Press Enter for each new name. Spaces in names are fully supported.">
       <textarea
         rows={6}
-        value={textareaFromNames(form.AccusedNames)}
-        onChange={(event) => update("AccusedNames", namesFromTextarea(event.target.value))}
+        value={form.AccusedNames.replace(/;\s*/g, '\n')}
+        onChange={(e) => !disabled && update("AccusedNames", e.target.value)}
         className={inputClass}
         disabled={disabled}
       />
