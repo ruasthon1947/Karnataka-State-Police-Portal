@@ -21,6 +21,113 @@ function toRowArray(task) {
   return HEADERS.map(h => String(task[h] ?? ""));
 }
 
+const TODO_PRIORITIES = new Set(["low", "medium", "high", "critical"]);
+const TODO_STATUSES = new Set(["pending", "in_progress", "completed"]);
+const TODO_CATEGORIES = new Set(["investigation", "court", "followup", "chargesheet"]);
+const MUTABLE_FIELDS = new Set(["title", "description", "status", "priority", "dueDate", "category"]);
+
+function httpError(status, message) {
+  return Object.assign(new Error(message), { status });
+}
+
+function cleanText(value, maxLength) {
+  return String(value ?? "").trim().slice(0, maxLength);
+}
+
+function validDate(value) {
+  const date = cleanText(value, 10);
+  if (!date) return "";
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    throw httpError(400, "Due date must use YYYY-MM-DD format.");
+  }
+  return date;
+}
+
+export function sanitizeTodoCreate(taskData = {}) {
+  const title = cleanText(taskData.title, 160);
+  if (!title) throw httpError(400, "Task title is required.");
+  const priority = cleanText(taskData.priority || "medium", 20).toLowerCase();
+  const status = cleanText(taskData.status || "pending", 20).toLowerCase();
+  const category = cleanText(taskData.category || "investigation", 30).toLowerCase();
+  if (!TODO_PRIORITIES.has(priority)) throw httpError(400, "Invalid task priority.");
+  if (!TODO_STATUSES.has(status)) throw httpError(400, "Invalid task status.");
+  if (!TODO_CATEGORIES.has(category)) throw httpError(400, "Invalid task category.");
+  return {
+    title,
+    description: cleanText(taskData.description, 2000),
+    priority,
+    status,
+    category,
+    dueDate: validDate(taskData.dueDate),
+    assignedTo: cleanText(taskData.assignedTo, 160),
+    policeStation: cleanText(taskData.policeStation, 160),
+    createdBy: cleanText(taskData.createdBy, 160),
+    source: "manual",
+  };
+}
+
+export function sanitizeTodoUpdates(updates = {}) {
+  const sanitized = {};
+  for (const [field, value] of Object.entries(updates)) {
+    if (!MUTABLE_FIELDS.has(field)) continue;
+    if (field === "title") {
+      const title = cleanText(value, 160);
+      if (!title) throw httpError(400, "Task title is required.");
+      sanitized.title = title;
+    } else if (field === "description") {
+      sanitized.description = cleanText(value, 2000);
+    } else if (field === "dueDate") {
+      sanitized.dueDate = validDate(value);
+    } else {
+      const normalized = cleanText(value, 30).toLowerCase();
+      const allowed = field === "priority" ? TODO_PRIORITIES : field === "status" ? TODO_STATUSES : TODO_CATEGORIES;
+      if (!allowed.has(normalized)) throw httpError(400, `Invalid task ${field}.`);
+      sanitized[field] = normalized;
+    }
+  }
+  if (Object.keys(sanitized).length === 0) throw httpError(400, "No supported task updates were provided.");
+  return sanitized;
+}
+
+export function filterTodosForAccess(todos, filter = {}, stationLookup = new Map()) {
+  let filtered = [...todos];
+  if (filter.policeStation) {
+    const requested = String(filter.policeStation).trim();
+    const requestedName = resolveStationName(requested, stationLookup);
+    filtered = filtered.filter((task) => {
+      const taskStation = String(task.policeStation || "").trim();
+      return taskStation === requested || resolveStationName(taskStation, stationLookup) === requestedName;
+    });
+  }
+  if (filter.assignedTo) {
+    const assignees = (Array.isArray(filter.assignedTo) ? filter.assignedTo : [filter.assignedTo])
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean);
+    filtered = filtered.filter((task) => {
+      const assignedTo = String(task.assignedTo || "").trim().toLowerCase();
+      const createdBy = String(task.createdBy || "").trim().toLowerCase();
+      return assignees.includes(assignedTo) || assignees.includes(createdBy);
+    });
+  }
+  if (filter.status) filtered = filtered.filter((task) => task.status === filter.status);
+  return filtered;
+}
+
+function sameStation(left, right, stationLookup) {
+  const leftValue = String(left || "").trim();
+  const rightValue = String(right || "").trim();
+  return leftValue === rightValue || resolveStationName(leftValue, stationLookup) === resolveStationName(rightValue, stationLookup);
+}
+
+function taskOwnedBy(task, session) {
+  const identities = [session.employeeId, session.name]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+  return identities.includes(String(task.assignedTo || "").trim().toLowerCase()) ||
+    identities.includes(String(task.createdBy || "").trim().toLowerCase());
+}
+
 export async function fetchTodos(req, filter = {}) {
   const sheetId = getSheetId();
   const tableData = await readTable(sheetId, TODO_TAB);
@@ -30,24 +137,13 @@ export async function fetchTodos(req, filter = {}) {
     return [];
   }
   
-  let todos = tableData.rows;
-  
-  if (filter.policeStation) {
-    todos = todos.filter(t => t.policeStation === filter.policeStation);
-  }
-  if (filter.assignedTo) {
-    const assignees = Array.isArray(filter.assignedTo) ? filter.assignedTo : [filter.assignedTo];
-    todos = todos.filter(t => assignees.includes(t.assignedTo) || assignees.includes(t.createdBy));
-  }
-  if (filter.status) {
-    todos = todos.filter(t => t.status === filter.status);
-  }
-  
-  return todos;
+  const stationLookup = filter.policeStation ? await buildStationLookup() : new Map();
+  return filterTodosForAccess(tableData.rows, filter, stationLookup);
 }
 
 export async function createTodo(req, taskData) {
   const sheetId = getSheetId();
+  taskData = sanitizeTodoCreate(taskData);
   
   if (!taskData.taskId) {
     taskData.taskId = crypto.randomUUID();
@@ -85,6 +181,7 @@ export async function createTodo(req, taskData) {
 
 export async function updateTodo(req, taskId, updates) {
   const sheetId = getSheetId();
+  updates = sanitizeTodoUpdates(updates);
   const tableData = await readTable(sheetId, TODO_TAB);
   
   if (!tableData.headers || tableData.headers.length === 0) {
@@ -99,29 +196,20 @@ export async function updateTodo(req, taskId, updates) {
   
   const existingTask = tableData.rows[idx];
   const { session } = req;
+  const stationLookup = await buildStationLookup();
+  const withinStation = sameStation(existingTask.policeStation, session.policeStation, stationLookup);
   
   // Security Audit: Check Authorization (IDOR Prevention)
   if (session.role === "Inspector") {
-    if (existingTask.policeStation !== session.policeStation) {
-      throw new Error("Forbidden: You cannot modify tasks outside your station.");
+    if (!withinStation) {
+      throw httpError(403, "Forbidden: You cannot modify tasks outside your station.");
     }
   } else if (session.role === "Constable") {
-    if (existingTask.policeStation !== session.policeStation) {
-      throw new Error("Forbidden: You cannot modify tasks outside your station.");
+    if (!withinStation) {
+      throw httpError(403, "Forbidden: You cannot modify tasks outside your station.");
     }
-    if (existingTask.assignedTo !== session.employeeId && existingTask.createdBy !== session.employeeId) {
-      throw new Error("Forbidden: You can only modify tasks assigned to you or created by you.");
-    }
-  }
-  
-  // Security Audit: Prevent manipulation of restricted fields via updates
-  if (session.role === "Constable" || session.role === "Inspector") {
-    if (updates.policeStation && updates.policeStation !== session.policeStation) {
-      throw new Error("Forbidden: You cannot move tasks to another station.");
-    }
-    // Prevent changing creator
-    if (updates.createdBy && updates.createdBy !== existingTask.createdBy) {
-      delete updates.createdBy;
+    if (!taskOwnedBy(existingTask, session)) {
+      throw httpError(403, "Forbidden: You can only modify tasks assigned to you or created by you.");
     }
   }
   
@@ -151,18 +239,16 @@ export async function deleteTodo(req, taskId) {
     return { ok: true, deleted: false };
   }
 
+  const stationLookup = await buildStationLookup();
+  const withinStation = sameStation(taskToDelete.policeStation, session.policeStation, stationLookup);
+  const ownsTask = taskOwnedBy(taskToDelete, session);
+
   // Security Audit: Check Authorization (IDOR Prevention)
   if (session.role === "Inspector") {
-    const ownsTask =
-      taskToDelete.assignedTo === session.employeeId ||
-      taskToDelete.createdBy === session.employeeId;
-    if (taskToDelete.policeStation !== session.policeStation && !ownsTask) {
+    if (!withinStation && !ownsTask) {
       throw Object.assign(new Error("Forbidden: You cannot delete tasks outside your station."), { status: 403 });
     }
   } else if (session.role === "Constable") {
-    const ownsTask =
-      taskToDelete.assignedTo === session.employeeId ||
-      taskToDelete.createdBy === session.employeeId;
     if (!ownsTask) {
       throw Object.assign(
         new Error("Forbidden: You can only delete tasks assigned to you or created by you."),
@@ -185,11 +271,24 @@ export async function deleteTodo(req, taskId) {
 
 export async function computeStats(req, filter = {}) {
   const todos = await fetchTodos(req, filter);
-  
-  const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
-  const tomorrowDate = new Date(now);
-  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  return computeTodoStats(todos);
+}
+
+function dateInKolkata(date) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type) => parts.find((item) => item.type === type)?.value || "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+export function computeTodoStats(todos, now = new Date()) {
+  const todayStr = dateInKolkata(now);
+  const tomorrowDate = new Date(`${todayStr}T00:00:00Z`);
+  tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
   const tomorrowStr = tomorrowDate.toISOString().slice(0, 10);
   
   const active = todos.filter(t => t.status !== "completed");
@@ -215,7 +314,8 @@ export async function computeStats(req, filter = {}) {
   
   const completedToday = completed.filter(t => {
     if (!t.updatedAt) return false;
-    return t.updatedAt.slice(0, 10) === todayStr;
+    const updatedAt = new Date(t.updatedAt);
+    return !Number.isNaN(updatedAt.getTime()) && dateInKolkata(updatedAt) === todayStr;
   });
   
   // Officer workload distribution
@@ -265,22 +365,34 @@ export async function computeStats(req, filter = {}) {
   };
 }
 
-// Build a UnitID → UnitName lookup map from the Unit sheet
+let stationLookupPromise = null;
+let stationLookupExpiresAt = 0;
+
+// Build a short-lived UnitID → UnitName lookup so the parallel list/stat calls
+// do not make duplicate Unit-sheet requests.
 async function buildStationLookup() {
-  const sheetId = getSheetId();
-  try {
-    const unitTable = await readTable(sheetId, "Unit");
-    const map = new Map();
-    for (const row of unitTable.rows) {
-      if (row.UnitID && row.UnitName) {
-        map.set(row.UnitID, row.UnitName);
-      }
-    }
-    return map;
-  } catch (err) {
-    console.warn("[TodoService] Could not load Unit table for station name lookup:", err.message);
-    return new Map();
+  if (stationLookupPromise && stationLookupExpiresAt > Date.now()) {
+    return stationLookupPromise;
   }
+  const sheetId = getSheetId();
+  stationLookupPromise = (async () => {
+    try {
+      const unitTable = await readTable(sheetId, "Unit");
+      const map = new Map();
+      for (const row of unitTable.rows) {
+        if (row.UnitID && row.UnitName) {
+          map.set(row.UnitID, row.UnitName);
+        }
+      }
+      stationLookupExpiresAt = Date.now() + 5 * 60_000;
+      return map;
+    } catch (err) {
+      stationLookupExpiresAt = 0;
+      console.warn("[TodoService] Could not load Unit table for station name lookup:", err.message);
+      return new Map();
+    }
+  })();
+  return stationLookupPromise;
 }
 
 function resolveStationName(stationIdOrName, lookup) {

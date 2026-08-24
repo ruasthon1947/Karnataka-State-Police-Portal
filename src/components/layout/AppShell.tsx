@@ -17,6 +17,7 @@ import {
   computeGeneratedStats,
 } from "../../lib/taskEngine";
 import { clearDigestPending, hasDigestPending } from "../../lib/digestSession";
+import { useCompletedTasks } from "../../lib/pinnedTasks";
 
 const digestSeenKey = (employeeId: string) => `kpfir.digestSeenDate.v2.${employeeId}`;
 
@@ -38,11 +39,16 @@ const AppShell: React.FC = () => {
 
   const { records: firRecords, loading: firsLoading } = useFirRecords();
   const today = useMemo(() => new Date(), []);
+  const { isCompleted } = useCompletedTasks(user?.employeeId);
 
   const digestTasks = useMemo(
     () =>
-      user?.name ? generateTasksForOfficer(user.name, firRecords, today) : [],
-    [user?.name, firRecords, today]
+      user?.name
+        ? generateTasksForOfficer(user.name, firRecords, today).filter(
+            (task) => !isCompleted(task.id),
+          )
+        : [],
+    [user?.name, firRecords, today, isCompleted]
   );
   const digestStats = useMemo(
     () => computeGeneratedStats(digestTasks, today),

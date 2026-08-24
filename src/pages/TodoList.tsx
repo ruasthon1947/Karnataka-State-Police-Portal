@@ -3,10 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
 import {
-  ClipboardList, AlertCircle, Clock, Calendar, AlertTriangle,
+  ClipboardList, AlertCircle, Clock, Calendar,
   CheckCircle2, CloudDownload, Plus, Building2, Activity, Trash2, RefreshCw,
   ChevronDown, ChevronUp, Zap, Shield,
-  Link2, Pin, Check, X
+  Pin, Check, X
 } from "lucide-react";
 import {
   TodoTask,
@@ -37,8 +37,8 @@ const Card: React.FC<{ children: React.ReactNode; className?: string; onClick?: 
 }) => (
   <div 
     onClick={onClick}
-    className={`bg-shell border border-line/30 dark:border-line/40 rounded-2xl shadow-soft transition-all duration-200 ${
-      onClick ? "cursor-pointer hover:border-brand/40 dark:hover:border-steel/40 hover:shadow-md active:scale-[0.995]" : ""
+    className={`bg-shell border border-line rounded-xl ${
+      onClick ? "cursor-pointer transition hover:border-brand/40" : ""
     } ${className}`}
   >
     {children}
@@ -53,37 +53,21 @@ const StatTile: React.FC<{
   icon?: React.ReactNode;
   colorTheme?: "blue" | "red" | "amber" | "green" | "gray";
 }> = ({ label, value, accent = "text-slate-900 dark:text-slate-50", sub, icon, colorTheme = "blue" }) => {
-  const themeMap = {
-    blue: "from-brand/10 to-brand/0 border-brand/25 text-brand dark:text-sky-200",
-    red: "from-rose/10 to-rose/0 border-rose/25 text-rose-700 dark:text-rose-200",
-    amber: "from-amber/10 to-amber/0 border-amber/25 text-amber-700 dark:text-amber-200",
-    green: "from-sage/10 to-sage/0 border-sage/25 text-emerald-700 dark:text-emerald-200",
-    gray: "from-slate-200/80 to-slate-100/0 border-slate-300 text-slate-700 dark:text-slate-200",
-  };
-
   return (
-    <div className="relative overflow-hidden flex flex-col justify-between p-5 bg-white/90 dark:bg-panel/80 border border-slate-200/80 dark:border-line/40 rounded-2xl shadow-soft transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 hover:border-slate-300 dark:hover:border-line/85 group">
-      {/* Decorative top border glow */}
-      <div className={`absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r ${
-        colorTheme === "blue" ? "from-brand to-steel" : 
-        colorTheme === "red" ? "from-rose to-red-400" : 
-        colorTheme === "amber" ? "from-amber to-yellow-500" : 
-        colorTheme === "green" ? "from-sage to-emerald-400" : "from-slate-400 to-slate-500"
-      }`} />
-      
+    <div className="flex flex-col justify-between rounded-xl border border-line bg-shell p-4 transition hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-soft">
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1 w-full">
-          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 tracking-wider uppercase font-sans">
+          <span className="text-[11px] uppercase tracking-wide text-muted">
             {label}
           </span>
-          <span className={`text-3xl font-extrabold font-fustat tabular-nums leading-none tracking-tight mt-1.5 ${accent}`}>
+          <span className={`mt-3 text-3xl font-semibold tabular-nums leading-none ${accent}`}>
             {value}
           </span>
         </div>
       </div>
 
       {sub && (
-        <div className="mt-3 text-[10px] text-slate-500 dark:text-slate-400 border-t border-slate-200/80 dark:border-line/10 pt-2 flex items-center justify-between">
+        <div className="mt-2 border-t border-line pt-2 text-[11px] text-muted">
           <span>{sub}</span>
         </div>
       )}
@@ -163,10 +147,12 @@ const PriorityBadge: React.FC<{ priority: TaskPriority }> = ({ priority }) => {
   );
 };
 
-const formatTaskTitle = (task: GeneratedTask) => {
-  const action = task.title.replace(/\s+[—-]\s*FIR\s+.*$/i, "").trim();
-  return `${action} — FIR ${task.linkedFirNumber}`;
-};
+const formatTaskTitle = (task: GeneratedTask) => task.title;
+
+type PendingTaskAction =
+  | { kind: "complete-generated"; task: GeneratedTask }
+  | { kind: "complete-manual"; task: TodoTask }
+  | { kind: "delete-manual"; task: TodoTask };
 
 // ─── Generated Task Card ──────────────────────────────────────────────────────
 
@@ -178,71 +164,39 @@ const GeneratedTaskCard: React.FC<{
   onComplete: () => void;
 }> = ({ task, today, isPinned, onTogglePinned, onComplete }) => {
   const navigate = useNavigate();
-  const [isCompleting, setIsCompleting] = useState(false);
   const todayIso = today.toLocaleDateString("sv");
   const isOverdue = task.dueDate ? task.dueDate < todayIso : false;
   const openCase = () => navigate(`/fir/${encodeURIComponent(task.linkedFirNumber)}`);
 
   return (
-    <div
-      role="link"
-      tabIndex={0}
-      onClick={openCase}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          openCase();
-        }
-      }}
-      className="cursor-pointer group block focus:outline-none"
-    >
+    <article className="group block">
       <Card
-        className={`p-4 sm:p-5 flex flex-col sm:flex-row gap-4 sm:items-center border-l-4 transition-all duration-300 hover:shadow-md ${
-          task.priority === "critical"
-            ? "border-l-rose bg-rose/[0.02] dark:bg-rose/[0.01] hover:bg-rose/[0.04]"
-            : task.priority === "high"
-            ? "border-l-amber bg-amber/[0.01] hover:bg-amber/[0.03]"
-            : task.priority === "medium"
-            ? "border-l-brand bg-transparent hover:bg-panel/30"
-            : isOverdue
-            ? "border-l-rose bg-rose/[0.02] dark:bg-rose/[0.01]"
-            : "border-l-line bg-transparent hover:bg-panel/30"
-        }`}
+        className="flex flex-col gap-3 p-4 transition hover:border-brand/40 hover:bg-panel sm:flex-row sm:items-center"
       >
         <div className="flex-1 min-w-0 flex items-start gap-3">
           <button
             type="button"
             role="checkbox"
-            aria-checked={isCompleting}
+            aria-checked={false}
             onClick={(event) => {
               event.stopPropagation();
-              if (isCompleting) return;
-              if (window.confirm(`Mark "${formatTaskTitle(task)}" as complete?`)) {
-                setIsCompleting(true);
-                onComplete();
-              }
+              onComplete();
             }}
-            className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-lg border-2 transition-all duration-200 ${
-              isCompleting
-                ? "border-2 border-brand bg-brand text-white scale-95 shadow-sm shadow-brand/20"
-                : "border-slate-400 bg-white text-transparent hover:border-brand hover:bg-brand/5 hover:text-brand/40 dark:border-slate-500 dark:bg-panel"
-            }`}
+            className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded border-2 border-line bg-panel text-transparent transition-colors hover:border-brand hover:text-brand/50"
             aria-label={`Complete ${formatTaskTitle(task)}`}
           >
-            <Check size={12} strokeWidth={3} className={isCompleting ? "scale-100" : "scale-75 opacity-0 hover:opacity-100 hover:scale-100 transition-all duration-200"} />
+            <Check size={12} strokeWidth={3} className="opacity-0 transition-opacity group-hover:opacity-40" />
           </button>
 
-          <div className="min-w-0 flex-1 space-y-2">
+          <div className="min-w-0 flex-1 space-y-1.5">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-[15px] font-bold tracking-tight text-ink dark:text-white group-hover:text-brand dark:group-hover:text-steel transition-colors duration-200">
-                {formatTaskTitle(task)}
+              <h3>
+                <button type="button" onClick={openCase} className="text-left text-sm font-bold tracking-tight text-ink transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:text-white dark:hover:text-steel">
+                  {formatTaskTitle(task)}
+                </button>
               </h3>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <PriorityBadge priority={task.priority} />
-                <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 text-[10px] font-medium text-slate-700 transition-colors group-hover:border-slate-400 dark:border-line dark:bg-panel/80 dark:text-slate-200">
-                  <Link2 size={10} strokeWidth={2.5} className="text-slate-600 dark:text-muted/60" />
-                  FIR {task.linkedFirNumber}
-                </span>
                 {isOverdue && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:border-rose/25 dark:bg-rose/10 dark:text-rose">
                     <Clock size={10} className="animate-pulse" />
@@ -259,17 +213,17 @@ const GeneratedTaskCard: React.FC<{
         </div>
 
         {/* Pin and Action Panel */}
-        <div className="flex shrink-0 items-center justify-end gap-2 self-end sm:self-center border-t border-line/10 sm:border-none pt-3 sm:pt-0">
+        <div className="flex shrink-0 items-center justify-end gap-1.5 self-end sm:self-center">
           <button
             type="button"
             onClick={(event) => {
               event.stopPropagation();
               onTogglePinned();
             }}
-            className={`grid h-9 w-9 place-items-center rounded-xl border transition-all duration-200 ${
+            className={`grid h-8 w-8 place-items-center rounded-lg border transition-colors ${
               isPinned
-                ? "border-amber/30 bg-amber/10 text-amber shadow-sm shadow-amber/10"
-                : "border-line bg-panel text-muted hover:border-amber/30 hover:bg-amber/5 hover:text-amber"
+                ? "border-amber/30 bg-amber/10 text-amber"
+                : "border-line text-muted hover:bg-panel hover:text-amber"
             }`}
             aria-label={isPinned ? `Unpin ${task.title}` : `Pin ${task.title}`}
             title={isPinned ? "Unpin task" : "Pin task"}
@@ -283,14 +237,15 @@ const GeneratedTaskCard: React.FC<{
               event.stopPropagation();
               openCase();
             }}
-            className="hidden sm:grid h-9 w-9 place-items-center rounded-xl border border-line bg-panel text-muted hover:border-brand/40 hover:bg-brand/5 hover:text-brand transition-all duration-200"
+            className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted transition-colors hover:bg-panel hover:text-brand"
             title="View Case Details"
+            aria-label={`View case details for FIR ${task.displayFirNumber}`}
           >
             <Activity size={14} />
           </button>
         </div>
       </Card>
-    </div>
+    </article>
   );
 };
 
@@ -306,51 +261,37 @@ const ManualTaskCard: React.FC<{
   onDelete: () => void;
   onTogglePinned: () => void;
 }> = ({ task, isPinned, isOverdue, isDueToday, isDueTomorrow, onComplete, onDelete, onTogglePinned }) => {
-  const [isCompleting, setIsCompleting] = useState(false);
   const addedAtLabel = task.source === "manual" && task.createdAt
     ? `Added ${new Date(task.createdAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`
     : "";
 
   return (
     <Card
-      className={`p-4 sm:p-5 flex flex-col sm:flex-row gap-4 sm:items-center border-l-4 transition-all duration-300 hover:shadow-md ${
-        task.status === "completed"
-          ? "opacity-60 bg-panel/30 border-l-line"
-          : task.priority === "critical"
-          ? "border-l-rose bg-rose/[0.01] hover:bg-rose/[0.03]"
-          : task.priority === "high"
-          ? "border-l-amber bg-amber/[0.01] hover:bg-amber/[0.03]"
-          : isOverdue
-          ? "border-l-rose bg-rose/[0.01]"
-          : "border-l-line bg-transparent hover:bg-panel/30"
-      }`}
+      className={`flex flex-col gap-3 p-4 transition hover:border-brand/40 hover:bg-panel sm:flex-row sm:items-center ${task.status === "completed" ? "opacity-60" : ""}`}
     >
       <div className="flex-1 min-w-0 flex items-start gap-3">
         <button
           type="button"
           role="checkbox"
-          aria-checked={isCompleting || task.status === "completed"}
+          aria-checked={task.status === "completed"}
           onClick={(event) => {
             event.stopPropagation();
-            if (isCompleting || task.status === "completed") return;
-            if (window.confirm(`Mark "${task.title}" as complete?`)) {
-              setIsCompleting(true);
-              onComplete();
-            }
+            if (task.status === "completed") return;
+            onComplete();
           }}
           className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-lg border-2 transition-all duration-200 ${
-            task.status === "completed" || isCompleting
+            task.status === "completed"
               ? "border-2 border-brand bg-brand text-white scale-95 shadow-sm shadow-brand/20"
               : "border-slate-400 bg-white text-transparent hover:border-brand hover:bg-brand/5 hover:text-brand/40 dark:border-slate-500 dark:bg-panel"
           }`}
           aria-label={`Complete ${task.title}`}
         >
-          <Check size={12} strokeWidth={3} className={(isCompleting || task.status === "completed") ? "scale-100" : "scale-75 opacity-0 hover:opacity-100 hover:scale-100 transition-all duration-200"} />
+          <Check size={12} strokeWidth={3} className={task.status === "completed" ? "scale-100" : "scale-75 opacity-0 hover:opacity-100 hover:scale-100 transition-all duration-200"} />
         </button>
 
-        <div className="min-w-0 flex-1 space-y-2">
+        <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className={`text-[15px] font-bold tracking-tight ${
+            <h3 className={`text-sm font-bold tracking-tight ${
               task.status === "completed" ? "line-through text-muted" : "text-ink dark:text-white"
             }`}>
               {task.title}
@@ -415,7 +356,7 @@ const ManualTaskCard: React.FC<{
         </div>
       </div>
 
-      <div className="flex shrink-0 flex-col items-end gap-2 self-end sm:self-center border-t border-line/10 sm:border-none pt-3 sm:pt-0">
+      <div className="flex shrink-0 flex-col items-end gap-1.5 self-end sm:self-center">
         {addedAtLabel && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:border-line dark:bg-panel/60 dark:text-slate-300">
             <Clock size={10} strokeWidth={2.5} />
@@ -427,7 +368,7 @@ const ManualTaskCard: React.FC<{
           <button
             type="button"
             onClick={onDelete}
-            className="grid h-9 w-9 place-items-center rounded-xl border border-line bg-panel text-muted hover:border-rose/30 hover:bg-rose/10 hover:text-rose transition-all duration-200"
+            className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted transition-colors hover:bg-rose/10 hover:text-rose"
             aria-label={`Delete ${task.title}`}
             title="Delete task"
           >
@@ -436,10 +377,10 @@ const ManualTaskCard: React.FC<{
           <button
             type="button"
             onClick={onTogglePinned}
-            className={`grid h-9 w-9 place-items-center rounded-xl border transition-all duration-200 ${
+            className={`grid h-8 w-8 place-items-center rounded-lg border transition-colors ${
               isPinned
-                ? "border-amber/30 bg-amber/10 text-amber shadow-sm shadow-amber/10"
-                : "border-line bg-panel text-muted hover:border-amber/30 hover:bg-amber/5 hover:text-amber"
+                ? "border-amber/30 bg-amber/10 text-amber"
+                : "border-line text-muted hover:bg-panel hover:text-amber"
             }`}
             aria-label={isPinned ? `Unpin ${task.title}` : `Pin ${task.title}`}
             title={isPinned ? "Unpin task" : "Pin task"}
@@ -459,8 +400,8 @@ const EmptyState: React.FC<{
   title: string;
   description: string;
 }> = ({ icon, title, description }) => (
-  <Card className="flex flex-col items-center justify-center py-20 px-6 text-center border border-dashed border-line/60 bg-panel/20 dark:bg-panel/10 rounded-2xl">
-    <div className="h-16 w-16 mb-5 rounded-2xl bg-panel border border-line/40 text-brand dark:text-steel flex items-center justify-center shadow-inner">
+  <Card className="flex flex-col items-center justify-center border-dashed bg-panel/20 px-6 py-16 text-center">
+    <div className="mb-4 grid h-12 w-12 place-items-center rounded-lg border border-line bg-shell text-brand">
       {icon}
     </div>
     <h3 className="text-lg font-bold text-ink dark:text-white tracking-tight mb-2">
@@ -550,7 +491,7 @@ const TodoList: React.FC = () => {
     priority: "medium",
     dueDate: "",
   });
-  const [pendingDeleteTask, setPendingDeleteTask] = useState<TodoTask | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingTaskAction | null>(null);
 
   const isAdmin = user?.role === "Inspector" || user?.role === "SP";
 
@@ -620,9 +561,10 @@ const TodoList: React.FC = () => {
   };
 
   const handleStatusChange = async (task: TodoTask, newStatus: string) => {
+    const previousStatus = task.status;
     try {
-      setPersistedTasks(
-        persistedTasks.map((t) =>
+      setPersistedTasks((current) =>
+        current.map((t) =>
           t.taskId === task.taskId ? { ...t, status: newStatus as any } : t
         )
       );
@@ -631,22 +573,23 @@ const TodoList: React.FC = () => {
         .then((s) => { if (s.ok) setPersistedStats(s.stats); })
         .catch(() => undefined);
     } catch (err: any) {
-      setPersistedTasks(persistedTasks);
+      setPersistedTasks((current) =>
+        current.map((item) =>
+          item.taskId === task.taskId ? { ...item, status: previousStatus } : item,
+        ),
+      );
       setError(err.message || "Failed to update task");
     }
   };
 
   const handleDelete = async (task: TodoTask) => {
     if (!task?.taskId) {
-      setPendingDeleteTask(null);
       return;
     }
 
     const taskId = task.taskId;
     const employeeId = user?.employeeId;
 
-    // Close the confirmation UI immediately
-    setPendingDeleteTask(null);
     setError("");
 
     try {
@@ -685,6 +628,22 @@ const TodoList: React.FC = () => {
     }
   };
 
+  const confirmPendingAction = async () => {
+    const action = pendingAction;
+    if (!action) return;
+    setPendingAction(null);
+
+    if (action.kind === "complete-generated") {
+      markCompleted(action.task.id);
+      return;
+    }
+    if (action.kind === "complete-manual") {
+      await handleStatusChange(action.task, "completed");
+      return;
+    }
+    await handleDelete(action.task);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -693,7 +652,7 @@ const TodoList: React.FC = () => {
         assignedTo: user?.employeeId,
       });
       if (created.ok) {
-        setPersistedTasks([created.todo, ...persistedTasks]);
+        setPersistedTasks((current) => [created.todo, ...current]);
         setShowNewTaskModal(false);
         setNewTask({ title: "", description: "", priority: "medium", dueDate: "" });
         void fetchStats()
@@ -715,88 +674,81 @@ const TodoList: React.FC = () => {
   // ─── RENDER ────────────────────────────────────────────────────────────────
   return (
     <div className="relative">
-      {pendingDeleteTask && (
-        <div className="modal-backdrop fixed inset-0 z-[70] grid place-items-center px-4" role="dialog" aria-modal="true" aria-labelledby="delete-task-title">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-300/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.18)] dark:border-line/60 dark:bg-shell dark:shadow-gov">
-            <div className="flex items-start gap-3 border-b border-slate-200 bg-slate-100/80 px-5 py-4 dark:border-line/60 dark:bg-panel/80">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600 dark:border-rose/20 dark:bg-rose/10 dark:text-rose">
-                <Trash2 size={18} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 id="delete-task-title" className="text-lg font-bold text-slate-800 tracking-tight dark:text-white">
-                  Delete task
-                </h3>
-                <p className="mt-1 text-sm text-slate-600 dark:text-muted/80">
-                  Are u sure u wanna delete?
+      {pendingAction && (() => {
+        const deleting = pendingAction.kind === "delete-manual";
+        const title = pendingAction.task.title;
+        return (
+          <div className="fixed inset-0 z-[70] grid place-items-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="task-action-title">
+            <div className="w-full max-w-sm overflow-hidden rounded-xl border border-line bg-shell shadow-soft">
+              <div className="p-5">
+                <div className="flex items-start gap-3">
+                  <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${deleting ? "bg-rose/10 text-rose" : "bg-sage/10 text-sage"}`}>
+                    {deleting ? <Trash2 size={18} /> : <CheckCircle2 size={19} />}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 id="task-action-title" className="text-base font-bold text-ink dark:text-white">
+                      {deleting ? "Delete this task?" : "Mark as completed?"}
+                    </h3>
+                    <p className="mt-1 text-sm leading-relaxed text-muted">
+                      {deleting ? "It will be removed from the shared list." : "It will leave your active task list."}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-4 line-clamp-2 rounded-lg border border-line bg-panel px-3 py-2.5 text-sm font-semibold text-ink">
+                  {title}
                 </p>
-              </div>
-            </div>
-            <div className="px-5 py-4">
-              <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium break-words text-slate-800 dark:border-line/60 dark:bg-panel/60 dark:text-white">
-                {pendingDeleteTask.title}
-              </div>
-              <div className="mt-5 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPendingDeleteTask(null)}
-                  className="rounded-xl border border-slate-300 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:text-slate-900 dark:border-line dark:bg-panel dark:text-muted dark:hover:text-ink"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleDelete(pendingDeleteTask)}
-                  className="rounded-xl border border-rose-300 bg-rose-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-rose-500 dark:border-rose/30 dark:bg-rose dark:hover:bg-rose/90"
-                >
-                  Delete
-                </button>
+                <div className="mt-4 grid grid-cols-2 gap-2.5">
+                  <button type="button" onClick={() => setPendingAction(null)} className="h-9 rounded-lg border border-line px-4 text-sm font-semibold text-muted transition-colors hover:bg-panel hover:text-ink">
+                    Keep task
+                  </button>
+                  <button type="button" onClick={() => void confirmPendingAction()} className={`h-9 rounded-lg px-4 text-sm font-semibold text-white transition-colors ${deleting ? "bg-rose hover:bg-rose/90" : "bg-brand hover:bg-brand/90"}`}>
+                    {deleting ? "Delete" : "Complete"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+      <div className="mx-auto w-full max-w-[1500px] space-y-5 p-5 md:p-6">
 
       {/* ── Dashboard Header ─────────────────────────────── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-line/20 mb-4">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand/10 text-brand dark:text-steel text-[10px] font-bold uppercase tracking-wider border border-brand/25 dark:border-steel/20">
-            <Shield size={11} className="animate-pulse" />
-            {tr("Officer Command Centre", "ಅಧಿಕಾರಿ ಕಮಾಂಡ್ ಸೆಂಟರ್")}
-          </div>
-          <h1 className="text-3xl font-extrabold font-fustat text-ink dark:text-white tracking-tight leading-none">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-ink">
             {tr("Officer To-Do List", "ಅಧಿಕಾರಿಗಳ ಕಾರ್ಯಗಳ ಪಟ್ಟಿ")}
           </h1>
-          <p className="text-sm font-medium text-muted dark:text-muted/80 max-w-2xl leading-relaxed">
+          <p className="mt-1 text-sm text-muted dark:text-muted/80">
             {tr(
-              "Intelligence-driven tasks derived automatically from your active and assigned FIRs — synchronized with core case databases.",
+              "Tasks from your assigned FIRs, plus anything added manually.",
               "ನಿಮ್ಮ ಸಕ್ರಿಯ ಮತ್ತು ನಿಯೋಜಿತ ಎಫ್‌ಐಆರ್‌ಗಳಿಂದ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪಡೆದ ಬುದ್ಧಿಮತ್ತೆ ಆಧಾರಿತ ಕಾರ್ಯಗಳು."
             )}
           </p>
           {error && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-rose/10 border border-rose/25 text-xs text-rose font-semibold max-w-md animate-in fade-in duration-200">
+            <div className="mt-3 flex max-w-md items-center gap-2 rounded-lg border border-rose/30 bg-rose/10 px-3 py-2 text-xs font-semibold text-rose">
               <AlertCircle size={14} />
               <span>{error}</span>
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-3 self-start md:self-center shrink-0">
+        <div className="flex flex-wrap items-center gap-2 self-start md:self-center shrink-0">
           {/* Sync control: manual refresh + last-synced */}
-          <div className="flex items-center gap-3 mr-2">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => void handleSync()}
               disabled={syncing}
-              className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${syncing ? "opacity-70 cursor-wait" : "hover:bg-slate-100 dark:hover:bg-panel/70"} bg-slate-50 dark:bg-panel border-slate-200/80 dark:border-line/60`}
+              className={`grid h-9 w-9 place-items-center rounded-lg border border-line text-muted transition-colors ${syncing ? "cursor-wait opacity-70" : "hover:bg-panel hover:text-ink"}`}
+              aria-label="Sync latest tasks"
+              title="Sync latest tasks"
             >
               <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
-              <span>Sync Latest</span>
             </button>
-            <div className="text-xs text-muted">
+            <div className="hidden text-[11px] text-muted sm:block">
               <div title={lastSynced ? lastSynced.toLocaleString() : "Never"}>
-                {"Last synced: "}{lastSynced ? (function(d){
+                {lastSynced ? (function(d){
                   const diff = Date.now() - d.getTime();
                   if (diff < 60_000) return "just now";
                   const mins = Math.floor(diff/60000);
@@ -805,7 +757,7 @@ const TodoList: React.FC = () => {
                   if (hours < 24) return `${hours} hr${hours>1?"s":""} ago`;
                   const days = Math.floor(hours/24);
                   return `${days} day${days>1?"s":""} ago`;
-                })(lastSynced) : "Never"}
+                })(lastSynced) : "Not synced"}
               </div>
             </div>
           </div>
@@ -815,7 +767,7 @@ const TodoList: React.FC = () => {
             <div className="relative">
               <button
                 onClick={() => setShowAdminPanel((v) => !v)}
-                className={`flex h-11 items-center gap-2 rounded-xl border px-4 text-xs font-bold uppercase tracking-wider transition-all duration-200 ${
+                className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors ${
                   showAdminPanel 
                     ? "border-brand bg-brand/10 text-brand dark:text-steel" 
                     : "border-line bg-shell text-muted hover:border-line/80 hover:text-ink dark:hover:text-white"
@@ -827,7 +779,7 @@ const TodoList: React.FC = () => {
               </button>
               
               {showAdminPanel && (
-                <div className="absolute right-0 mt-2 z-30 w-64 p-3 bg-panel border border-line/60 rounded-2xl shadow-gov animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="absolute right-0 z-30 mt-2 w-64 rounded-xl border border-line bg-shell p-3 shadow-soft">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted/60 pb-2 border-b border-line/30 mb-2 px-1">
                     {tr("Administrative Controls", "ಆಡಳಿತಾತ್ಮಕ ನಿಯಂತ್ರಣಗಳು")}
                   </p>
@@ -837,7 +789,7 @@ const TodoList: React.FC = () => {
                       setShowAdminPanel(false);
                     }}
                     disabled={importing}
-                    className="w-full flex h-10 items-center gap-2.5 rounded-xl border border-line/60 bg-shell px-3 text-xs font-bold text-ink dark:text-white/90 hover:bg-panel/60 hover:border-line active:scale-[0.98] disabled:opacity-60 transition-all duration-150"
+                    className="flex h-9 w-full items-center gap-2.5 rounded-lg border border-line bg-panel px-3 text-xs font-semibold text-ink transition-colors hover:border-brand/40 disabled:opacity-60"
                   >
                     <CloudDownload size={14} className="text-muted" />
                     <span>{importing ? tr("Importing...", "ಆಮದು ಮಾಡಲಾಗುತ್ತಿದೆ...") : tr("Import from Sheets", "ಶೀಟ್ಸ್ ನಿಂದ ಆಮದು")}</span>
@@ -849,7 +801,7 @@ const TodoList: React.FC = () => {
           
           <button
             onClick={() => setShowNewTaskModal(true)}
-            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-brand hover:bg-brand/95 px-5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-brand/20 active:scale-[0.98] transition-all duration-200"
+            className="flex h-9 items-center justify-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand/90"
           >
             <Plus size={15} strokeWidth={2.5} />
             <span>{tr("Add Task", "ಕಾರ್ಯ ಸೇರಿಸಿ")}</span>
@@ -866,70 +818,42 @@ const TodoList: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* ── Stat Tiles ──────────────────────────────── */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            <StatTile
-              label={tr("Auto Tasks", "ಸ್ವಯಂ ಕಾರ್ಯಗಳು")}
-              value={generatedStats.total}
-              accent="text-brand dark:text-steel"
-              icon={<ClipboardList size={16} />}
-              colorTheme="blue"
-            />
-            <StatTile
-              label={tr("Critical", "ನಿರ್ಣಾಯಕ")}
-              value={generatedStats.critical}
-              accent={generatedStats.critical > 0 ? "text-rose" : "text-ink dark:text-white"}
-              icon={<AlertTriangle size={16} />}
-              colorTheme={generatedStats.critical > 0 ? "red" : "gray"}
-            />
-            <StatTile
-              label={tr("High Priority", "ಹೆಚ್ಚಿನ ಆದ್ಯತೆ")}
-              value={generatedStats.high}
-              accent={generatedStats.high > 0 ? "text-amber" : "text-ink dark:text-white"}
-              icon={<Activity size={16} />}
-              colorTheme={generatedStats.high > 0 ? "amber" : "gray"}
-            />
-            <StatTile
-              label={tr("Overdue", "ಅವಧಿ ಮೀರಿದ")}
-              value={generatedStats.overdue}
-              accent={generatedStats.overdue > 0 ? "text-rose" : "text-ink dark:text-white"}
-              icon={<Clock size={16} />}
-              colorTheme={generatedStats.overdue > 0 ? "red" : "gray"}
-            />
-            <StatTile
-              label={tr("Due This Week", "ಈ ವಾರ ಗಡುವು")}
-              value={generatedStats.dueSoon}
-              icon={<Calendar size={16} />}
-              colorTheme="blue"
-            />
-            <StatTile
-              label={tr("Court This Week", "ಈ ವಾರ ನ್ಯಾಯಾಲಯ")}
-              value={generatedStats.courtThisWeek}
-              accent={generatedStats.courtThisWeek > 0 ? "text-brand dark:text-steel" : "text-ink dark:text-white"}
-              icon={<Building2 size={16} />}
-              colorTheme={generatedStats.courtThisWeek > 0 ? "blue" : "gray"}
-            />
+          {/* ── Compact status strip ─────────────────────── */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+            {[
+              { label: tr("Auto Tasks", "ಸ್ವಯಂ ಕಾರ್ಯಗಳು"), value: generatedStats.total, tone: "text-brand dark:text-steel" },
+              { label: tr("Critical", "ನಿರ್ಣಾಯಕ"), value: generatedStats.critical, tone: generatedStats.critical ? "text-rose" : "text-ink dark:text-white" },
+              { label: tr("High", "ಹೆಚ್ಚಿನ"), value: generatedStats.high, tone: generatedStats.high ? "text-amber" : "text-ink dark:text-white" },
+              { label: tr("Overdue", "ಅವಧಿ ಮೀರಿದ"), value: generatedStats.overdue, tone: generatedStats.overdue ? "text-rose" : "text-ink dark:text-white" },
+              { label: tr("This Week", "ಈ ವಾರ"), value: generatedStats.dueSoon, tone: "text-ink dark:text-white" },
+              { label: tr("Court", "ನ್ಯಾಯಾಲಯ"), value: generatedStats.courtThisWeek, tone: "text-ink dark:text-white" },
+            ].map((stat) => (
+              <div key={stat.label} className="rounded-xl border border-line bg-shell p-4">
+                <div className="truncate text-[11px] uppercase tracking-wide text-muted">{stat.label}</div>
+                <div className={`mt-3 text-3xl font-semibold tabular-nums ${stat.tone}`}>{stat.value}</div>
+              </div>
+            ))}
           </div>
 
           {/* ── Tab Nav ─────────────────────────────────── */}
-          <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl border border-slate-300/80 bg-slate-200/80 p-1.5 shadow-sm dark:border-line/30 dark:bg-panel/30 dark:shadow-none">
-            <div className="flex flex-wrap gap-1">
+          <div className="rounded-xl border border-line bg-shell px-3">
+            <div className="flex flex-wrap gap-5">
               {(["auto", "manual", "pinned", ...(isAdmin ? ["station"] : [])] as const).map((tab) => {
                 const isActive = activeTab === tab;
                 return (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab as any)}
-                    className={`relative flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-all duration-200 ${
+                    className={`relative flex items-center gap-1.5 border-b-2 px-0.5 py-3 text-xs font-semibold transition-colors ${
                       isActive
-                        ? "bg-brand text-white shadow-lg shadow-brand/20 dark:shadow-none"
-                        : "text-slate-900 hover:text-slate-950 dark:text-muted/80 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-panel/60"
+                        ? "border-brand text-brand dark:text-steel"
+                        : "border-transparent text-muted hover:text-ink dark:hover:text-white"
                     }`}
                   >
-                    {tab === "auto" && <Zap size={14} className={isActive ? "text-white" : "text-brand dark:text-steel"} />}
-                    {tab === "pinned" && <Pin size={14} className={isActive ? "text-white" : "text-amber"} />}
-                    {tab === "manual" && <ClipboardList size={14} className={isActive ? "text-white" : "text-slate-900 dark:text-muted"} />}
-                    {tab === "station" && <Activity size={14} className={isActive ? "text-white" : "text-sage"} />}
+                    {tab === "auto" && <Zap size={13} />}
+                    {tab === "pinned" && <Pin size={13} />}
+                    {tab === "manual" && <ClipboardList size={13} />}
+                    {tab === "station" && <Activity size={13} />}
 
                     <span>
                       {tab === "auto" && tr("Auto Tasks", "ಸ್ವಯಂ ಕಾರ್ಯಗಳು")}
@@ -939,15 +863,13 @@ const TodoList: React.FC = () => {
                     </span>
 
                     {tab === "pinned" && (
-                      <span className="ml-1 flex h-4.5 min-w-[18px] items-center justify-center rounded-full border border-slate-300 bg-white px-1 text-[9px] font-extrabold text-slate-900">
+                      <span className="ml-0.5 text-[10px] font-extrabold text-muted">
                         {pinnedTaskCount}
                       </span>
                     )}
 
                     {tab === "auto" && generatedStats.critical > 0 && (
-                      <span className={`ml-1 flex h-4.5 min-w-[18px] items-center justify-center rounded-full px-1 text-[9px] font-extrabold ${
-                        isActive ? "bg-white text-brand" : "bg-rose text-white animate-pulse"
-                      }`}>
+                      <span className="ml-0.5 rounded-full bg-rose/10 px-1.5 py-0.5 text-[9px] font-extrabold text-rose">
                         {generatedStats.critical}
                       </span>
                     )}
@@ -956,16 +878,12 @@ const TodoList: React.FC = () => {
               })}
             </div>
 
-            <div className="hidden items-center gap-2 rounded-xl border border-slate-300 bg-white/80 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-700 lg:flex dark:border-line/30 dark:bg-panel dark:text-muted/80">
-              <span className="h-1.5 w-1.5 rounded-full bg-sage animate-ping" />
-              <span>{tr("Synced Live", "ಲೈವ್ ಸಿಂಕ್ ಮಾಡಲಾಗಿದೆ")}</span>
-            </div>
           </div>
 
           {/* ═══════ TAB: AUTO TASKS ═══════ */}
           {activeTab === "auto" && (
             <div className="space-y-4">
-              {generatedTasks.length === 0 ? (
+              {activeGeneratedTasks.length === 0 ? (
                 <EmptyState
                   icon={<CheckCircle2 size={28} strokeWidth={2} />}
                   title={tr("No auto-tasks generated", "ಯಾವುದೇ ಸ್ವಯಂ ಕಾರ್ಯಗಳಿಲ್ಲ")}
@@ -975,13 +893,13 @@ const TodoList: React.FC = () => {
                   )}
                 />
               ) : (
-                <div className="space-y-8 animate-in fade-in duration-200">
+                <div className="space-y-6 animate-in fade-in duration-200">
                   {groupedGeneratedTasks.map((group) => (
-                    <section key={group.category} className="space-y-3.5" aria-labelledby={`task-group-${group.category}`}>
+                    <section key={group.category} className="space-y-2.5" aria-labelledby={`task-group-${group.category}`}>
                       <div className="flex items-center justify-between px-1 mb-1 mt-4">
                         <div className="flex items-center gap-2.5">
-                          <span className={`h-2.5 w-2.5 rounded-full ${group.dot} animate-pulse`} aria-hidden="true" />
-                          <h2 id={`task-group-${group.category}`} className="text-xs font-bold uppercase tracking-wider text-ink dark:text-white/90">
+                          <span className={`h-2 w-2 rounded-full ${group.dot}`} aria-hidden="true" />
+                          <h2 id={`task-group-${group.category}`} className="text-xs font-semibold uppercase tracking-wide text-ink">
                             {tr(group.label, group.label)}
                           </h2>
                           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-panel border border-line/30 text-muted">
@@ -991,7 +909,7 @@ const TodoList: React.FC = () => {
                         <div className="h-[1px] flex-1 bg-gradient-to-r from-line/40 via-line/10 to-transparent ml-4 hidden sm:block" />
                       </div>
                       
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {group.tasks.map((task) => (
                           <GeneratedTaskCard
                             key={task.id}
@@ -999,7 +917,7 @@ const TodoList: React.FC = () => {
                             today={today}
                             isPinned={isPinned(task.id)}
                             onTogglePinned={() => togglePinned(task.id)}
-                            onComplete={() => markCompleted(task.id)}
+                            onComplete={() => setPendingAction({ kind: "complete-generated", task })}
                           />
                         ))}
                       </div>
@@ -1053,7 +971,7 @@ const TodoList: React.FC = () => {
                             today={today}
                             isPinned
                             onTogglePinned={() => togglePinned(task.id)}
-                            onComplete={() => markCompleted(task.id)}
+                            onComplete={() => setPendingAction({ kind: "complete-generated", task })}
                           />
                         ))}
                       </div>
@@ -1077,8 +995,8 @@ const TodoList: React.FC = () => {
                             isOverdue={overdueSet.has(task.taskId)}
                             isDueToday={dueTodaySet.has(task.taskId)}
                             isDueTomorrow={dueTomorrowSet.has(task.taskId)}
-                            onComplete={() => void handleStatusChange(task, "completed")}
-                            onDelete={() => setPendingDeleteTask(task)}
+                            onComplete={() => setPendingAction({ kind: "complete-manual", task })}
+                            onDelete={() => setPendingAction({ kind: "delete-manual", task })}
                             onTogglePinned={() => togglePinned(task.taskId)}
                           />
                         ))}
@@ -1103,8 +1021,8 @@ const TodoList: React.FC = () => {
                             isOverdue={overdueSet.has(task.taskId)}
                             isDueToday={dueTodaySet.has(task.taskId)}
                             isDueTomorrow={dueTomorrowSet.has(task.taskId)}
-                            onComplete={() => void handleStatusChange(task, "completed")}
-                            onDelete={() => setPendingDeleteTask(task)}
+                            onComplete={() => setPendingAction({ kind: "complete-manual", task })}
+                            onDelete={() => setPendingAction({ kind: "delete-manual", task })}
                             onTogglePinned={() => togglePinned(task.taskId)}
                           />
                         ))}
@@ -1249,62 +1167,53 @@ const TodoList: React.FC = () => {
 
       {/* ═══════ NEW TASK MODAL ═══════ */}
       {showNewTaskModal && (
-        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 backdrop-blur-md transition-all duration-300">
-          <Card className="w-full max-w-lg shadow-2xl border border-line/60 bg-shell overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="create-task-title">
+          <Card className="w-full max-w-md overflow-hidden shadow-soft">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-line/40 px-6 py-4 bg-panel/30">
-              <div className="flex items-center gap-2.5">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand/10 text-brand dark:text-steel">
-                  <Plus size={16} strokeWidth={2.5} />
-                </span>
-                <h2 className="text-base font-bold text-ink dark:text-white tracking-tight">
-                  {tr("Create New Task", "ಹೊಸ ಕಾರ್ಯ ರಚಿಸಿ")}
+            <div className="flex items-start justify-between px-5 pb-3 pt-5">
+              <div>
+                <h2 id="create-task-title" className="text-lg font-semibold text-ink">
+                  {tr("Add a task", "ಕಾರ್ಯ ಸೇರಿಸಿ")}
                 </h2>
+                <p className="mt-0.5 text-sm text-muted">A quick reminder for your active list.</p>
               </div>
               <button 
+                type="button"
                 onClick={() => setShowNewTaskModal(false)} 
-                className="grid h-7 w-7 place-items-center rounded-lg hover:bg-panel text-muted hover:text-ink dark:hover:text-white transition-colors"
+                className="grid h-8 w-8 place-items-center rounded-lg text-muted transition-colors hover:bg-panel hover:text-ink"
                 aria-label="Close dialog"
               >
                 <X size={16} />
               </button>
             </div>
             
-            <form onSubmit={handleCreate} className="p-6 space-y-4">
+            <form onSubmit={handleCreate} className="space-y-3.5 px-5 pb-5">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-muted dark:text-muted/80 mb-1.5">
-                  {tr("Task Title", "ಕಾರ್ಯದ ಶೀರ್ಷಿಕೆ")} <span className="text-rose">*</span>
+                <label htmlFor="new-task-title" className="mb-1.5 block text-xs font-semibold text-ink">
+                  {tr("What needs to be done?", "ಏನು ಮಾಡಬೇಕು?")} <span className="text-rose">*</span>
                 </label>
                 <input
+                  id="new-task-title"
                   required
+                  maxLength={160}
                   value={newTask.title}
                   onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                  className="w-full h-11 px-3.5 bg-panel border border-line/50 rounded-xl text-sm text-ink dark:text-white placeholder-muted/50 focus:border-brand dark:focus:border-steel focus:ring-1 focus:ring-brand outline-none transition-all duration-200 shadow-inner"
+                  autoFocus
+                  className="h-10 w-full rounded-lg border border-line bg-panel px-3 text-sm text-ink outline-none placeholder:text-muted/50 focus:border-brand"
                   placeholder={tr("e.g. Verify witness signature", "ಉದಾ: ಸಾಕ್ಷಿ ಸಹಿ ಪರಿಶೀಲಿಸಿ")}
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-muted dark:text-muted/80 mb-1.5">
-                  {tr("Description", "ವಿವರಣೆ")}
-                </label>
-                <textarea
-                  value={newTask.description}
-                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                  className="w-full p-3.5 bg-panel border border-line/50 rounded-xl text-sm text-ink dark:text-white placeholder-muted/50 focus:border-brand dark:focus:border-steel focus:ring-1 focus:ring-brand outline-none resize-y min-h-[110px] transition-all duration-200 shadow-inner"
-                  placeholder={tr("Provide case context, contact numbers or notes...", "ಪ್ರಕರಣದ ಸಂದರ್ಭ, ಸಂಪರ್ಕ ಸಂಖ್ಯೆಗಳು ಅಥವಾ ಟಿಪ್ಪಣಿಗಳನ್ನು ಒದಗಿಸಿ...")}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-muted dark:text-muted/80 mb-1.5">
-                    {tr("Priority Level", "ಆದ್ಯತೆ")}
+                  <label htmlFor="new-task-priority" className="mb-1.5 block text-xs font-semibold text-ink">
+                    {tr("Priority", "ಆದ್ಯತೆ")}
                   </label>
                   <select
+                    id="new-task-priority"
                     value={newTask.priority}
                     onChange={(e) => setNewTask({ ...newTask, priority: e.target.value as any })}
-                    className="w-full h-11 px-3.5 bg-panel border border-line/50 rounded-xl text-sm text-ink dark:text-white focus:border-brand focus:ring-1 focus:ring-brand outline-none transition-all duration-200"
+                    className="h-10 w-full rounded-lg border border-line bg-panel px-3 text-sm text-ink outline-none focus:border-brand"
                   >
                     <option value="low">{tr("Low", "ಕಡಿಮೆ")}</option>
                     <option value="medium">{tr("Medium", "ಮಧ್ಯಮ")}</option>
@@ -1314,31 +1223,49 @@ const TodoList: React.FC = () => {
                 </div>
                 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-muted dark:text-muted/80 mb-1.5">
-                    {tr("Due Date", "ಗಡುವು ದಿನಾಂಕ")}
+                  <label htmlFor="new-task-due-date" className="mb-1.5 block text-xs font-semibold text-ink">
+                    {tr("Due", "ಗಡುವು")}
                   </label>
                   <input
+                    id="new-task-due-date"
                     type="date"
                     value={newTask.dueDate}
                     onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
-                    className="w-full h-11 px-3.5 bg-panel border border-line/50 rounded-xl text-sm text-ink dark:text-white focus:border-brand focus:ring-1 focus:ring-brand outline-none transition-all duration-200"
+                    className="h-10 w-full rounded-lg border border-line bg-panel px-3 text-sm text-ink outline-none focus:border-brand"
                   />
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-line/30 flex items-center justify-end gap-3">
+              <details className="group rounded-lg border border-line bg-panel px-3 py-2.5">
+                <summary className="cursor-pointer list-none text-xs font-semibold text-muted transition-colors hover:text-ink">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Plus size={13} /> {tr("Add notes (optional)", "ಟಿಪ್ಪಣಿಗಳನ್ನು ಸೇರಿಸಿ (ಐಚ್ಛಿಕ)")}
+                  </span>
+                </summary>
+                <label htmlFor="new-task-description" className="sr-only">{tr("Description", "ವಿವರಣೆ")}</label>
+                <textarea
+                  id="new-task-description"
+                  maxLength={2000}
+                  value={newTask.description}
+                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                  className="mt-2 min-h-[82px] w-full resize-y rounded-lg border border-line bg-shell p-3 text-sm text-ink outline-none placeholder:text-muted/50 focus:border-brand"
+                  placeholder={tr("Case context, contact number or note...", "ಪ್ರಕರಣದ ಸಂದರ್ಭ, ಸಂಪರ್ಕ ಸಂಖ್ಯೆ ಅಥವಾ ಟಿಪ್ಪಣಿ...")}
+                />
+              </details>
+
+              <div className="grid grid-cols-[0.8fr_1.2fr] gap-2.5 pt-1">
                 <button
                   type="button"
                   onClick={() => setShowNewTaskModal(false)}
-                  className="px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-muted dark:text-muted hover:text-ink dark:hover:text-white border border-line rounded-xl hover:bg-panel transition-all duration-200"
+                  className="h-9 rounded-lg border border-line px-4 text-sm font-semibold text-muted transition-colors hover:bg-panel hover:text-ink"
                 >
                   {tr("Cancel", "ರದ್ದುಗೊಳಿಸಿ")}
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white bg-brand rounded-xl shadow-lg shadow-brand/20 hover:bg-brand/90 active:scale-[0.98] transition-all duration-200"
+                  className="h-9 rounded-lg bg-brand px-4 text-sm font-semibold text-white transition-colors hover:bg-brand/90"
                 >
-                  {tr("Create Task", "ಕಾರ್ಯವನ್ನು ರಚಿಸಿ")}
+                  {tr("Add to my list", "ನನ್ನ ಪಟ್ಟಿಗೆ ಸೇರಿಸಿ")}
                 </button>
               </div>
             </form>

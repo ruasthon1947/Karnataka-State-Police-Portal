@@ -231,6 +231,19 @@ function sendError(res, status, error) {
   sendJson(res, status, payload);
 }
 
+export function todoFilterForSession(session) {
+  if (session.role === "Constable") {
+    return {
+      policeStation: session.policeStation,
+      assignedTo: [session.employeeId, session.name].filter(Boolean),
+    };
+  }
+  if (session.role === "Inspector") {
+    return { policeStation: session.policeStation };
+  }
+  return {};
+}
+
 function clientKey(req) {
   const forwarded = String(req.headers["x-forwarded-for"] || "")
     .split(",")[0]
@@ -349,12 +362,7 @@ export async function handleApi(req, res, next) {
     const session = requireSession(req, res);
     if (!session) return;
 
-    const todoFilter =
-      session.role === "Constable"
-        ? { policeStation: session.policeStation }
-        : session.role === "Inspector"
-          ? { policeStation: session.policeStation }
-          : {};
+    const todoFilter = todoFilterForSession(session);
 
     if (req.method === "GET" && url.pathname === "/api/todos") {
       sendJson(res, 200, { ok: true, todos: await fetchTodos(req, todoFilter) });

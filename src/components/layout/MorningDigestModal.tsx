@@ -91,7 +91,7 @@ export const MorningDigestModal: React.FC<MorningDigestModalProps> = ({
             <>
               <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 <SummaryTile icon={<ClipboardList size={14} />} label="Tasks" value={stats.total} />
-                <SummaryTile icon={<AlertTriangle size={14} />} label="Urgent" value={stats.overdue + stats.critical} valueClass="text-rose" />
+                <SummaryTile icon={<AlertTriangle size={14} />} label="Urgent" value={stats.urgent} valueClass="text-rose" />
                 <SummaryTile icon={<Calendar size={14} />} label="This week" value={stats.dueSoon} valueClass="text-brand" />
               </div>
 
@@ -110,7 +110,7 @@ export const MorningDigestModal: React.FC<MorningDigestModalProps> = ({
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold text-white">{task.title}</p><span className="text-[10px] font-bold uppercase tracking-wider">{task.priority}</span></div>
                           <p className="mt-1 text-xs text-muted">{task.dueContext}</p>
-                          <p className="mt-1 flex items-center gap-1 text-[10px] text-muted"><Link2 size={11} /> FIR {task.linkedFirNumber}</p>
+                          <p className="mt-1 flex items-center gap-1 text-[10px] text-muted"><Link2 size={11} /> FIR {task.displayFirNumber}</p>
                         </div>
                         <button type="button" onClick={() => togglePinned(task.id)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-line text-muted hover:bg-panel hover:text-brand" aria-label={isPinned(task.id) ? `Unpin ${task.title}` : `Pin ${task.title}`} title={isPinned(task.id) ? "Unpin task" : "Pin task"}>{isPinned(task.id) ? <PinOff size={15} /> : <Pin size={15} />}</button>
                       </div>

@@ -14,7 +14,7 @@
  *                         CrimeRegisteredDate) within 5 days, chargesheet not filed
  */
 
-import type { FirRecord, CaseRecord } from "./cases";
+import { splitNames, type FirRecord, type CaseRecord } from "./cases";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +30,8 @@ export type GeneratedTask = {
   dueContext: string;
   /** The FIR number (CrimeNo or CaseMasterID) this task is linked to. */
   linkedFirNumber: string;
+  /** Display-safe FIR number; expands scientific notation without changing the route key. */
+  displayFirNumber: string;
   category: TaskCategory;
   /** ISO date string used for sorting; may be undefined if no deadline applies. */
   dueDate?: string;
@@ -40,6 +42,8 @@ export type GeneratedTaskStats = {
   total: number;
   critical: number;
   high: number;
+  /** Unique tasks that are critical or overdue. */
+  urgent: number;
   /** Tasks whose dueDate has already passed today. */
   overdue: number;
   /** Tasks due within 7 days (including today). */
@@ -107,6 +111,19 @@ function firLabel(fir: FirRecord): string {
   return fir.fir || fir.caseNo || fir.id || "Unknown";
 }
 
+export function displayIdentifier(value: string): string {
+  const text = String(value || "").trim();
+  const match = text.match(/^([+-]?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)$/);
+  if (!match) return text;
+  const [, sign, whole, fraction = "", exponentText] = match;
+  const digits = `${whole}${fraction}`;
+  const decimalIndex = whole.length + Number(exponentText);
+  if (!Number.isFinite(decimalIndex)) return text;
+  if (decimalIndex <= 0) return `${sign}0.${"0".repeat(-decimalIndex)}${digits}`;
+  if (decimalIndex >= digits.length) return `${sign}${digits}${"0".repeat(decimalIndex - digits.length)}`;
+  return `${sign}${digits.slice(0, decimalIndex)}.${digits.slice(decimalIndex)}`;
+}
+
 const CLOSED_STATUSES = [
   "closed",
   "charge-sheeted",
@@ -132,12 +149,14 @@ function isClosed(status: string): boolean {
 function ruleInvestigate(fir: FirRecord): GeneratedTask | null {
   if ((fir.status || "").toLowerCase().trim() !== "under investigation") return null;
   const num = firLabel(fir);
+  const displayNum = displayIdentifier(num);
   return {
     id: makeId(num, "investigate"),
-    title: `Investigate FIR ${num}`,
+    title: `Investigate FIR ${displayNum}`,
     priority: "medium",
     dueContext: `Status: Under Investigation · ${fir.category || "Case"}`,
     linkedFirNumber: num,
+    displayFirNumber: displayNum,
     category: "investigation",
   };
 }
@@ -156,6 +175,7 @@ function ruleCourt(fir: FirRecord, today: Date): GeneratedTask | null {
   if (remaining > 7 || isNaN(remaining)) return null;
 
   const num = firLabel(fir);
+  const displayNum = displayIdentifier(num);
   const priority: TaskPriority = remaining <= 2 ? "critical" : "high";
   const dueContext =
     remaining < 0
@@ -168,10 +188,11 @@ function ruleCourt(fir: FirRecord, today: Date): GeneratedTask | null {
 
   return {
     id: makeId(num, "court"),
-    title: `Prepare for court appearance — FIR ${num}`,
+    title: `Prepare for court appearance — FIR ${displayNum}`,
     priority,
     dueContext,
     linkedFirNumber: num,
+    displayFirNumber: displayNum,
     category: "court",
     dueDate: courtDateStr,
   };
@@ -187,12 +208,14 @@ function ruleStalled(fir: FirRecord, today: Date): GeneratedTask | null {
   if (isNaN(since) || since <= 30) return null;
 
   const num = firLabel(fir);
+  const displayNum = displayIdentifier(num);
   return {
     id: makeId(num, "stalled"),
-    title: `Follow up on stalled investigation — FIR ${num}`,
+    title: `Follow up on stalled investigation — FIR ${displayNum}`,
     priority: "high",
     dueContext: `Filed ${since} days ago — still open (${fir.status})`,
     linkedFirNumber: num,
+    displayFirNumber: displayNum,
     category: "followup",
   };
 }
@@ -225,6 +248,7 @@ function ruleChargesheet(fir: FirRecord, today: Date): GeneratedTask | null {
   if (remaining > 5 || isNaN(remaining)) return null;
 
   const num = firLabel(fir);
+  const displayNum = displayIdentifier(num);
   const priority: TaskPriority = "critical";
   const dueContext =
     remaining < 0
@@ -235,10 +259,11 @@ function ruleChargesheet(fir: FirRecord, today: Date): GeneratedTask | null {
 
   return {
     id: makeId(num, "chargesheet"),
-    title: `File chargesheet — FIR ${num}`,
+    title: `File chargesheet — FIR ${displayNum}`,
     priority,
     dueContext,
     linkedFirNumber: num,
+    displayFirNumber: displayNum,
     category: "chargesheet",
     dueDate: deadlineIso,
   };
@@ -264,8 +289,8 @@ export function generateTasksForOfficer(
   const name = officerName.trim().toLowerCase();
 
   // Filter to FIRs assigned to this officer (field: fir.io which maps to CaseRecord.Officer).
-  const myFirs = allFirs.filter(
-    (fir) => (fir.io || "").trim().toLowerCase() === name
+  const myFirs = allFirs.filter((fir) =>
+    splitNames(fir.io).some((officer) => officer.toLowerCase() === name),
   );
 
   const seen = new Set<string>();
@@ -314,6 +339,7 @@ export function computeGeneratedStats(
 
   let critical = 0;
   let high = 0;
+  let urgent = 0;
   let overdue = 0;
   let dueSoon = 0;
   let courtThisWeek = 0;
@@ -321,11 +347,13 @@ export function computeGeneratedStats(
   for (const t of tasks) {
     if (t.priority === "critical") critical++;
     if (t.priority === "high") high++;
+    const isOverdue = Boolean(t.dueDate && t.dueDate < todayIso);
+    if (t.priority === "critical" || isOverdue) urgent++;
     if (t.dueDate) {
-      if (t.dueDate < todayIso) overdue++;
-      if (t.dueDate <= sevenDaysOut) dueSoon++;
+      if (isOverdue) overdue++;
+      if (t.dueDate >= todayIso && t.dueDate <= sevenDaysOut) dueSoon++;
     }
-    if (t.category === "court" && t.dueDate && t.dueDate <= sevenDaysOut)
+    if (t.category === "court" && t.dueDate && t.dueDate >= todayIso && t.dueDate <= sevenDaysOut)
       courtThisWeek++;
   }
 
@@ -333,6 +361,7 @@ export function computeGeneratedStats(
     total: tasks.length,
     critical,
     high,
+    urgent,
     overdue,
     dueSoon,
     courtThisWeek,

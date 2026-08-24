@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const storageKey = (employeeId: string) => `kpfir.pinnedTasks.v1.${employeeId}`;
 const completedStorageKey = (employeeId: string) => `kpfir.completedTasks.v1.${employeeId}`;
 
-function readPinned(employeeId: string): string[] {
-  if (!employeeId) return [];
+function readTaskIds(key: string): string[] {
+  if (!key) return [];
   try {
-    const value = JSON.parse(localStorage.getItem(storageKey(employeeId)) || "[]");
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
     return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
   } catch {
     return [];
@@ -14,46 +14,74 @@ function readPinned(employeeId: string): string[] {
 }
 
 export function usePinnedTasks(employeeId: string | undefined) {
-  const [pinnedTaskIds, setPinnedTaskIds] = useState<string[]>(() => readPinned(employeeId || ""));
+  const key = employeeId ? storageKey(employeeId) : "";
+  const [pinnedTaskIds, setPinnedTaskIds] = useState<string[]>(() => readTaskIds(key));
 
   useEffect(() => {
-    setPinnedTaskIds(readPinned(employeeId || ""));
-  }, [employeeId]);
+    setPinnedTaskIds(readTaskIds(key));
+  }, [key]);
 
-  const togglePinned = (taskId: string) => {
+  useEffect(() => {
+    const sync = (event: StorageEvent) => {
+      if (event.key === key) setPinnedTaskIds(readTaskIds(key));
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, [key]);
+
+  const togglePinned = useCallback((taskId: string) => {
     setPinnedTaskIds((current) => {
       const next = current.includes(taskId)
         ? current.filter((id) => id !== taskId)
         : [...current, taskId];
-      if (employeeId) localStorage.setItem(storageKey(employeeId), JSON.stringify(next));
+      if (key) localStorage.setItem(key, JSON.stringify(next));
       return next;
     });
-  };
+  }, [key]);
 
-  return { pinnedTaskIds, isPinned: (taskId: string) => pinnedTaskIds.includes(taskId), togglePinned };
+  const isPinned = useCallback(
+    (taskId: string) => pinnedTaskIds.includes(taskId),
+    [pinnedTaskIds],
+  );
+
+  return { pinnedTaskIds, isPinned, togglePinned };
 }
 
 export function useCompletedTasks(employeeId: string | undefined) {
+  const key = employeeId ? completedStorageKey(employeeId) : "";
   const [completedTaskIds, setCompletedTaskIds] = useState<string[]>(() =>
-    readPinned(completedStorageKey(employeeId || "")),
+    readTaskIds(key),
   );
 
   useEffect(() => {
-    setCompletedTaskIds(readPinned(completedStorageKey(employeeId || "")));
-  }, [employeeId]);
+    setCompletedTaskIds(readTaskIds(key));
+  }, [key]);
 
-  const markCompleted = (taskId: string) => {
+  useEffect(() => {
+    const sync = (event: StorageEvent) => {
+      if (event.key === key) setCompletedTaskIds(readTaskIds(key));
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, [key]);
+
+  const markCompleted = useCallback((taskId: string) => {
     setCompletedTaskIds((current) => {
       if (current.includes(taskId)) return current;
       const next = [...current, taskId];
-      if (employeeId) localStorage.setItem(completedStorageKey(employeeId), JSON.stringify(next));
+      if (key) localStorage.setItem(key, JSON.stringify(next));
       return next;
     });
-  };
+  }, [key]);
+
+  const isCompleted = useCallback(
+    (taskId: string) => completedTaskIds.includes(taskId),
+    [completedTaskIds],
+  );
 
   return {
     completedTaskIds,
-    isCompleted: (taskId: string) => completedTaskIds.includes(taskId),
+    isCompleted,
     markCompleted,
   };
 }
