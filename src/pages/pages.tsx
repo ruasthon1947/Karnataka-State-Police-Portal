@@ -32,6 +32,7 @@ import {
   useCases,
   useFirRecords,
 } from "../lib/cases";
+import CasePassQR from "../components/CasePassQR";
 
 type FIR = {
   id: string;
@@ -966,6 +967,7 @@ export const FIRDetail: React.FC = () => {
   const { id } = useParams();
   const nav = useNavigate();
   const { cases, loading, error } = useFirRecords();
+  const [showQR, setShowQR] = useState(false);
 
   const matchedCase = findCase(cases, id);
   const r = matchedCase ? toFirRecord(matchedCase) : undefined;
@@ -1090,12 +1092,32 @@ export const FIRDetail: React.FC = () => {
         </p>
       </div>
 
-      <button
-        onClick={() => nav(`/fir/${caseRoute(r.raw)}/edit`)}
-        className="h-9 px-3 rounded-lg bg-brand text-white text-xs font-semibold"
-      >
-        Edit
-      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={() => nav(`/fir/${caseRoute(r.raw)}/edit`)}
+          className="h-9 px-3 rounded-lg bg-brand text-white text-xs font-semibold"
+        >
+          Edit
+        </button>
+        <button
+          onClick={() => setShowQR(true)}
+          className="h-9 px-3 rounded-lg border border-line hover:bg-panel text-xs font-semibold flex items-center gap-2"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+            <path d="M7 7h.01"></path>
+            <path d="M18 7h.01"></path>
+            <path d="M18 18h.01"></path>
+            <path d="M7 18h.01"></path>
+          </svg>
+          Case Pass QR
+        </button>
+      </div>
+
+      {showQR && <CasePassQR record={r.raw} onClose={() => setShowQR(false)} />}
 
       <div className="grid xl:grid-cols-[1fr_420px] gap-4">
         <Card className="p-5">

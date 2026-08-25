@@ -11,6 +11,7 @@ import { RequireAuth } from "./components/layout/RequireAuth";
 const Chat = React.lazy(() =>
   import("./components/chat/Chat").then((module) => ({ default: module.Chat })),
 );
+const CasePass = React.lazy(() => import("./pages/CasePass"));
 const Login = React.lazy(() => import("./pages/Login"));
 const ChangePassword = React.lazy(() => import("./pages/ChangePassword"));
 const NewFIR = React.lazy(() => import("./pages/NewFIR"));
@@ -56,7 +57,8 @@ const App: React.FC = () => {
   // Hide auth screens on the chrome-bearing layout - they get their own full-page design.
   const isAuthScreen =
     location.pathname === "/login" ||
-    location.pathname.startsWith("/change-password");
+    location.pathname.startsWith("/change-password") ||
+    location.pathname.startsWith("/case-pass");
 
   return (
     <React.Suspense
@@ -67,6 +69,9 @@ const App: React.FC = () => {
       }
     >
       <Routes>
+        {/* Public screens */}
+        <Route path="/case-pass/:token" element={<CasePass />} />
+        
         {/* Auth screens (standalone layout) */}
         <Route path="/login" element={<Login />} />
         <Route

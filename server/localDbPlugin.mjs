@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
 import fs from "node:fs";
+import { Buffer } from "node:buffer";
 import { parse } from "csv-parse/sync";
 import { OtpError, normalizeIndianPhoneNumber, otpService } from "./otpService.mjs";
 import {
@@ -337,6 +338,52 @@ export async function handleApi(req, res, next) {
       sendJson(res, 200, { ok: true, service: "kspp-portal" });
       return;
     }
+
+    // ── Public: Citizen Case Pass (no auth required) ──────────────────────────
+    if (req.method === "GET" && url.pathname.startsWith("/api/case-pass/")) {
+      const token = decodeURIComponent(url.pathname.replace("/api/case-pass/", ""));
+      let caseId = "";
+      try {
+        caseId = Buffer.from(token, "base64").toString("utf8").trim();
+      } catch {
+        sendError(res, 400, "Invalid case pass token.");
+        return;
+      }
+      if (!caseId) {
+        sendError(res, 400, "Invalid case pass token.");
+        return;
+      }
+      try {
+        const { rows: cases } = await casesFromGoogle();
+        const found = cases.find((c) =>
+          String(c.CaseMasterID || "").trim() === caseId ||
+          String(c.CaseNo || "").trim() === caseId ||
+          String(c.CrimeNo || "").trim() === caseId
+        );
+        if (!found) {
+          sendError(res, 404, "Case not found.");
+          return;
+        }
+        // Return ONLY safe, limited public fields — no witness, accused, or investigation details
+        sendJson(res, 200, {
+          ok: true,
+          pass: {
+            CaseMasterID:       String(found.CaseMasterID || ""),
+            CrimeNo:            String(found.CrimeNo || ""),
+            CaseNo:             String(found.CaseNo || ""),
+            CrimeRegisteredDate:String(found.CrimeRegisteredDate || ""),
+            Officer:            String(found.Officer || "").split(";")[0].trim(),
+            Status:             String(found.Status || ""),
+            ChargesheetStatus:  String(found.ChargesheetStatus || ""),
+            PoliceStation:      String(found.PoliceStation || ""),
+          },
+        });
+      } catch (err) {
+        sendError(res, 500, err);
+      }
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     const session = requireSession(req, res);
     if (!session) return;
@@ -746,9 +793,7 @@ export async function handleApi(req, res, next) {
     sendError(
       res,
       status,
-      status >= 500
-        ? "The service could not complete this request. Please try again."
-        : error,
+      error instanceof Error ? error.message : String(error)
     );
   }
 }

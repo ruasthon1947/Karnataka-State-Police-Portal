@@ -19,6 +19,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { requestFirDraft } from "../lib/chatApi";
 import { KSPPBrandMark } from "../components/brand/KSPPBrand";
+import CasePassQR from "../components/CasePassQR";
 
 function safeJsonParse(rawText: string) {
   if (!rawText) throw new Error("Received empty response from AI engine.");
@@ -418,6 +419,7 @@ const NewFIR: React.FC = () => {
   });
   const [successRoute, setSuccessRoute] = useState("");
   const [successNotice, setSuccessNotice] = useState("");
+  const [showQR, setShowQR] = useState(false);
 
   useEffect(() => {
     if (!editing || !existingCase) return;
@@ -997,15 +999,24 @@ const NewFIR: React.FC = () => {
               The FIR and its related details were saved to Google Sheets.
               {successNotice ? ` ${successNotice}` : ""}
             </p>
-            <div className="mt-6 flex justify-center">
+            <div className="mt-6 flex justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowQR(true)}
+                className="h-10 rounded-lg border border-sage/50 text-sage hover:bg-sage/10 px-5 text-sm font-medium transition-colors"
+              >
+                Get Citizen Case Pass QR
+              </button>
               <button
                 type="button"
                 onClick={() => navigate(successRoute)}
-                className="h-10 rounded-lg bg-sage px-5 text-sm font-medium text-white hover:bg-sage/90"
+                className="h-10 rounded-lg bg-sage px-5 text-sm font-medium text-white hover:bg-sage/90 transition-colors"
               >
                 View FIR
               </button>
             </div>
+            
+            {showQR && <CasePassQR record={form} onClose={() => setShowQR(false)} />}
           </div>
         </div>
       )}
