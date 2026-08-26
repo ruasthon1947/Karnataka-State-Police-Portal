@@ -369,18 +369,18 @@ export const Chat: React.FC = () => {
     const binaryTypes = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 
     if (!textTypes.has(mimeType) && !binaryTypes.has(mimeType)) {
-      setAttachmentError("Upload TXT, CSV, JSON, Markdown, PDF, JPG, PNG, or WebP.");
+      setAttachmentError(tr("Upload TXT, CSV, JSON, Markdown, PDF, JPG, PNG, or WebP.", "TXT, CSV, JSON, Markdown, PDF, JPG, PNG ಅಥವಾ WebP ಕಡತವನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡಿ."));
       return;
     }
     if (file.size > 2_000_000) {
-      setAttachmentError("The attachment must be 2 MB or smaller.");
+      setAttachmentError(tr("The attachment must be 2 MB or smaller.", "ಲಗತ್ತು 2 MB ಅಥವಾ ಅದಕ್ಕಿಂತ ಚಿಕ್ಕದಾಗಿರಬೇಕು."));
       return;
     }
 
     try {
       if (textTypes.has(mimeType)) {
         const content = (await file.text()).slice(0, 12_000);
-        if (!content.trim()) throw new Error("The selected file is empty.");
+        if (!content.trim()) throw new Error(tr("The selected file is empty.", "ಆಯ್ಕೆ ಮಾಡಿದ ಕಡತ ಖಾಲಿಯಾಗಿದೆ."));
         setAttachment({ name: file.name, mimeType, content });
         return;
       }
@@ -388,7 +388,7 @@ export const Chat: React.FC = () => {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(new Error("The selected file could not be read."));
+        reader.onerror = () => reject(new Error(tr("The selected file could not be read.", "ಆಯ್ಕೆ ಮಾಡಿದ ಕಡತವನ್ನು ಓದಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.")));
         reader.readAsDataURL(file);
       });
       const data = dataUrl.slice(dataUrl.indexOf(",") + 1);
