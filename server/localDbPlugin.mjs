@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
 import fs from "node:fs";
+import { Buffer } from "node:buffer";
 import { parse } from "csv-parse/sync";
 import { OtpError, normalizeIndianPhoneNumber, otpService } from "./otpService.mjs";
 import {
@@ -26,6 +27,14 @@ import {
   verifyFirebaseIdToken,
   verifyPassword,
 } from "./security.mjs";
+import {
+  computeStats,
+  createTodo,
+  deleteTodo,
+  fetchTodos,
+  importFromGoogleSheets,
+  updateTodo,
+} from "./todoService.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -223,6 +232,24 @@ function sendError(res, status, error) {
   sendJson(res, status, payload);
 }
 
+export function todoFilterForSession(session) {
+  if (session.role === "Constable") {
+    return {
+      policeStation: session.policeStation,
+      assignedTo: [session.employeeId, session.name].filter(Boolean),
+    };
+  }
+  if (session.role === "Inspector") {
+    return { policeStation: session.policeStation };
+  }
+  return {};
+}
+
+export function attachSessionToRequest(req, session) {
+  req.session = session;
+  return req;
+}
+
 function clientKey(req) {
   const forwarded = String(req.headers["x-forwarded-for"] || "")
     .split(",")[0]
@@ -338,8 +365,105 @@ export async function handleApi(req, res, next) {
       return;
     }
 
+    // ── Public: Citizen Case Pass (no auth required) ──────────────────────────
+    if (req.method === "GET" && url.pathname.startsWith("/api/case-pass/")) {
+      const token = decodeURIComponent(url.pathname.replace("/api/case-pass/", ""));
+      let caseId = "";
+      try {
+        caseId = Buffer.from(token, "base64").toString("utf8").trim();
+      } catch {
+        sendError(res, 400, "Invalid case pass token.");
+        return;
+      }
+      if (!caseId) {
+        sendError(res, 400, "Invalid case pass token.");
+        return;
+      }
+      try {
+        const { rows: cases } = await casesFromGoogle();
+        const found = cases.find((c) =>
+          String(c.CaseMasterID || "").trim() === caseId ||
+          String(c.CaseNo || "").trim() === caseId ||
+          String(c.CrimeNo || "").trim() === caseId
+        );
+        if (!found) {
+          sendError(res, 404, "Case not found.");
+          return;
+        }
+        // Return ONLY safe, limited public fields — no witness, accused, or investigation details
+        sendJson(res, 200, {
+          ok: true,
+          pass: {
+            CaseMasterID:        String(found.CaseMasterID || ""),
+            CrimeNo:             String(found.CrimeNo || ""),
+            CaseNo:              String(found.CaseNo || ""),
+            CrimeRegisteredDate: String(found.CrimeRegisteredDate || ""),
+            Officer:             String(found.Officer || "").split(";")[0].trim(),
+            Status:              String(found.Status || ""),
+            ChargesheetStatus:   String(found.ChargesheetStatus || ""),
+            PoliceStation:       String(found.PoliceStation || ""),
+          },
+        });
+      } catch (err) {
+        sendError(res, 500, err);
+      }
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     const session = requireSession(req, res);
     if (!session) return;
+    
+    // Attach session to request for todo operations
+    attachSessionToRequest(req, session);
+
+    const todoFilter = todoFilterForSession(session);
+
+    if (req.method === "GET" && url.pathname === "/api/todos") {
+      sendJson(res, 200, { ok: true, todos: await fetchTodos(req, todoFilter) });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/todos/stats") {
+      sendJson(res, 200, { ok: true, stats: await computeStats(req, todoFilter) });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/todos") {
+      const taskData = await readBody(req);
+      const todo = await createTodo(req, {
+        ...taskData,
+        assignedTo: session.employeeId,
+        createdBy: session.employeeId,
+        policeStation: session.policeStation,
+      });
+      sendJson(res, 201, { ok: true, todo });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/todos/import") {
+      if (session.role === "Constable") {
+        sendError(res, 403, "Only Inspectors and SP officers can import tasks.");
+        return;
+      }
+      const result = await importFromGoogleSheets(req, session);
+      sendJson(res, 200, { ok: true, ...result });
+      return;
+    }
+
+    const todoMatch = url.pathname.match(/^\/api\/todos\/([^/]+)$/);
+    if (todoMatch && req.method === "PATCH") {
+      const updates = await readBody(req);
+      const todo = await updateTodo(req, decodeURIComponent(todoMatch[1]), updates);
+      sendJson(res, 200, { ok: true, todo });
+      return;
+    }
+
+    if (todoMatch && req.method === "DELETE") {
+      const result = await deleteTodo(req, decodeURIComponent(todoMatch[1]));
+      sendJson(res, 200, result);
+      return;
+    }
 
     if (req.method === "POST" && url.pathname === "/api/session/extend") {
       const extended = setSessionCookie(req, res, sessionUser(session));
@@ -529,10 +653,6 @@ export async function handleApi(req, res, next) {
       sendJson(res, 200, {
         ok: true,
         headers,
-        // Dashboard, reports, and reference directories are statewide shared
-        // views.  Restricting this collection to a constable's assignments
-        // made the portal report only 8 records instead of the full register.
-        // Edit permissions remain enforced below on save routes.
         cases: rows,
         options: buildOptions(rows),
       });
@@ -690,7 +810,7 @@ export async function handleApi(req, res, next) {
         return;
       }
 
-      // 🚀 Safe Auto-ID Generation if missing or invalid
+      // Safe Auto-ID Generation if missing or invalid
       if (!record.CaseMasterID || record.CaseMasterID === "Assigned on save") {
         record.CaseMasterID = nextNumericValue(records, "CaseMasterID", 1222);
       }
@@ -715,7 +835,7 @@ export async function handleApi(req, res, next) {
         return;
       }
       
-      // 🚀 Direct Google Sheets Upsert with explicit logging
+      // Direct Google Sheets Upsert with explicit logging
       console.log(`[Google Sheets Write] Upserting record for CaseMasterID: ${record.CaseMasterID}...`);
       try {
         await upsertCaseInGoogle(record);
@@ -790,15 +910,23 @@ export async function handleApi(req, res, next) {
 
     sendError(res, 404, "Unknown API endpoint.");
   } catch (error) {
-    console.error("[Local DB Handler Exception]:", error);
+    // Log full error for diagnosis
+    console.error("[Local DB Handler Exception]:", error && error.stack ? error.stack : error);
+
     const status = error?.status || 500;
-    sendError(
-      res,
-      status,
-      status >= 500
-        ? "The service could not complete this request. Please try again."
-        : error,
-    );
+
+    // Map known backend failure patterns to more specific, user-friendly messages
+    const message = (function() {
+      const msg = String(error?.message || "").toLowerCase();
+      if (msg.includes('google authentication failed') || msg.includes('google sheets request failed') || msg.includes('failed to write updated table')) {
+        return 'Backend data store error: failed to communicate with Google Sheets. Please check server configuration.';
+      }
+      if (status === 403) return String(error) || 'Forbidden';
+      if (status >= 500) return 'The service could not complete this request. Please try again.';
+      return error;
+    })();
+
+    sendError(res, status, message);
   }
 }
 
@@ -815,4 +943,3 @@ function localDbPlugin() {
 }
 
 export default localDbPlugin;
-

@@ -20,6 +20,7 @@ const ChangePassword: React.FC = () => {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
+    const isCompletingFirstLogin = user?.isFirstLogin === true;
 
     if (!current) {
       setError(tr("Enter your current password.", "ನಿಮ್ಮ ಪ್ರಸ್ತುತ ಪಾಸ್‌ವರ್ಡ್ ನಮೂದಿಸಿ."));
@@ -84,7 +85,12 @@ const ChangePassword: React.FC = () => {
         );
         return;
       }
-      navigate("/", { replace: true });
+      navigate(
+        "/",
+        isCompletingFirstLogin
+          ? { replace: true, state: { showDigest: true } }
+          : { replace: true },
+      );
     } finally {
       setSubmitting(false);
     }
@@ -123,7 +129,7 @@ const ChangePassword: React.FC = () => {
               onChange={(event) => setLanguage(event.target.value as "en" | "kn")}
               className="h-10 rounded-lg border border-line bg-shell px-2 text-sm"
             >
-              <option value="en">English</option>
+              <option value="en">{tr("English", "ಇಂಗ್ಲಿಷ್")}</option>
               <option value="kn">ಕನ್ನಡ</option>
             </select>
             <button
@@ -267,3 +273,7 @@ const PasswordHints: React.FC<{ password: string }> = ({ password }) => {
 };
 
 export default ChangePassword;
+
+
+
+

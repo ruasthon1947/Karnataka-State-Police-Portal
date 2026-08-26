@@ -7,10 +7,12 @@ import {
 } from "react-router-dom";
 import AppShell from "./components/layout/AppShell";
 import { RequireAuth } from "./components/layout/RequireAuth";
+import { useLanguage } from "./context/LanguageContext";
 
 const Chat = React.lazy(() =>
   import("./components/chat/Chat").then((module) => ({ default: module.Chat })),
 );
+const CasePass = React.lazy(() => import("./pages/CasePass"));
 const Login = React.lazy(() => import("./pages/Login"));
 const ChangePassword = React.lazy(() => import("./pages/ChangePassword"));
 const NewFIR = React.lazy(() => import("./pages/NewFIR"));
@@ -45,29 +47,36 @@ const Reports = React.lazy(() =>
 const Settings = React.lazy(() =>
   import("./pages/pages").then((module) => ({ default: module.Settings })),
 );
+const TodoList = React.lazy(() => import("./pages/TodoList"));
 
 /**
  * Top-level routes.
- * - /login is public; password changes require a verified session.
+ * - /login and /case-pass are public; password changes require a verified session.
  * - Everything else is gated by RequireAuth; first-time users see a modal
  *   that pushes them to /change-password.
  */
 const App: React.FC = () => {
+  const { tr } = useLanguage();
   const location = useLocation();
-  // Hide auth screens on the chrome-bearing layout - they get their own full-page design.
+
+  // Hide auth/public screens on the chrome-bearing layout - they get their own full-page design.
   const isAuthScreen =
     location.pathname === "/login" ||
-    location.pathname.startsWith("/change-password");
+    location.pathname.startsWith("/change-password") ||
+    location.pathname.startsWith("/case-pass");
 
   return (
     <React.Suspense
       fallback={
         <div className="grid min-h-[100dvh] place-items-center bg-ink text-sm text-muted" role="status">
-          Loading portal…
+          {tr("Loading portal…", "ಪೋರ್ಟಲ್ ಲೋಡ್ ಆಗುತ್ತಿದೆ…")}
         </div>
       }
     >
       <Routes>
+        {/* Public screens */}
+        <Route path="/case-pass/:token" element={<CasePass />} />
+
         {/* Auth screens (standalone layout) */}
         <Route path="/login" element={<Login />} />
         <Route
@@ -89,6 +98,7 @@ const App: React.FC = () => {
         >
           <Route path="/" element={<Chat />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/todo" element={<TodoList />} />
           <Route path="/crime-intelligence" element={<CrimeIntelligence />} />
 
           <Route path="/fir" element={<FIRList />} />

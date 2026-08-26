@@ -6,6 +6,8 @@ import React, {
   useMemo,
   useState,
 } from "react";
+// Integrated friend's additions:
+import { clearDigestPending, markDigestPending } from "../lib/digestSession";
 
 export type AuthUser = {
   employeeId: string;
@@ -84,11 +86,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     void fetch("/api/session", {
       method: "GET",
       credentials: "same-origin",
-      headers: { Accept: "application/json" },
+      headers: { 
+        Accept: "application/json",
+        "Cache-Control": "no-cache"
+      },
     })
       .then(async (response) => {
         const data = await responseData(response);
-        if (!active || !response.ok || !data?.ok) return;
+        if (!active || !response.ok || !data?.ok) {
+          if (response.status === 401) {
+            clearLocalSession();
+          }
+          return;
+        }
         setUser(data.user as AuthUser);
         setSessionExpiresAt(Number(data.sessionExpiresAt) || null);
       })
@@ -99,7 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => {
       active = false;
     };
-  }, []);
+  }, [clearLocalSession]);
 
   useEffect(() => {
     document.documentElement.classList.remove("light", "dark");
@@ -119,14 +129,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           import("../firebase"),
           import("firebase/auth"),
         ]);
-        const credential = await signInWithEmailAndPassword(
-          auth,
-          `${id}@ksph.gov.in`.toLowerCase(),
-          password,
-        );
-        firebaseIdToken = await credential.user.getIdToken();
-      } catch {
-        // Temporary and migrated passwords are verified by the application server.
+
+        // Retained your safe check for client Auth config
+        if (auth && auth.app.options.apiKey) {
+          const credential = await signInWithEmailAndPassword(
+            auth,
+            `${id}@ksph.gov.in`.toLowerCase(),
+            password,
+          );
+          firebaseIdToken = await credential.user.getIdToken();
+        }
+      } catch (err) {
+        console.warn("[AuthContext] Firebase Auth step skipped/failed, proceeding with backend authentication.");
       }
 
       try {
@@ -149,6 +163,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         const now = new Date().toISOString();
         setLastLogin(now);
         localStorage.setItem(LS_LAST_LOGIN, now);
+        
+        // Integrated friend's digest pending call:
+        markDigestPending(String(data.user?.employeeId || id));
+        
         return { ok: true };
       } catch {
         return {
@@ -198,6 +216,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const logout = useCallback(() => {
     if (user?.employeeId) {
+      // Integrated friend's clear digest call:
+      clearDigestPending(user.employeeId);
+      
       const prefix = `kpfir.firDraft.${user.employeeId}.`;
       for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
         const key = sessionStorage.key(index);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type CaseRecord = Record<string, string>;
 
@@ -112,20 +112,29 @@ export function useCases() {
   const [headers, setHeaders] = useState<string[]>([]);
   const [options, setOptions] = useState<CaseOptions>({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const requestInFlight = useRef(false);
 
   const reload = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
+    if (silent) setRefreshing(true);
+    else setLoading(true);
     setError("");
     try {
       const data = await fetchCases();
       setCases(data.cases || []);
       setHeaders(data.headers || []);
       setOptions(data.options || {});
+      setLastUpdatedAt(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      requestInFlight.current = false;
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -147,7 +156,7 @@ export function useCases() {
     };
   }, [reload]);
 
-  return { cases, headers, options, loading, error, reload, setCases, setOptions };
+  return { cases, headers, options, loading, refreshing, lastUpdatedAt, error, reload, setCases, setOptions };
 }
 
 export function useFirRecords() {
@@ -172,7 +181,7 @@ export function caseLabel(record: CaseRecord): string {
 
 export function splitNames(value: string | undefined): string[] {
   return String(value || "")
-    .split(";")
+    .split(/[;,\r\n]+/)
     .map((item) => item.trim())
     .filter(Boolean);
 }

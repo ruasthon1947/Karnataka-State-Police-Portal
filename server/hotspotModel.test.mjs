@@ -43,9 +43,11 @@ test("trains versioned weights and validates against later chronological windows
   const result = trainHotspotModel(historicalFirRecords());
   assert.equal(result.reason, "");
   assert.ok(result.model);
-  assert.equal(result.model.version, "1.0");
+  assert.equal(result.model.version, "1.1");
   assert.ok(result.model.metrics.trainingSamples > result.model.metrics.validationSamples);
   assert.ok(result.model.metrics.validationPositives > 0);
+  assert.ok(result.model.metrics.trainingThrough < result.model.metrics.validationFrom);
+  assert.ok(result.model.metrics.validationThrough <= result.model.dataThrough);
   assert.ok(result.model.metrics.balancedAccuracy >= 55);
   assert.ok(result.model.metrics.brierScore <= 0.35);
   assert.ok(result.model.hiddenWeights.flat().every(Number.isFinite));

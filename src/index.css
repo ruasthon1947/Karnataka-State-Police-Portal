@@ -414,6 +414,79 @@ html.dark .gov-login-bg {
   will-change: transform;
 }
 
+/* Karnataka government-inspired navigation plaques: restrained navy,
+   ceremonial gold and the state red/yellow service accent. */
+.gov-nav-seal {
+  position: relative;
+  display: grid;
+  width: 1.9rem;
+  height: 1.9rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(238, 199, 90, 0.68);
+  border-radius: 0.58rem 0.58rem 0.7rem 0.7rem;
+  background:
+    linear-gradient(145deg, rgba(255, 237, 170, 0.92), rgba(181, 126, 24, 0.9));
+  padding: 2px;
+  box-shadow:
+    0 3px 8px rgba(2, 10, 22, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.gov-nav-seal::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  width: 0.9rem;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f4cc35 0 50%, #b2202d 50% 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transform: translateX(-50%);
+}
+
+.gov-nav-seal-inner {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  border: 1px solid rgba(247, 218, 125, 0.32);
+  border-radius: 0.43rem 0.43rem 0.54rem 0.54rem;
+  background:
+    radial-gradient(circle at 35% 25%, rgba(58, 99, 139, 0.72), transparent 48%),
+    #102a45;
+  color: #ffe39a;
+}
+
+.gov-nav-seal-cases .gov-nav-seal-inner { color: #ffc2bc; }
+.gov-nav-seal-reference .gov-nav-seal-inner { color: #d8e7f3; }
+.gov-nav-seal-insights .gov-nav-seal-inner { color: #9ee7f2; }
+
+.kspp-sidebar nav a:hover .gov-nav-seal {
+  border-color: #f0cc62;
+  box-shadow: 0 5px 13px rgba(2, 10, 22, 0.36), 0 0 0 2px rgba(229, 184, 63, 0.09);
+  transform: translateY(-1px);
+}
+
+.kspp-sidebar nav a[aria-current="page"] .gov-nav-seal {
+  border-color: #f3cf68;
+  background: linear-gradient(145deg, #fff0af, #c48a20);
+  box-shadow: 0 5px 15px rgba(23, 74, 126, 0.28), 0 0 0 2px rgba(229, 184, 63, 0.14);
+}
+
+.kspp-sidebar nav a[aria-current="page"] .gov-nav-seal-inner {
+  background:
+    radial-gradient(circle at 35% 20%, rgba(88, 137, 183, 0.8), transparent 48%),
+    #174a7e;
+  color: #fff7db;
+}
+
+html.light .gov-nav-seal {
+  box-shadow: 0 3px 8px rgba(15, 42, 70, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
 html.light .kspp-sidebar a[aria-current="page"] {
   color: #174a7e !important;
 }
@@ -676,6 +749,37 @@ html.dark .crime-intelligence-page {
 
 .intelligence-toolbar select:focus { border-color: var(--intel-cyan); }
 .intelligence-toolbar select:disabled { opacity: 0.45; }
+
+.live-sync-control {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(77, 226, 167, 0.3);
+  border-radius: 0.55rem;
+  background: rgba(77, 226, 167, 0.07);
+  padding: 0 0.75rem;
+  color: #20b978;
+  font-size: 0.65rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.live-sync-control i {
+  width: 0.48rem;
+  height: 0.48rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #4de2a7;
+  box-shadow: 0 0 0 4px rgba(77, 226, 167, 0.1), 0 0 13px rgba(77, 226, 167, 0.7);
+}
+
+.live-sync-control.is-syncing i { animation: live-sync-pulse 0.8s ease-in-out infinite alternate; }
+.live-sync-control:disabled { cursor: wait; opacity: 0.72; }
+
+@keyframes live-sync-pulse {
+  to { opacity: 0.35; transform: scale(0.7); }
+}
 
 .tilt-toggle {
   margin-left: auto;
@@ -1271,3 +1375,5 @@ html.light .crime-map-card { box-shadow: 0 18px 45px rgba(11,49,95,.11); }
 
 html.light .crime-intelligence-hero,
 html.light .hotspot-intelligence-panel { box-shadow: 0 18px 48px rgba(11, 49, 95, .1); }
+
+

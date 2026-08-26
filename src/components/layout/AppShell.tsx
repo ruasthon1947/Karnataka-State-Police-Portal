@@ -1,5 +1,21 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import {
+  BarChart3,
+  Bot,
+  Building2,
+  Database,
+  FilePlus2,
+  FileText,
+  LayoutDashboard,
+  ListTodo,
+  Radar,
+  Scale,
+  Search,
+  Settings,
+  Users,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
   KSPPBrandMark,
   KARNATAKA_GOVERNMENT,
@@ -10,8 +26,24 @@ import {
 } from "../brand/KSPPBrand";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
+import { FloatingCopilot } from "../chat/FloatingCopilot";
+import { MorningDigestModal } from "./MorningDigestModal";
+import { useFirRecords } from "../../lib/cases";
+import {
+  generateTasksForOfficer,
+  computeGeneratedStats,
+} from "../../lib/taskEngine";
+import { clearDigestPending, hasDigestPending } from "../../lib/digestSession";
+import { useCompletedTasks } from "../../lib/pinnedTasks";
 
-type NavEntry = [string, string, string];
+const digestSeenKey = (employeeId: string) => `kpfir.digestSeenDate.v2.${employeeId}`;
+
+type NavTone = "workspace" | "cases" | "reference" | "insights";
+type NavEntry = {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+};
 
 const AppShell: React.FC = () => {
   const { user, logout, theme, toggleTheme, sessionExpiresAt, extendSession } =
@@ -23,6 +55,51 @@ const AppShell: React.FC = () => {
   const [showSessionWarning, setShowSessionWarning] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [portalSearch, setPortalSearch] = useState("");
+
+  // ── Morning Digest (once per officer per day) ───────────────────────────
+  const [showDigest, setShowDigest] = useState(false);
+
+  const { records: firRecords, loading: firsLoading } = useFirRecords();
+  const today = useMemo(() => new Date(), []);
+  const { isCompleted } = useCompletedTasks(user?.employeeId);
+
+  const digestTasks = useMemo(
+    () =>
+      user?.name
+        ? generateTasksForOfficer(user.name, firRecords, today).filter(
+            (task) => !isCompleted(task.id),
+          )
+        : [],
+    [user?.name, firRecords, today, isCompleted]
+  );
+  const digestStats = useMemo(
+    () => computeGeneratedStats(digestTasks, today),
+    [digestTasks, today]
+  );
+
+  useEffect(() => {
+    if (!user?.employeeId) {
+      setShowDigest(false);
+      return;
+    }
+    const todayKey = new Date().toLocaleDateString("sv");
+    const hasSeenToday = localStorage.getItem(digestSeenKey(user.employeeId)) === todayKey;
+    const fromNavigation = Boolean(
+      (location.state as { showDigest?: boolean } | null)?.showDigest,
+    );
+    setShowDigest(!hasSeenToday && (fromNavigation || hasDigestPending(user.employeeId)));
+  }, [user?.employeeId, user?.isFirstLogin, location.state]);
+
+  const dismissDigest = useCallback(() => {
+    if (user?.employeeId) {
+      clearDigestPending(user.employeeId);
+      localStorage.setItem(digestSeenKey(user.employeeId), new Date().toLocaleDateString("sv"));
+    }
+    if ((location.state as { showDigest?: boolean } | null)?.showDigest) {
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+    setShowDigest(false);
+  }, [user?.employeeId, location.pathname, location.state, navigate]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -47,39 +124,44 @@ const AppShell: React.FC = () => {
   }, [sessionExpiresAt, logout, navigate]);
 
   const navigation = useMemo<
-    Array<{ heading: string; entries: NavEntry[] }>
+    Array<{ heading: string; tone: NavTone; entries: NavEntry[] }>
   >(
     () => [
       {
         heading: tr("Workspace", "ಕಾರ್ಯಸ್ಥಳ"),
+        tone: "workspace",
         entries: [
-          ["/", tr("AI Assistant", "ಎಐ ಸಹಾಯಕ"), "AI"],
-          ["/dashboard", tr("Dashboard", "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್"), "DB"],
+          { to: "/", label: tr("AI Assistant", "ಎಐ ಸಹಾಯಕ"), icon: Bot },
+          { to: "/dashboard", label: tr("Dashboard", "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್"), icon: LayoutDashboard },
+          { to: "/todo", label: tr("To-Do List", "ಕಾರ್ಯಗಳ ಪಟ್ಟಿ"), icon: ListTodo },
         ],
       },
       {
         heading: tr("Cases", "ಪ್ರಕರಣಗಳು"),
+        tone: "cases",
         entries: [
-          ["/fir", tr("FIR List", "ಎಫ್‌ಐಆರ್ ಪಟ್ಟಿ"), "FR"],
-          ["/fir/new", tr("New FIR", "ಹೊಸ ಎಫ್‌ಐಆರ್"), "+"],
-          ["/search", tr("Advanced Search", "ಸುಧಾರಿತ ಹುಡುಕಾಟ"), "⌕"],
+          { to: "/fir", label: tr("FIR List", "ಎಫ್‌ಐಆರ್ ಪಟ್ಟಿ"), icon: FileText },
+          { to: "/fir/new", label: tr("New FIR", "ಹೊಸ ಎಫ್‌ಐಆರ್"), icon: FilePlus2 },
+          { to: "/search", label: tr("Advanced Search", "ಸುಧಾರಿತ ಹುಡುಕಾಟ"), icon: Search },
         ],
       },
       {
         heading: tr("Reference", "ಉಲ್ಲೇಖ"),
+        tone: "reference",
         entries: [
-          ["/employees", tr("Employees", "ಸಿಬ್ಬಂದಿ"), "EP"],
-          ["/master-data", tr("Master Data", "ಮಾಸ್ಟರ್ ಡೇಟಾ"), "MD"],
-          ["/units", tr("Units & Stations", "ಘಟಕಗಳು ಮತ್ತು ಠಾಣೆಗಳು"), "US"],
-          ["/courts", tr("Courts", "ನ್ಯಾಯಾಲಯಗಳು"), "CT"],
+          { to: "/employees", label: tr("Employees", "ಸಿಬ್ಬಂದಿ"), icon: Users },
+          { to: "/master-data", label: tr("Master Data", "ಮಾಸ್ಟರ್ ಡೇಟಾ"), icon: Database },
+          { to: "/units", label: tr("Units & Stations", "ಘಟಕಗಳು ಮತ್ತು ಠಾಣೆಗಳು"), icon: Building2 },
+          { to: "/courts", label: tr("Courts", "ನ್ಯಾಯಾಲಯಗಳು"), icon: Scale },
         ],
       },
       {
         heading: tr("Insights", "ವಿಶ್ಲೇಷಣೆ"),
+        tone: "insights",
         entries: [
-          ["/crime-intelligence", tr("Crime Intelligence", "ಅಪರಾಧ ಗುಪ್ತಚರ"), "CI"],
-          ["/reports", tr("Reports & Analytics", "ವರದಿಗಳು ಮತ್ತು ವಿಶ್ಲೇಷಣೆ"), "RA"],
-          ["/settings", tr("Settings", "ಸೆಟ್ಟಿಂಗ್‌ಗಳು"), "ST"],
+          { to: "/crime-intelligence", label: tr("Crime Intelligence", "ಅಪರಾಧ ಗುಪ್ತಚರ"), icon: Radar },
+          { to: "/reports", label: tr("Reports & Analytics", "ವರದಿಗಳು ಮತ್ತು ವಿಶ್ಲೇಷಣೆ"), icon: BarChart3 },
+          { to: "/settings", label: tr("Settings", "ಸೆಟ್ಟಿಂಗ್‌ಗಳು"), icon: Settings },
         ],
       },
     ],
@@ -104,7 +186,7 @@ const AppShell: React.FC = () => {
         <KSPPBrandMark size="lg" />
         <div className="min-w-0">
           <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-brand">
-            KSPP · Official Portal
+            {tr("KSPP · Official Portal", "KSPP · ಅಧಿಕೃತ ಪೋರ್ಟಲ್")}
           </div>
           <div className="mt-1 truncate text-[12px] font-semibold">{KSPP_NAME}</div>
           <div className="mt-0.5 truncate text-[10px] font-medium text-brand">
@@ -125,7 +207,7 @@ const AppShell: React.FC = () => {
       <div className="border-b border-line bg-panel/60 px-4 py-2.5 text-[10px] font-medium text-muted">
         <span className="inline-flex items-center gap-1.5 font-semibold text-brand">
           <span className="h-1.5 w-1.5 rounded-full bg-sage" aria-hidden="true" />
-          ಕರ್ನಾಟಕ ಸರ್ಕಾರ · Government secure workspace
+          {tr("Government of Karnataka · Government secure workspace", "ಕರ್ನಾಟಕ ಸರ್ಕಾರ · ಸರ್ಕಾರಿ ಸುರಕ್ಷಿತ ಕಾರ್ಯಸ್ಥಳ")}
         </span>
       </div>
 
@@ -136,7 +218,7 @@ const AppShell: React.FC = () => {
               {group.heading}
             </div>
             <div className="space-y-1">
-              {group.entries.map(([to, label, icon]) => (
+              {group.entries.map(({ to, label, icon: NavigationIcon }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -149,11 +231,10 @@ const AppShell: React.FC = () => {
                     }`
                   }
                 >
-                  <span
-                    className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-line bg-panel text-[9px] font-bold tracking-tight"
-                    aria-hidden="true"
-                  >
-                    {icon}
+                  <span className={`gov-nav-seal gov-nav-seal-${group.tone}`} aria-hidden="true">
+                    <span className="gov-nav-seal-inner">
+                      <NavigationIcon size={14} strokeWidth={2.15} />
+                    </span>
                   </span>
                   <span className="truncate">{label}</span>
                 </NavLink>
@@ -187,7 +268,7 @@ const AppShell: React.FC = () => {
                 language === "en" ? "bg-brand text-white" : "text-muted hover:bg-panel"
               }`}
             >
-              English
+              {tr("English", "ಇಂಗ್ಲಿಷ್")}
             </button>
           </div>
         </div>
@@ -253,7 +334,7 @@ const AppShell: React.FC = () => {
             <span className="hidden text-white/45 sm:inline"> · {KARNATAKA_GOVERNMENT}</span>
           </span>
           <span className="hidden md:inline">
-            ಕರ್ನಾಟಕ ರಾಜ್ಯ ಪೊಲೀಸ್ · Karnataka State Police
+            {tr("Karnataka State Police", "ಕರ್ನಾಟಕ ರಾಜ್ಯ ಪೊಲೀಸ್")}
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
@@ -318,7 +399,7 @@ const AppShell: React.FC = () => {
             onChange={(event) => setLanguage(event.target.value as "en" | "kn")}
             className="hidden h-10 rounded-lg border border-line bg-panel px-2.5 text-[12px] outline-none focus:border-brand sm:block"
           >
-            <option value="en">English</option>
+            <option value="en">{tr("English", "ಇಂಗ್ಲಿಷ್")}</option>
             <option value="kn">ಕನ್ನಡ</option>
           </select>
 
@@ -358,6 +439,19 @@ const AppShell: React.FC = () => {
         </footer>
       </div>
 
+      {/* ── Morning Digest (z-50) ── */}
+      {showDigest && user && (
+        <MorningDigestModal
+          officerName={user.name}
+          employeeId={user.employeeId}
+          tasks={digestTasks}
+          stats={digestStats}
+          isLoading={firsLoading}
+          onClose={dismissDigest}
+        />
+      )}
+
+      {/* ── Session Expiry Warning Modal (z-60) ── */}
       {showSessionWarning && (
         <div
           className="modal-backdrop fixed inset-0 z-[60] grid place-items-center p-4"
@@ -410,6 +504,9 @@ const AppShell: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ── Floating AI Copilot ── */}
+      <FloatingCopilot />
     </div>
   );
 };

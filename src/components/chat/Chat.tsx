@@ -13,6 +13,8 @@ import {
   type ChatMessage,
 } from "../../lib/chatApi";
 import { VoiceButton } from "./VoiceButton";
+import { jsPDF } from "jspdf";
+import { KSPP_AVATAR_SRC } from "../../assets/kspp-avatar";
 
 const timeOfDay = () => {
   const h = new Date().getHours();
@@ -24,8 +26,7 @@ export const Chat: React.FC = () => {
   const { language, tr } = useLanguage();
   const navigate = useNavigate();
 
-  // Safely extract Firebase User ID (handles both id and uid properties)
-  const userId = (user as any)?.uid || (user as any)?.id || "";
+  const userId = user?.employeeId || "";
 
   const [input, setInput] = useState("");
   const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
@@ -145,24 +146,161 @@ export const Chat: React.FC = () => {
   };
 
   const exportChatToPDF = async () => {
-    const element = chatListRef.current;
-    if (!element) return;
+    if (chatHistory.length === 0) return;
 
-    const opt = {
-      margin: [10, 10, 10, 10],
-      filename: `Karnataka_Police_Chat_Report_${new Date().toISOString().slice(0, 10)}.pdf`,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const MARGIN = 48;
+    const LINE_HEIGHT = 16;
+    const contentWidth = pageWidth - MARGIN * 2;
+    let y = MARGIN;
+
+    const ensureSpace = (needed: number) => {
+      if (y + needed > pageHeight - MARGIN) {
+        doc.addPage();
+        y = MARGIN;
+      }
     };
 
+    // Header
     try {
-      const { default: html2pdf } = await import("html2pdf.js");
-      const exporter = typeof html2pdf === "function" ? html2pdf : (html2pdf as any).default;
-      await exporter().from(element).set(opt).save();
-    } catch (err) {
-      console.error("PDF Export Execution Failed:", err);
+      doc.addImage(KSPP_AVATAR_SRC, "PNG", MARGIN, y - 8, 28, 28);
+    } catch {
+      // Non-fatal — proceed without the logo if the environment can't decode it.
     }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text(tr("KSPP Assistant", "KSPP ಸಹಾಯಕ"), MARGIN + 36, y + 8);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(110);
+    doc.text(
+      `${tr("Generated on:", "ರಚಿಸಿದ ದಿನಾಂಕ:")} ${new Date().toLocaleString()}`,
+      pageWidth - MARGIN,
+      y + 8,
+      { align: "right" },
+    );
+    doc.setTextColor(20);
+    y += 40;
+    doc.setDrawColor(200);
+    doc.line(MARGIN, y, pageWidth - MARGIN, y);
+    y += 24;
+
+    // jsPDF's default "helvetica" core font only supports the standard
+    // WinAnsi character set. When the LLM/data pipeline emits typographic
+    // Unicode — smart/non-breaking hyphens (‑ – —), non-breaking spaces,
+    // zero-width joiners/non-joiners (a leftover from Kannada-script
+    // rendering bleeding into English field values), curly quotes — jsPDF's
+    // doc.getTextWidth() returns an incorrect (often near-zero) width for
+    // those characters. Since we advance cursorX by exactly that width
+    // before drawing the next word, a wrong width makes the next word start
+    // too early and land on top of the previous one — and the error
+    // compounds across the line, which is why overlap gets progressively
+    // worse further into a line/field. Normalizing to plain ASCII before
+    // measuring/drawing removes the mismeasured glyphs entirely.
+    const sanitizeForPdfFont = (text: string): string =>
+      text
+        .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width space/joiner/non-joiner/BOM
+        .replace(/[\u2010-\u2015\u2212]/g, "-") // hyphen/non-breaking hyphen/en/em dash/minus
+        .replace(/[\u00A0\u2000-\u200A\u202F\u205F]/g, " ") // non-breaking & other unicode spaces
+        .replace(/[\u2018\u2019]/g, "'") // curly single quotes
+        .replace(/[\u201C\u201D]/g, '"') // curly double quotes
+        .replace(/\u2026/g, "..."); // ellipsis
+
+    // Renders one line of text, splitting **bold** spans into separate bold/normal runs
+    // that wrap and paginate correctly (jsPDF has no built-in markdown support).
+    const writeFormattedParagraph = (rawInput: string) => {
+      const raw = sanitizeForPdfFont(rawInput);
+      const segments = raw
+        .split(/(\*\*[^*]+\*\*)/g)
+        .filter(Boolean)
+        .map((seg) => {
+          const bold = /^\*\*[^*]+\*\*$/.test(seg);
+          return { text: bold ? seg.slice(2, -2) : seg, bold };
+        });
+
+      let cursorX = MARGIN;
+      doc.setFontSize(11);
+
+      for (const seg of segments) {
+        const words = seg.text.split(/(\s+)/);
+        for (const word of words) {
+          if (word === "") continue;
+          doc.setFont("helvetica", seg.bold ? "bold" : "normal");
+
+          if (word === "\n") {
+            cursorX = MARGIN;
+            if (y + LINE_HEIGHT > pageHeight - MARGIN) {
+              doc.addPage();
+              y = MARGIN;
+            } else {
+              y += LINE_HEIGHT;
+            }
+            continue;
+          }
+
+          const wordWidth = doc.getTextWidth(word);
+
+          // Decide wrap (new line) and page-break (new page) together, and
+          // reset cursorX in BOTH cases before drawing. Previously the
+          // page-break check ran on its own right before doc.text(), so a
+          // forced doc.addPage() reset `y` to MARGIN but left `cursorX` at
+          // its stale mid-page value from the old page. The next word then
+          // drew at that leftover X position at the top of the new page,
+          // and every following word on the line inherited the wrong
+          // starting X — producing the misaligned, overlapping-looking text
+          // in the exported PDF, especially across multi-field case
+          // records that span a page boundary.
+          const needsWrap = cursorX + wordWidth > MARGIN + contentWidth;
+          if (needsWrap) {
+            cursorX = MARGIN;
+          }
+          if (y + LINE_HEIGHT > pageHeight - MARGIN) {
+            doc.addPage();
+            y = MARGIN;
+            cursorX = MARGIN;
+          } else if (needsWrap) {
+            y += LINE_HEIGHT;
+          }
+
+          doc.text(word, cursorX, y);
+          cursorX += wordWidth;
+        }
+      }
+      y += LINE_HEIGHT + 10;
+    };
+
+    for (const msg of chatHistory) {
+      const isUser = msg.role === "user";
+      ensureSpace(LINE_HEIGHT);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(isUser ? 15 : 15, isUser ? 61 : 110, isUser ? 145 : 60);
+      doc.text(isUser ? tr("Question:", "ಪ್ರಶ್ನೆ:") : tr("Answer:", "ಉತ್ತರ:"), MARGIN, y);
+      y += LINE_HEIGHT;
+      doc.setTextColor(20);
+
+      msg.content.split(/\n+/).forEach((line: string) => {
+        if (line.trim()) writeFormattedParagraph(line);
+      });
+    }
+
+    // Footer page numbers
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(140);
+      doc.text(
+        `${tr("Official use only", "ಅಧಿಕೃತ ಬಳಕೆಗೆ ಮಾತ್ರ")} · ${tr("Page", "ಪುಟ")} ${i} ${tr("of", "ರಲ್ಲಿ")} ${pageCount}`,
+        pageWidth / 2,
+        pageHeight - 20,
+        { align: "center" },
+      );
+    }
+
+    doc.save(`Karnataka_Police_Chat_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   const send = async (text?: string) => {
@@ -486,7 +624,13 @@ const Bubble: React.FC<{ msg: any }> = ({ msg }) => {
   const isUser = msg.role === "user";
   return (
     <div className={`flex items-start gap-3 ${isUser ? "justify-end" : ""}`}>
-      {!isUser && <div className="h-8 w-8 rounded-full bg-brand grid place-items-center text-white text-xs font-semibold shrink-0">AI</div>}
+      {!isUser && (
+        <img
+          src={KSPP_AVATAR_SRC}
+          alt="KSPP"
+          className="h-8 w-8 rounded-full object-cover shrink-0 border border-line"
+        />
+      )}
       <div className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap sm:max-w-[80%] sm:px-4 sm:py-3 ${isUser ? "bg-brand text-white" : "bg-shell text-white border border-line"}`}>
         <Formatted text={msg.content} />
       </div>
@@ -497,7 +641,11 @@ const Bubble: React.FC<{ msg: any }> = ({ msg }) => {
 
 const TypingBubble = () => (
   <div className="flex items-start gap-3">
-    <div className="h-8 w-8 rounded-full bg-brand grid place-items-center text-white text-xs font-semibold">AI</div>
+    <img
+      src={KSPP_AVATAR_SRC}
+      alt="KSPP"
+      className="h-8 w-8 rounded-full object-cover shrink-0 border border-line"
+    />
     <div className="bg-shell border border-line rounded-2xl px-4 py-3 flex gap-1.5">
       {[0, 1, 2].map((i) => (
         <span key={i} className="h-1.5 w-1.5 rounded-full bg-muted animate-bounce" style={{ animationDelay: `${i * 120}ms` }} />
