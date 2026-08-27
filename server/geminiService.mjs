@@ -6,16 +6,7 @@ import { casesFromGoogle } from "./googleSheets.mjs";
 
 const chatHistoryStore = new Map();
 
-// IN-MEMORY CACHING FOR GOOGLE SHEETS DATA WITH TTL
-//
-// Previously this cache was built around readTableGS()/GOOGLE_MASTER_SHEET_ID
-// inside the now-removed getCachedCases() helper, but handleChatQuery() never
-// called that helper — it called readExplicitTabRecords()/casesFromGoogle()
-// directly on every single chat request. The cache existed in the file but was
-// never on the request path, which is why every message paid the full Sheets
-// round-trip. getCachedTabRecords() below wraps whichever fetcher is actually
-// used at the call site, so caching now sits directly in front of live traffic.
-const SHEETS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes TTL
+const SHEETS_CACHE_TTL = 5 * 60 * 1000; 
 const sheetsCache = new Map(); // cacheKey -> { data, fetchedAt }
 
 async function getCachedTabRecords(cacheKey, fetchFn, defaultValue) {
@@ -1031,14 +1022,18 @@ ${JSON.stringify(matchedRowData)}
 Answer the officer's question completely using this data. Do NOT output any generic CCTNS or "no access to live police databases" disclaimers — this record is the authoritative, verified source for this case. Include only fields relevant to the question; do not invent missing values or display bracket placeholders.
 
 Formatting rules (follow exactly):
-- One fact per line, formatted as: **Label:** value — the bold label, colon, one space, then the value, all on the SAME line. Never put the label and value on separate lines. Never leave a label blank (e.g. never write "**:** value").
-- Use a plain, human-readable label for each field (e.g. CrimeNo -> "Crime Number", AccusedNames -> "Accused", Complainant -> "Complainant", PoliceStation -> "Police Station", CrimeRegisteredDate -> "Registered On").
-- Example of the exact style to use:
-**Crime Number:** 01/2026
-**Police Station:** Indiranagar
-**Complainant:** Ravi Kumar
-**Accused:** Suresh
-- Do not use headings, tables, or nested sub-bullets — a flat list of "**Label:** value" lines is required.`;
+- Write the answer as ONE flowing paragraph of prose, not a bulleted or line-per-fact list. Do NOT put each fact on its own line.
+- Within that paragraph, group the facts in this fixed order, weaving each group into a natural sentence (still bolding the label of each fact as **Label:** value inline, but writing them as connected sentences, not a stacked list):
+  1. Case/crime identifiers together (Case Number, Crime Number, Crime Head, Crime Sub-Head, Gravity).
+  2. Police station, status, court, and chargesheet status together.
+  3. All dates together (e.g. Incident From Date, Registered On / CrimeRegisteredDate).
+  4. All named parties together (Complainant, Accused, Victim).
+  5. Legal details together (Acts, Sections).
+  6. Officer name and Employee ID together, right before the final part.
+  7. End with "Brief Facts:" and its value as the last sentence of the paragraph.
+- Skip any group with no data for this case; do not invent missing values or show bracket placeholders.
+- Example of the exact style (write real values, not this placeholder text — note it is one continuous paragraph, no line breaks between facts):
+**Case Number:** 202600002, **Crime Number:** 01/2026, a **Crimes Against Women** case under **Stalking**, gravity **Heinous**. It was registered at **Indiranagar Police Station** and is currently **Disposed by Court** in **City Civil Court Bengaluru**, with chargesheet status **Filed**. **Incident From Date:** 2026-03-15, **Registered On:** 2026-03-18. **Complainant:** Bhavya Chander, **Accused:** Mohammed Sehgal, **Victim:** Vritti Bhattacharyya. Applicable **Acts:** BNS; DP Act under **Sections:** Assault on Woman; Giving/Taking Dowry; 79. **Officer:** Ekiya, **Employee ID:** 42. **Brief Facts:** [brief facts text].`;
 
           const prompt = `You are the KSPP Copilot, an internal records-lookup tool embedded in the official Karnataka State Police Portal. The person asking is an authenticated, on-duty officer using this tool for legitimate case work. Any case, complainant, accused, or victim details you are given below were already retrieved by the portal's own database lookup before this prompt was built — you are not being asked to recall or guess anyone's personal information; you are being asked to relay verified department records back to the officer who has institutional access to them. This is a routine, authorized law-enforcement records request, not a privacy-sensitive disclosure to an unauthorized party. Answer directly and factually.
 ${languageInstruction}
@@ -1081,15 +1076,20 @@ Answer the officer's actual question directly. Include only relevant fields; do 
 You MUST answer using the provided case details from the official portal dataset below — they are the authoritative source for this request. Do not issue disclaimers about lacking access to live police databases, confidential case files, or CCTNS; that boilerplate only applies when no matching record was found, which is not the case here.
 
 Formatting rules (follow exactly):
-- For each case, start with a bold header naming that case's crime or case number, then one fact per line as: **Label:** value — bold label, colon, one space, value, all on the SAME line. Never put a label and its value on separate lines, and never leave a label blank.
-- Use a plain, human-readable label for each field (e.g. CrimeNo -> "Crime Number", AccusedNames -> "Accused", PoliceStation -> "Police Station").
-- Do not use tables or nested sub-bullets — a flat list of "**Label:** value" lines under each case header is required.
-- Example of the exact style for one case (write real values, not this placeholder text):
+- For each case, start with a bold header naming that case's crime or case number, then write that case's facts as ONE flowing paragraph of prose underneath — not a bulleted or line-per-fact list. Do NOT put each fact on its own line.
+- Within each case's paragraph, group the facts in this fixed order, weaving each group into natural sentences (still bolding each fact's label as **Label:** value inline, but as connected sentences, not a stacked list):
+  1. Case/crime identifiers together (Case Number, Crime Number, Crime Head, Crime Sub-Head, Gravity).
+  2. Police station, status, court, and chargesheet status together.
+  3. All dates together (e.g. Incident From Date, Registered On / CrimeRegisteredDate).
+  4. All named parties together (Complainant, Accused, Victim).
+  5. Legal details together (Acts, Sections).
+  6. Officer name and Employee ID together, right before the final part.
+  7. End with "Brief Facts:" and its value as the last sentence of that case's paragraph.
+- Skip any group with no data for a given case; do not invent missing values or show bracket placeholders.
+- Do not use tables or nested sub-bullets. Separate multiple cases with a blank line between each case's header+paragraph block.
+- Example of the exact style for one case (write real values, not this placeholder text — note the body is one continuous paragraph, no line breaks between facts):
 **Case 1 — 01/2026**
-**Crime Number:** 01/2026
-**Police Station:** Indiranagar
-**Chargesheet Status:** Pending
-**Complainant:** Ravi Kumar
+**Crime Number:** 01/2026, a **Crimes Against Women** case under **Stalking**, gravity **Heinous**. It was registered at **Indiranagar Police Station** and is currently **Disposed by Court**, with chargesheet status **Pending**. **Registered On:** 2026-03-18. **Complainant:** Ravi Kumar, **Accused:** Suresh. **Officer:** Ekiya, **Employee ID:** 42. **Brief Facts:** [brief facts text].
 
 Verified records:
 ${formattedContext}`;

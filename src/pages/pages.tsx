@@ -20,7 +20,7 @@ import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
 import { displayKnownValue } from "../lib/kannadaValues";
 import { displayPlaceName } from "../lib/kannadaPlaces";
-import { CasePassQR } from "../components/CasePassQR";
+import CasePassQR from "../components/CasePassQR";
 import {
   CaseRecord,
   FirRecord,

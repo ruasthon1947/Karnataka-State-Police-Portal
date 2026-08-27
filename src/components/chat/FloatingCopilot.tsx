@@ -55,6 +55,11 @@ export const FloatingCopilot: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [wasVoiceQuery, setWasVoiceQuery] = useState(false);
+  // True when the last TTS attempt wanted a Kannada voice but none was
+  // installed on this device/browser at all, so playback silently fell
+  // back to a non-Kannada voice. Surfaced in the UI so this reads as an
+  // honest platform limitation instead of a silent bug.
+  const [noKannadaVoice, setNoKannadaVoice] = useState(false);
 
   // Which language the mic should listen for. Defaults to the site's
   // current language but can be flipped independently per question.
@@ -143,23 +148,23 @@ export const FloatingCopilot: React.FC = () => {
   }, []);
 
   const pickIndianVoice = useCallback(
-    (lang: SpokenLang): SpeechSynthesisVoice | undefined => {
+    (lang: SpokenLang, voiceList: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined => {
       const wantedPrefix = lang === "kn" ? "kn" : "en";
       const localeTag = lang === "kn" ? "kn-in" : "en-in";
       return (
         // Exact Indian locale match, e.g. "en-IN" / "kn-IN"
-        voices.find((v) => v.lang.toLowerCase() === localeTag) ||
+        voiceList.find((v) => v.lang.toLowerCase() === localeTag) ||
         // Any voice for the language whose lang/name flags it as Indian
-        voices.find(
+        voiceList.find(
           (v) =>
             v.lang.toLowerCase().startsWith(wantedPrefix) &&
             (v.lang.toLowerCase().includes("in") || /india/i.test(v.name)),
         ) ||
         // Fall back to any voice at all for that language
-        voices.find((v) => v.lang.toLowerCase().startsWith(wantedPrefix))
+        voiceList.find((v) => v.lang.toLowerCase().startsWith(wantedPrefix))
       );
     },
-    [voices],
+    [],
   );
 
   const stopSpeaking = useCallback(() => {
@@ -181,14 +186,36 @@ export const FloatingCopilot: React.FC = () => {
         .replace(/[📌👤🚨⚠️]/g, "")
         .trim();
       if (!clean) return;
+
+      // Pull the voice list fresh from the API right here instead of only
+      // trusting the mount-time `voices` state. onvoiceschanged doesn't
+      // fire reliably in every browser, and if this widget speaks its
+      // first reply before that event has landed, the state array can
+      // still be empty even though voices are actually available by now.
+      let freshVoices = window.speechSynthesis.getVoices();
+      if (!freshVoices.length) freshVoices = voices;
+
       const utterance = new SpeechSynthesisUtterance(clean);
       utterance.lang = lang === "kn" ? "kn-IN" : "en-IN";
-      const indianVoice = pickIndianVoice(lang);
-      if (indianVoice) utterance.voice = indianVoice;
+      const indianVoice = pickIndianVoice(lang, freshVoices);
+      if (indianVoice) {
+        utterance.voice = indianVoice;
+        if (lang === "kn") setNoKannadaVoice(false);
+      } else if (lang === "kn") {
+        // No Kannada voice exists on this device/browser at all, in the
+        // freshly-fetched list either — the browser will fall back to its
+        // default system voice (usually English) to read the Kannada
+        // text aloud. This is a device/browser voice-pack limitation, not
+        // something fixable in code, so we flag it for the UI instead of
+        // failing silently.
+        setNoKannadaVoice(true);
+      } else {
+        setNoKannadaVoice(false);
+      }
       utteranceRef.current = utterance;
       window.speechSynthesis.speak(utterance);
     },
-    [isMuted, pickIndianVoice, stopSpeaking],
+    [isMuted, pickIndianVoice, stopSpeaking, voices],
   );
 
   const submitQuestion = useCallback(
@@ -453,6 +480,15 @@ export const FloatingCopilot: React.FC = () => {
           color: #ff9b9b;
           font-size: 13px;
         }
+        .kspp-fc-voicenotice {
+          color: #e0b74f;
+          font-size: 12px;
+          line-height: 1.4;
+          background: rgba(224, 183, 79, 0.1);
+          border: 1px solid rgba(224, 183, 79, 0.25);
+          border-radius: 8px;
+          padding: 6px 8px;
+        }
         .kspp-fc-asked {
           display: flex;
           flex-direction: column;
@@ -505,17 +541,43 @@ export const FloatingCopilot: React.FC = () => {
           display: flex;
           gap: 6px;
           animation: kspp-fc-pop 160ms ease-out;
+          /* Pin this widget to a dark native-control theme regardless of the
+             host page's light/dark mode. Without this, some browsers apply
+             their own light-mode UA styling (caret, field background) to
+             the input based on the page's color-scheme, which fought with
+             our dark background and made typed text unreadable in light
+             mode. */
+          color-scheme: dark;
         }
         .kspp-fc-textform input {
           flex: 1;
-          background: transparent;
+          /* Explicit dark background instead of transparent: on a
+             "transparent" input, some browsers still paint their own
+             light-mode field background underneath in light mode, which
+             combined with our light text color made typing invisible.
+             An explicit background always matches the surrounding card. */
+          background: #14171f;
           border: none;
           outline: none;
-          color: #f2f4f8;
+          color: #f2f4f8 !important;
+          caret-color: #f2f4f8;
           font-size: 13.5px;
           padding: 6px 8px;
+          border-radius: 8px;
         }
         .kspp-fc-textform input::placeholder { color: #6b7280; }
+        /* Chrome/Edge autofill repaints the field with its own light
+           background + black text, ignoring the color set above, which is
+           the other common cause of "can't see what I'm typing" in light
+           mode. Force it back to our dark theme. */
+        .kspp-fc-textform input:-webkit-autofill,
+        .kspp-fc-textform input:-webkit-autofill:hover,
+        .kspp-fc-textform input:-webkit-autofill:focus {
+          -webkit-text-fill-color: #f2f4f8;
+          -webkit-box-shadow: 0 0 0px 1000px #14171f inset;
+          box-shadow: 0 0 0px 1000px #14171f inset;
+          transition: background-color 9999s ease-in-out 0s;
+        }
         .kspp-fc-textform button {
           background: #2563eb;
           border: none;
@@ -690,6 +752,15 @@ export const FloatingCopilot: React.FC = () => {
           )}
 
           {errorMsg && !isThinking && <div className="kspp-fc-error">{errorMsg}</div>}
+
+          {noKannadaVoice && wasVoiceQuery && spokenLang === "kn" && !isThinking && !isMuted && (
+            <div className="kspp-fc-voicenotice">
+              {tr(
+                "No Kannada voice is installed on this device, so audio is read in a fallback voice. The text answer above is correctly in Kannada.",
+                "ಈ ಸಾಧನದಲ್ಲಿ ಕನ್ನಡ ಧ್ವನಿ ಸ್ಥಾಪಿಸಲಾಗಿಲ್ಲ, ಆದ್ದರಿಂದ ಆಡಿಯೋ ಪರ್ಯಾಯ ಧ್ವನಿಯಲ್ಲಿ ಓದಲಾಗುತ್ತದೆ. ಮೇಲಿನ ಪಠ್ಯ ಉತ್ತರ ಸರಿಯಾಗಿ ಕನ್ನಡದಲ್ಲಿದೆ.",
+              )}
+            </div>
+          )}
 
           {answer && !isThinking && !errorMsg && (
             <div
