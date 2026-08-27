@@ -46,7 +46,7 @@ function setSecurityHeaders(request, response) {
   response.setHeader("Referrer-Policy", "no-referrer");
   response.setHeader(
     "Permissions-Policy",
-    "camera=(), geolocation=(), payment=(), usb=()",
+    "camera=(), geolocation=(self), payment=(), usb=()",
   );
   const protocol = String(request.headers["x-forwarded-proto"] || "")
     .split(",")[0]

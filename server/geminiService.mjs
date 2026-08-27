@@ -1020,6 +1020,7 @@ Current officer question: ${JSON.stringify(question)}`;
 ${JSON.stringify(matchedRowData)}
 
 Answer the officer's question completely using this data. Do NOT output any generic CCTNS or "no access to live police databases" disclaimers — this record is the authoritative, verified source for this case. Include only fields relevant to the question; do not invent missing values or display bracket placeholders.
+If the officer also asks for a map, directions, navigation, or the fastest route, answer only the case-information portion. The portal interface handles routing separately; never claim that the portal lacks routing information or tell the officer to use another GIS tool.
 
 Formatting rules (follow exactly):
 - Write the answer as ONE flowing paragraph of prose, not a bulleted or line-per-fact list. Do NOT put each fact on its own line.
@@ -1073,6 +1074,7 @@ Current officer question: ${JSON.stringify(question)}`;
 Total system cases: ${totalSystemCount}. Registered today: ${todayCount}. Full matching count: ${matchingCount}.
 Only ${finalFilteredRows.length} representative matching record(s) are included to control token usage. If there are more matches, state the full count and clearly say that only the first ${finalFilteredRows.length} are shown.
 Answer the officer's actual question directly. Include only relevant fields; do not force a fixed template, invent missing values, or display bracket placeholders.
+If the officer also asks for a map, directions, navigation, or the fastest route, answer only the case-information portion. The portal interface handles routing separately; never claim that the portal lacks routing information or tell the officer to use another GIS tool.
 You MUST answer using the provided case details from the official portal dataset below — they are the authoritative source for this request. Do not issue disclaimers about lacking access to live police databases, confidential case files, or CCTNS; that boilerplate only applies when no matching record was found, which is not the case here.
 
 Formatting rules (follow exactly):

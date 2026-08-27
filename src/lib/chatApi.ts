@@ -15,6 +15,21 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   ts: number;
+  mapContext?: ChatMapContext;
+};
+
+export type ChatMapPoint = {
+  id: string;
+  label: string;
+  station: string;
+  latitude: number;
+  longitude: number;
+};
+
+export type ChatMapContext = {
+  destinations: ChatMapPoint[];
+  stationOrigin?: ChatMapPoint;
+  unavailableReason?: "missing_case_location";
 };
 
 export type FirestoreChatSession = {

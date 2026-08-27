@@ -15,6 +15,8 @@ import {
 import { VoiceButton } from "./VoiceButton";
 import { jsPDF } from "jspdf";
 import { KSPP_AVATAR_SRC } from "../../assets/kspp-avatar";
+import { resolveChatMapContext } from "../../lib/chatMaps";
+import ChatRouteCard from "./ChatRouteCard";
 
 const timeOfDay = () => {
   const h = new Date().getHours();
@@ -331,10 +333,19 @@ export const Chat: React.FC = () => {
         history: recentHistory,
         attachment: outgoingAttachment || undefined,
       });
+      const assistantId = crypto.randomUUID();
       setChatHistory((messages) => [
         ...messages,
-        { id: crypto.randomUUID(), role: "assistant", content: reply, ts: Date.now() },
+        { id: assistantId, role: "assistant", content: reply, ts: Date.now() },
       ]);
+      const mapContext = outgoingAttachment
+        ? undefined
+        : await resolveChatMapContext(trimmed, reply, recentHistory, user?.policeStation || "");
+      if (mapContext) {
+        setChatHistory((messages) => messages.map((message) =>
+          message.id === assistantId ? { ...message, mapContext } : message
+        ));
+      }
     } catch (err) {
       console.error(err);
       const errorMsg = tr(
@@ -612,7 +623,7 @@ const MessageList = React.forwardRef<
       </div>
 
       {messages.map((m) => (
-        <Bubble key={m.id} msg={m} />
+        <Bubble key={m.id} msg={m} tr={tr} />
       ))}
       {busy && <TypingBubble />}
     </div>
@@ -620,7 +631,7 @@ const MessageList = React.forwardRef<
 ));
 MessageList.displayName = "MessageList";
 
-const Bubble: React.FC<{ msg: any }> = ({ msg }) => {
+const Bubble: React.FC<{ msg: ChatMessage; tr: (en: string, kn: string) => string }> = ({ msg, tr }) => {
   const isUser = msg.role === "user";
   return (
     <div className={`flex items-start gap-3 ${isUser ? "justify-end" : ""}`}>
@@ -631,8 +642,9 @@ const Bubble: React.FC<{ msg: any }> = ({ msg }) => {
           className="h-8 w-8 rounded-full object-cover shrink-0 border border-line"
         />
       )}
-      <div className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap sm:max-w-[80%] sm:px-4 sm:py-3 ${isUser ? "bg-brand text-white" : "bg-shell text-white border border-line"}`}>
+      <div className={`max-w-[92%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap sm:max-w-[86%] sm:px-4 sm:py-3 ${isUser ? "bg-brand text-white" : "bg-shell text-white border border-line"}`}>
         <Formatted text={msg.content} />
+        {!isUser && msg.mapContext ? <ChatRouteCard context={msg.mapContext} tr={tr} /> : null}
       </div>
       {isUser && <div className="h-8 w-8 rounded-full bg-panel border border-line grid place-items-center text-xs text-muted shrink-0">U</div>}
     </div>

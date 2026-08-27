@@ -264,9 +264,16 @@ function employeeSubject(employeeId) {
 export async function handleApi(req, res, next) {
   const url = new URL(req.url || "/", "http://local-db");
   
-  // Pass AI endpoints directly to chatPlugin.mjs so this middleware does not
-  // treat them as unknown API routes before the AI handler can run.
-  if (url.pathname === "/api/chat" || url.pathname === "/api/fir-draft") {
+  // Pass endpoints owned by later plugins through instead of returning the
+  // generic "Unknown API endpoint" response before their handlers can run.
+  const delegatedEndpoints = new Set([
+    "/api/chat",
+    "/api/fir-draft",
+    "/api/geocode",
+    "/api/place-suggestions",
+    "/api/route",
+  ]);
+  if (delegatedEndpoints.has(url.pathname)) {
     next();
     return;
   }

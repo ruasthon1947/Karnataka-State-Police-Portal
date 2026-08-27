@@ -161,6 +161,65 @@ html.light .modal-backdrop {
 /* Smooth focus ring */
 .focus-ring:focus { outline: none; box-shadow: 0 0 0 2px rgba(23,74,126,0.45); }
 
+/* Chat case map is an intentionally dark operational inset in both themes. */
+.chat-map-card {
+  border-color: #334155;
+  background: #071827;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
+}
+.chat-map-header,
+.chat-map-footer,
+.chat-map-selector {
+  border-color: #334155;
+  background: #0f1f2e;
+}
+.chat-map-eyebrow { color: #7dd3fc !important; }
+.chat-map-title { color: #f8fafc !important; }
+.chat-map-metric { background: #334155; color: #e2e8f0 !important; }
+.chat-map-metric.is-primary { background: #075985; color: #e0f2fe !important; }
+.chat-map-button {
+  border-color: #64748b;
+  background: #17283a;
+  color: #e2e8f0 !important;
+}
+.chat-map-button:hover { border-color: #7dd3fc; background: #1e3a50; color: #ffffff !important; }
+.chat-map-navigation { background: #0b5cab; color: #ffffff !important; }
+.chat-map-navigation:hover { background: #1473cf; color: #ffffff !important; }
+.chat-map-input,
+.chat-map-selector select {
+  border-color: #475569 !important;
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+.chat-map-suggestions {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+}
+.chat-map-suggestions button {
+  border-color: #e2e8f0;
+  background: #ffffff;
+  color: #0f172a !important;
+}
+.chat-map-suggestions button:hover,
+.chat-map-suggestions button:focus-visible {
+  background: #eff6ff;
+  color: #0f3d6e !important;
+}
+.chat-map-card .maplibregl-ctrl-attrib {
+  max-width: calc(100% - 1rem);
+  font-size: 9px;
+  opacity: 0.82;
+}
+html.light .chat-map-card .chat-map-title,
+html.light .chat-map-card .chat-map-button,
+html.light .chat-map-card .chat-map-navigation,
+html.light .chat-map-card .chat-map-metric {
+  color: #ffffff !important;
+}
+html.light .chat-map-card .chat-map-metric:not(.is-primary),
+html.light .chat-map-card .chat-map-button { color: #e2e8f0 !important; }
+
 :where(button, a, input, select, textarea):focus-visible {
   outline: 2px solid #174a7e;
   outline-offset: 2px;

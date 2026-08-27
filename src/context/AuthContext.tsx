@@ -8,6 +8,7 @@ import React, {
 } from "react";
 // Integrated friend's additions:
 import { clearDigestPending, markDigestPending } from "../lib/digestSession";
+import type { ChatMapContext } from "../lib/chatApi";
 
 export type AuthUser = {
   employeeId: string;
@@ -24,6 +25,7 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   ts: number;
+  mapContext?: ChatMapContext;
 };
 
 type OperationResult = { ok: boolean; error?: string };

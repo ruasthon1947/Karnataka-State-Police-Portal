@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
-import localDbPlugin, { buildOptions } from "./localDbPlugin.mjs";
+import localDbPlugin, { buildOptions, handleApi } from "./localDbPlugin.mjs";
 import { mergeCaseTables } from "./googleSheets.mjs";
 import { createSessionToken, setSessionCookie } from "./security.mjs";
 
@@ -32,6 +32,18 @@ async function withApiServer(run) {
     );
   }
 }
+
+test("map API endpoints pass through to the map middleware", async () => {
+  for (const pathname of ["/api/geocode", "/api/place-suggestions", "/api/route"]) {
+    let passedThrough = false;
+    await handleApi(
+      { method: "GET", url: pathname, headers: {}, socket: {} },
+      {},
+      () => { passedThrough = true; },
+    );
+    assert.equal(passedThrough, true, `${pathname} should reach the map middleware`);
+  }
+});
 
 test("the primary API middleware owns OTP routes and blocks direct phone writes", async () => {
   await withApiServer(async (baseUrl) => {
