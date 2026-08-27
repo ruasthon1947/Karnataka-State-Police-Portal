@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./assets/kspplogo.png" alt="Karnataka State Police Portal Logo" width="180"/>
+<img src="./src/assets/kspplogo.png" alt="Karnataka State Police Portal Logo" width="180"/>
 
 # 🚨 Karnataka-State-Police-Portal
 
