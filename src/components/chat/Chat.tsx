@@ -10,6 +10,7 @@ import {
   saveChatToFirebase,
   deleteChatFromFirebase,
   type ChatAttachment,
+  type ChatMapContext,
   type FirestoreChatSession,
   type ChatMessage,
 } from "../../lib/chatApi";
@@ -18,10 +19,30 @@ import { jsPDF } from "jspdf";
 import { KSPP_AVATAR_SRC } from "../../assets/kspp-avatar";
 import { resolveChatMapContext } from "../../lib/chatMaps";
 import ChatRouteCard from "./ChatRouteCard";
+import { Clock3, MessageSquareText, Pencil, Plus, Trash2, X } from "lucide-react";
 
 const timeOfDay = () => {
   const h = new Date().getHours();
   return h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
+};
+
+const CHAT_MAP_TIMEOUT_MS = 4_000;
+
+const resolveMapContextWithTimeout = (
+  question: string,
+  answer: string,
+  history: Array<Pick<ChatMessage, "role" | "content">>,
+  policeStation: string,
+): Promise<ChatMapContext | undefined> => {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<undefined>((resolve) => {
+    timeoutId = setTimeout(() => resolve(undefined), CHAT_MAP_TIMEOUT_MS);
+  });
+
+  return Promise.race([
+    resolveChatMapContext(question, answer, history, policeStation),
+    timeout,
+  ]).finally(() => clearTimeout(timeoutId));
 };
 
 export const Chat: React.FC = () => {
@@ -33,6 +54,8 @@ export const Chat: React.FC = () => {
     setMessages: setChatHistory,
     chatHistoryList: savedSessions,
     setChatHistoryList: setSavedSessions,
+    currentSessionId,
+    setCurrentSessionId,
     startNewSession,
   } = useChat();
 
@@ -44,7 +67,6 @@ export const Chat: React.FC = () => {
   const [attachmentError, setAttachmentError] = useState("");
 
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitleInput, setEditTitleInput] = useState("");
 
@@ -54,7 +76,7 @@ export const Chat: React.FC = () => {
   // Filter out any duplicate sessions by unique session ID
   const uniqueSessions = Array.from(
     new Map(savedSessions.map((session) => [session.id, session])).values()
-  );
+  ).sort((a, b) => b.timestamp - a.timestamp);
 
   const scrollToBottom = () => {
     if (chatContainerRef.current) {
@@ -91,10 +113,10 @@ export const Chat: React.FC = () => {
   const loadSession = (session: FirestoreChatSession) => {
     setCurrentSessionId(session.id);
     setChatHistory(session.messages);
+    setIsHistoryOpen(false);
   };
 
   const handleStartNewSession = () => {
-    setCurrentSessionId(null);
     startNewSession();
   };
 
@@ -124,7 +146,8 @@ export const Chat: React.FC = () => {
     deleteChatFromFirebase(userId, id);
     setSavedSessions((prev) => prev.filter((s) => s.id !== id));
     if (currentSessionId === id) {
-      handleStartNewSession();
+      setCurrentSessionId(null);
+      setChatHistory([]);
     }
   };
 
@@ -309,36 +332,69 @@ export const Chat: React.FC = () => {
         ts: Date.now(),
       };
 
-      const mapContext = outgoingAttachment
-        ? undefined
-        : await resolveChatMapContext(trimmed, reply, recentHistory, user?.policeStation || "");
-
-      if (mapContext) {
-        assistantMsg.mapContext = mapContext;
-      }
-
+      // Render the completed answer immediately. Map enrichment and remote
+      // history persistence are secondary work and must never keep the chat
+      // spinner active after the AI response is available.
       addMessage(assistantMsg);
 
       const finalMessages = [...updatedMessagesWithUser, assistantMsg];
+      const existingSession = savedSessions.find((session) => session.id === activeSessionId);
       const sessionPayload: FirestoreChatSession = {
         id: activeSessionId,
-        title: updatedMessagesWithUser[0]?.content.slice(0, 30) || "Chat Session",
+        title:
+          existingSession?.title ||
+          updatedMessagesWithUser.find((message) => message.role === "user")?.content.slice(0, 30) ||
+          "Chat Session",
         timestamp: Date.now(),
         messages: finalMessages,
       };
 
-      // Persist session directly to Firebase
-      if (userId) {
-        await saveChatToFirebase(userId, sessionPayload);
+      setSavedSessions((prev) => {
+        const exists = prev.some((session) => session.id === activeSessionId);
+        if (exists) {
+          return prev.map((session) =>
+            session.id === activeSessionId ? sessionPayload : session,
+          );
+        }
+        return [sessionPayload, ...prev];
+      });
+      setIsChatBusy(false);
 
-        setSavedSessions((prev) => {
-          const exists = prev.some((s) => s.id === activeSessionId);
-          if (exists) {
-            return prev.map((s) => (s.id === activeSessionId ? sessionPayload : s));
+      void (async () => {
+        let persistedSession = sessionPayload;
+
+        if (!outgoingAttachment) {
+          const mapContext = await resolveMapContextWithTimeout(
+            trimmed,
+            reply,
+            recentHistory,
+            user?.policeStation || "",
+          );
+
+          if (mapContext) {
+            const enrichedAssistant = { ...assistantMsg, mapContext };
+            const enrichedMessages = finalMessages.map((message) =>
+              message.id === assistantId ? enrichedAssistant : message,
+            );
+            persistedSession = { ...sessionPayload, messages: enrichedMessages };
+
+            setChatHistory((previous) =>
+              previous.map((message) =>
+                message.id === assistantId ? enrichedAssistant : message,
+              ),
+            );
+            setSavedSessions((previous) =>
+              previous.map((session) =>
+                session.id === activeSessionId ? persistedSession : session,
+              ),
+            );
           }
-          return [sessionPayload, ...prev];
-        });
-      }
+        }
+
+        if (userId) {
+          await saveChatToFirebase(userId, persistedSession);
+        }
+      })();
     } catch (err) {
       console.error(err);
       const errorMsg = tr(
@@ -448,17 +504,30 @@ export const Chat: React.FC = () => {
         </button>
         <button
           onClick={handleStartNewSession}
-          className="min-h-9 rounded-md border border-brand/30 bg-brand/15 px-3 py-1.5 text-xs text-white transition hover:bg-brand/25"
+          className="min-h-9 rounded-md border border-brand/30 bg-brand/15 px-2.5 py-1.5 text-xs text-white transition hover:bg-brand/25 sm:px-3"
         >
-          {tr("New session", "ಹೊಸ ಸೆಷನ್")}
+          <span className="flex items-center gap-1.5">
+            <Plus size={14} aria-hidden="true" />
+            <span className="hidden sm:inline">{tr("New chat", "ಹೊಸ ಸಂಭಾಷಣೆ")}</span>
+          </span>
         </button>
 
         <button
           type="button"
           onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-          className="min-h-9 min-w-9 grid place-items-center rounded-md border border-line bg-panel text-white transition hover:bg-shell"
+          aria-expanded={isHistoryOpen}
+          aria-controls="chat-recents"
+          className="min-h-9 rounded-md border border-line bg-panel px-2.5 text-white transition hover:bg-shell sm:px-3"
         >
-          {isHistoryOpen ? "✕" : "☰"}
+          <span className="flex items-center gap-1.5">
+            {isHistoryOpen ? <X size={15} aria-hidden="true" /> : <Clock3 size={15} aria-hidden="true" />}
+            <span className="hidden sm:inline">{tr("Recents", "ಇತ್ತೀಚಿನವು")}</span>
+            {uniqueSessions.length > 0 && (
+              <span className="rounded-full bg-brand/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand">
+                {uniqueSessions.length}
+              </span>
+            )}
+          </span>
         </button>
       </div>
 
@@ -505,10 +574,21 @@ export const Chat: React.FC = () => {
 
         {/* Sidebar */}
         {isHistoryOpen && (
-          <aside className="w-80 border-l border-line bg-panel p-4 flex flex-col h-full shrink-0 shadow-xl backdrop-blur-md transition-all">
+          <>
+          <button
+            type="button"
+            aria-label={tr("Close recents", "ಇತ್ತೀಚಿನವುಗಳನ್ನು ಮುಚ್ಚಿ")}
+            onClick={() => setIsHistoryOpen(false)}
+            className="absolute inset-0 z-20 bg-black/35 sm:hidden"
+          />
+          <aside
+            id="chat-recents"
+            aria-label={tr("Recent chatbot queries", "ಇತ್ತೀಚಿನ ಚಾಟ್‌ಬಾಟ್ ಪ್ರಶ್ನೆಗಳು")}
+            className="absolute inset-y-0 right-0 z-30 flex h-full w-[min(22rem,calc(100%-1rem))] shrink-0 flex-col border-l border-line bg-panel p-4 shadow-2xl sm:static sm:z-auto sm:w-80 sm:shadow-xl"
+          >
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-line">
               <h3 className="text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-2">
-                <span>💬</span> {tr("Chat History", "ಸಂಭಾಷಣೆ ಇತಿಹಾಸ")}
+                <MessageSquareText size={15} aria-hidden="true" /> {tr("Recent queries", "ಇತ್ತೀಚಿನ ಪ್ರಶ್ನೆಗಳು")}
               </h3>
               <span className="text-[10px] bg-ink border border-line text-muted px-2 py-0.5 rounded-full font-medium">
                 {uniqueSessions.length}
@@ -527,6 +607,9 @@ export const Chat: React.FC = () => {
                 uniqueSessions.map((session) => {
                   const isActive = currentSessionId === session.id;
                   const isEditing = editingSessionId === session.id;
+                  const previousQueries = session.messages.filter((message) => message.role === "user");
+                  const latestQuery =
+                    previousQueries[previousQueries.length - 1]?.content || session.title;
 
                   return (
                     <div
@@ -560,11 +643,19 @@ export const Chat: React.FC = () => {
                             <p className="font-semibold truncate text-slate-900 dark:text-slate-100">
                               {session.title}
                             </p>
-                            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            <p className="mt-1 line-clamp-2 text-[11px] font-normal leading-4 text-slate-600 dark:text-slate-300">
+                              {latestQuery}
+                            </p>
+                            <p className="mt-1.5 text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                              {new Date(session.timestamp).toLocaleDateString([], {
+                                day: "numeric",
+                                month: "short",
+                              })}{" · "}
                               {new Date(session.timestamp).toLocaleTimeString([], {
                                 hour: "2-digit",
                                 minute: "2-digit",
-                              })}
+                              })}{" · "}
+                              {previousQueries.length} {tr("queries", "ಪ್ರಶ್ನೆಗಳು")}
                             </p>
                           </>
                         )}
@@ -578,7 +669,7 @@ export const Chat: React.FC = () => {
                             className="p-1.5 rounded hover:bg-slate-400/20 text-slate-700 dark:text-slate-300 transition"
                             title={tr("Rename Chat", "ಸೆಷನ್ ಮರುನಾಮಕರಣ ಮಾಡಿ")}
                           >
-                            ✏️
+                            <Pencil size={14} aria-hidden="true" />
                           </button>
                           <button
                             type="button"
@@ -586,7 +677,7 @@ export const Chat: React.FC = () => {
                             className="p-1.5 rounded hover:bg-red-500/20 text-red-500 transition"
                             title={tr("Delete Chat", "ಸೆಷನ್ ಅಳಿಸಿ")}
                           >
-                            🗑️
+                            <Trash2 size={14} aria-hidden="true" />
                           </button>
                         </div>
                       )}
@@ -596,6 +687,7 @@ export const Chat: React.FC = () => {
               )}
             </div>
           </aside>
+          </>
         )}
       </div>
     </div>
