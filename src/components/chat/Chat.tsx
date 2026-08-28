@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { KSPPBrandMark } from "../brand/KSPPBrand";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
+import { useChat } from "../../context/ChatContext";
 import {
   askCopilot,
   fetchUserChatsFromFirebase,
@@ -24,46 +25,62 @@ const timeOfDay = () => {
 };
 
 export const Chat: React.FC = () => {
-  const { user, chatHistory, setChatHistory, isChatBusy, setIsChatBusy } = useAuth();
+  const { user, isChatBusy, setIsChatBusy } = useAuth();
   const { language, tr } = useLanguage();
-  const navigate = useNavigate();
+  const {
+    messages: chatHistory,
+    addMessage,
+    setMessages: setChatHistory,
+    chatHistoryList: savedSessions,
+    setChatHistoryList: setSavedSessions,
+    startNewSession,
+  } = useChat();
 
+  const navigate = useNavigate();
   const userId = user?.employeeId || "";
 
   const [input, setInput] = useState("");
   const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
   const [attachmentError, setAttachmentError] = useState("");
 
-  // History Sidebar & Edit States
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [savedSessions, setSavedSessions] = useState<FirestoreChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitleInput, setEditTitleInput] = useState("");
 
-  const endRef = useRef<HTMLDivElement | null>(null);
-  const chatListRef = useRef<HTMLDivElement | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
   const [, force] = useState(0);
 
-  // 1. Fetch User Chats from Firebase on Auth / Mount
+  // Filter out any duplicate sessions by unique session ID
+  const uniqueSessions = Array.from(
+    new Map(savedSessions.map((session) => [session.id, session])).values()
+  );
+
+  const scrollToBottom = () => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  };
+
   useEffect(() => {
     let isSubscribed = true;
     if (userId) {
       fetchUserChatsFromFirebase(userId).then((chats) => {
-        if (isSubscribed) {
+        if (isSubscribed && chats.length > 0) {
           setSavedSessions(chats);
         }
       });
-    } else {
-      setSavedSessions([]);
     }
     return () => {
       isSubscribed = false;
     };
-  }, [userId]);
+  }, [userId, setSavedSessions]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    scrollToBottom();
   }, [chatHistory, isChatBusy]);
 
   useEffect(() => {
@@ -71,50 +88,14 @@ export const Chat: React.FC = () => {
     return () => clearInterval(id);
   }, []);
 
-  // 2. Auto-sync Active Chat to Firebase & State
-  useEffect(() => {
-    if (chatHistory.length === 0 || !userId) return;
-
-    const activeId = currentSessionId || crypto.randomUUID();
-    if (!currentSessionId) setCurrentSessionId(activeId);
-
-    const firstUserMsg = chatHistory.find((m) => m.role === "user")?.content || "New Conversation";
-    const defaultTitle = firstUserMsg.length > 25 ? `${firstUserMsg.slice(0, 25)}...` : firstUserMsg;
-
-    setSavedSessions((prev) => {
-      const existing = prev.find((s) => s.id === activeId);
-      const sessionTitle = existing ? existing.title : defaultTitle;
-      const timestamp = existing ? existing.timestamp : Date.now();
-
-      const updatedSession: FirestoreChatSession = {
-        id: activeId,
-        title: sessionTitle,
-        timestamp,
-        messages: chatHistory as ChatMessage[],
-      };
-
-      // Push to Firebase
-      saveChatToFirebase(userId, updatedSession);
-
-      const existingIndex = prev.findIndex((s) => s.id === activeId);
-      if (existingIndex >= 0) {
-        const copy = [...prev];
-        copy[existingIndex] = updatedSession;
-        return copy;
-      }
-      return [updatedSession, ...prev];
-    });
-  }, [chatHistory, currentSessionId, userId]);
-
-  const startNewSession = () => {
-    setChatHistory([]);
-    setCurrentSessionId(null);
-    setIsChatBusy(false);
-  };
-
   const loadSession = (session: FirestoreChatSession) => {
     setCurrentSessionId(session.id);
     setChatHistory(session.messages);
+  };
+
+  const handleStartNewSession = () => {
+    setCurrentSessionId(null);
+    startNewSession();
   };
 
   const startEditingTitle = (session: FirestoreChatSession, e: React.MouseEvent) => {
@@ -143,7 +124,7 @@ export const Chat: React.FC = () => {
     deleteChatFromFirebase(userId, id);
     setSavedSessions((prev) => prev.filter((s) => s.id !== id));
     if (currentSessionId === id) {
-      startNewSession();
+      handleStartNewSession();
     }
   };
 
@@ -165,12 +146,10 @@ export const Chat: React.FC = () => {
       }
     };
 
-    // Header
     try {
       doc.addImage(KSPP_AVATAR_SRC, "PNG", MARGIN, y - 8, 28, 28);
-    } catch {
-      // Non-fatal — proceed without the logo if the environment can't decode it.
-    }
+    } catch {}
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
     doc.text(tr("KSPP Assistant", "KSPP ಸಹಾಯಕ"), MARGIN + 36, y + 8);
@@ -181,7 +160,7 @@ export const Chat: React.FC = () => {
       `${tr("Generated on:", "ರಚಿಸಿದ ದಿನಾಂಕ:")} ${new Date().toLocaleString()}`,
       pageWidth - MARGIN,
       y + 8,
-      { align: "right" },
+      { align: "right" }
     );
     doc.setTextColor(20);
     y += 40;
@@ -189,29 +168,15 @@ export const Chat: React.FC = () => {
     doc.line(MARGIN, y, pageWidth - MARGIN, y);
     y += 24;
 
-    // jsPDF's default "helvetica" core font only supports the standard
-    // WinAnsi character set. When the LLM/data pipeline emits typographic
-    // Unicode — smart/non-breaking hyphens (‑ – —), non-breaking spaces,
-    // zero-width joiners/non-joiners (a leftover from Kannada-script
-    // rendering bleeding into English field values), curly quotes — jsPDF's
-    // doc.getTextWidth() returns an incorrect (often near-zero) width for
-    // those characters. Since we advance cursorX by exactly that width
-    // before drawing the next word, a wrong width makes the next word start
-    // too early and land on top of the previous one — and the error
-    // compounds across the line, which is why overlap gets progressively
-    // worse further into a line/field. Normalizing to plain ASCII before
-    // measuring/drawing removes the mismeasured glyphs entirely.
     const sanitizeForPdfFont = (text: string): string =>
       text
-        .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width space/joiner/non-joiner/BOM
-        .replace(/[\u2010-\u2015\u2212]/g, "-") // hyphen/non-breaking hyphen/en/em dash/minus
-        .replace(/[\u00A0\u2000-\u200A\u202F\u205F]/g, " ") // non-breaking & other unicode spaces
-        .replace(/[\u2018\u2019]/g, "'") // curly single quotes
-        .replace(/[\u201C\u201D]/g, '"') // curly double quotes
-        .replace(/\u2026/g, "..."); // ellipsis
+        .replace(/[\u200B-\u200D\uFEFF]/g, "")
+        .replace(/[\u2010-\u2015\u2212]/g, "-")
+        .replace(/[\u00A0\u2000-\u200A\u202F\u205F]/g, " ")
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u201C\u201D]/g, '"')
+        .replace(/\u2026/g, "...");
 
-    // Renders one line of text, splitting **bold** spans into separate bold/normal runs
-    // that wrap and paginate correctly (jsPDF has no built-in markdown support).
     const writeFormattedParagraph = (rawInput: string) => {
       const raw = sanitizeForPdfFont(rawInput);
       const segments = raw
@@ -243,18 +208,8 @@ export const Chat: React.FC = () => {
           }
 
           const wordWidth = doc.getTextWidth(word);
-
-          // Decide wrap (new line) and page-break (new page) together, and
-          // reset cursorX in BOTH cases before drawing. Previously the
-          // page-break check ran on its own right before doc.text(), so a
-          // forced doc.addPage() reset `y` to MARGIN but left `cursorX` at
-          // its stale mid-page value from the old page. The next word then
-          // drew at that leftover X position at the top of the new page,
-          // and every following word on the line inherited the wrong
-          // starting X — producing the misaligned, overlapping-looking text
-          // in the exported PDF, especially across multi-field case
-          // records that span a page boundary.
           const needsWrap = cursorX + wordWidth > MARGIN + contentWidth;
+
           if (needsWrap) {
             cursorX = MARGIN;
           }
@@ -288,7 +243,6 @@ export const Chat: React.FC = () => {
       });
     }
 
-    // Footer page numbers
     const pageCount = doc.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
@@ -298,7 +252,7 @@ export const Chat: React.FC = () => {
         `${tr("Official use only", "ಅಧಿಕೃತ ಬಳಕೆಗೆ ಮಾತ್ರ")} · ${tr("Page", "ಪುಟ")} ${i} ${tr("of", "ರಲ್ಲಿ")} ${pageCount}`,
         pageWidth / 2,
         pageHeight - 20,
-        { align: "center" },
+        { align: "center" }
       );
     }
 
@@ -317,14 +271,27 @@ export const Chat: React.FC = () => {
       ? `${trimmed}\n📎 **Attachment:** ${outgoingAttachment.name}`
       : trimmed;
 
-    setChatHistory((messages) => [
-      ...messages,
-      { id: crypto.randomUUID(), role: "user", content: visibleQuestion, ts: Date.now() },
-    ]);
+    // Reuse existing session ID or assign a new one
+    const activeSessionId = currentSessionId || crypto.randomUUID();
+    if (!currentSessionId) {
+      setCurrentSessionId(activeSessionId);
+    }
+
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: visibleQuestion,
+      ts: Date.now(),
+    };
+
+    const updatedMessagesWithUser = [...chatHistory, userMsg];
+    addMessage(userMsg);
+
     setInput("");
     setAttachment(null);
     setAttachmentError("");
     setIsChatBusy(true);
+    scrollToBottom();
 
     try {
       const reply = await askCopilot({
@@ -333,18 +300,44 @@ export const Chat: React.FC = () => {
         history: recentHistory,
         attachment: outgoingAttachment || undefined,
       });
+
       const assistantId = crypto.randomUUID();
-      setChatHistory((messages) => [
-        ...messages,
-        { id: assistantId, role: "assistant", content: reply, ts: Date.now() },
-      ]);
+      const assistantMsg: ChatMessage = {
+        id: assistantId,
+        role: "assistant",
+        content: reply,
+        ts: Date.now(),
+      };
+
       const mapContext = outgoingAttachment
         ? undefined
         : await resolveChatMapContext(trimmed, reply, recentHistory, user?.policeStation || "");
+
       if (mapContext) {
-        setChatHistory((messages) => messages.map((message) =>
-          message.id === assistantId ? { ...message, mapContext } : message
-        ));
+        assistantMsg.mapContext = mapContext;
+      }
+
+      addMessage(assistantMsg);
+
+      const finalMessages = [...updatedMessagesWithUser, assistantMsg];
+      const sessionPayload: FirestoreChatSession = {
+        id: activeSessionId,
+        title: updatedMessagesWithUser[0]?.content.slice(0, 30) || "Chat Session",
+        timestamp: Date.now(),
+        messages: finalMessages,
+      };
+
+      // Persist session directly to Firebase
+      if (userId) {
+        await saveChatToFirebase(userId, sessionPayload);
+
+        setSavedSessions((prev) => {
+          const exists = prev.some((s) => s.id === activeSessionId);
+          if (exists) {
+            return prev.map((s) => (s.id === activeSessionId ? sessionPayload : s));
+          }
+          return [sessionPayload, ...prev];
+        });
       }
     } catch (err) {
       console.error(err);
@@ -352,10 +345,7 @@ export const Chat: React.FC = () => {
         "Sorry, I couldn't process that request. Please try again.",
         "ಕ್ಷಮಿಸಿ, ಆ ವಿನಂತಿಯನ್ನು ಪ್ರಕ್ರಿಯೆಗೊಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
       );
-      setChatHistory((messages) => [
-        ...messages,
-        { id: crypto.randomUUID(), role: "assistant", content: errorMsg, ts: Date.now() },
-      ]);
+      addMessage({ id: crypto.randomUUID(), role: "assistant", content: errorMsg, ts: Date.now() });
     } finally {
       setIsChatBusy(false);
     }
@@ -380,7 +370,9 @@ export const Chat: React.FC = () => {
     const binaryTypes = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 
     if (!textTypes.has(mimeType) && !binaryTypes.has(mimeType)) {
-      setAttachmentError(tr("Upload TXT, CSV, JSON, Markdown, PDF, JPG, PNG, or WebP.", "TXT, CSV, JSON, Markdown, PDF, JPG, PNG ಅಥವಾ WebP ಕಡತವನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡಿ."));
+      setAttachmentError(
+        tr("Upload TXT, CSV, JSON, Markdown, PDF, JPG, PNG, or WebP.", "TXT, CSV, JSON, Markdown, PDF, JPG, PNG ಅಥವಾ WebP ಕಡತವನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡಿ.")
+      );
       return;
     }
     if (file.size > 2_000_000) {
@@ -399,7 +391,8 @@ export const Chat: React.FC = () => {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(new Error(tr("The selected file could not be read.", "ಆಯ್ಕೆ ಮಾಡಿದ ಕಡತವನ್ನು ಓದಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.")));
+        reader.onerror = () =>
+          reject(new Error(tr("The selected file could not be read.", "ಆಯ್ಕೆ ಮಾಡಿದ ಕಡತವನ್ನು ಓದಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.")));
         reader.readAsDataURL(file);
       });
       const data = dataUrl.slice(dataUrl.indexOf(",") + 1);
@@ -433,7 +426,9 @@ export const Chat: React.FC = () => {
       <div className="flex items-center gap-3 border-b border-line bg-ink px-3 py-3 sm:px-6">
         <div className="flex items-center gap-2 text-sm">
           <KSPPBrandMark size="sm" decorative />
-          <span className="hidden text-white font-medium sm:inline">{tr("KSPP Assistant", "KSPP ಸಹಾಯಕ")}</span>
+          <span className="hidden text-white font-medium sm:inline">
+            {tr("KSPP Assistant", "KSPP ಸಹಾಯಕ")}
+          </span>
         </div>
         <div className="flex-1" />
         <button
@@ -452,7 +447,7 @@ export const Chat: React.FC = () => {
           {tr("Export PDF", "PDF ರಫ್ತು")}
         </button>
         <button
-          onClick={startNewSession}
+          onClick={handleStartNewSession}
           className="min-h-9 rounded-md border border-brand/30 bg-brand/15 px-3 py-1.5 text-xs text-white transition hover:bg-brand/25"
         >
           {tr("New session", "ಹೊಸ ಸೆಷನ್")}
@@ -471,11 +466,13 @@ export const Chat: React.FC = () => {
       <div className="flex min-h-0 flex-1 overflow-hidden relative">
         <div className="flex flex-1 flex-col min-h-0 min-w-0">
           {chatHistory.length === 0 ? (
-            <EmptyCanvas greeting={greeting} help={tr("How can I help you today?", "ಇಂದು ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?")} />
+            <EmptyCanvas
+              greeting={greeting}
+              help={tr("How can I help you today?", "ಇಂದು ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?")}
+            />
           ) : (
-            <MessageList ref={chatListRef} messages={chatHistory} busy={isChatBusy} tr={tr} />
+            <MessageList ref={chatContainerRef} messages={chatHistory} busy={isChatBusy} tr={tr} />
           )}
-          <div ref={endRef} />
 
           <div className="shrink-0 px-3 pb-4 pt-3 sm:px-6 sm:pb-7 sm:pt-4">
             <div className="max-w-3xl mx-auto">
@@ -506,7 +503,7 @@ export const Chat: React.FC = () => {
           </div>
         </div>
 
-        {/* 🎨 Theme-Compatible Chat History Sidebar */}
+        {/* Sidebar */}
         {isHistoryOpen && (
           <aside className="w-80 border-l border-line bg-panel p-4 flex flex-col h-full shrink-0 shadow-xl backdrop-blur-md transition-all">
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-line">
@@ -514,12 +511,12 @@ export const Chat: React.FC = () => {
                 <span>💬</span> {tr("Chat History", "ಸಂಭಾಷಣೆ ಇತಿಹಾಸ")}
               </h3>
               <span className="text-[10px] bg-ink border border-line text-muted px-2 py-0.5 rounded-full font-medium">
-                {savedSessions.length}
+                {uniqueSessions.length}
               </span>
             </div>
 
             <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-              {savedSessions.length === 0 ? (
+              {uniqueSessions.length === 0 ? (
                 <div className="text-center py-8 text-muted">
                   <p className="text-xs font-medium">{tr("No previous sessions", "ಯಾವುದೇ ಹಿಂದಿನ ಸೆಷನ್‌ಗಳಿಲ್ಲ")}</p>
                   <p className="text-[11px] opacity-75 mt-1">
@@ -527,7 +524,7 @@ export const Chat: React.FC = () => {
                   </p>
                 </div>
               ) : (
-                savedSessions.map((session) => {
+                uniqueSessions.map((session) => {
                   const isActive = currentSessionId === session.id;
                   const isEditing = editingSessionId === session.id;
 
@@ -560,9 +557,14 @@ export const Chat: React.FC = () => {
                           />
                         ) : (
                           <>
-                            <p className="font-semibold truncate text-slate-900 dark:text-slate-100">{session.title}</p>
+                            <p className="font-semibold truncate text-slate-900 dark:text-slate-100">
+                              {session.title}
+                            </p>
                             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                              {new Date(session.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              {new Date(session.timestamp).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
                             </p>
                           </>
                         )}
@@ -604,7 +606,9 @@ const EmptyCanvas: React.FC<{ greeting: string; help: string }> = ({ greeting, h
   <div className="flex-1 flex items-center justify-center dotted-bg">
     <div className="px-4 text-center sm:px-6">
       <KSPPBrandMark size="lg" className="mb-4" decorative />
-      <h1 className="font-schibsted text-2xl font-semibold text-white sm:text-3xl md:text-4xl">{greeting}</h1>
+      <h1 className="font-schibsted text-2xl font-semibold text-white sm:text-3xl md:text-4xl">
+        {greeting}
+      </h1>
       <p className="text-muted text-sm mt-2 max-w-md mx-auto">{help}</p>
     </div>
   </div>
@@ -618,8 +622,12 @@ const MessageList = React.forwardRef<
     <div className="mx-auto max-w-3xl space-y-5 sm:space-y-6">
       <div className="hidden print:block pb-4 mb-6 border-b border-line text-white">
         <h1 className="text-xl font-bold">{tr("KSPP Assistant", "KSPP ಸಹಾಯಕ")}</h1>
-        <p className="text-xs text-muted">{tr("Official Chat Conversation Transcript", "ಅಧಿಕೃತ ಸಂಭಾಷಣೆ ಪ್ರತಿ")}</p>
-        <p className="text-[10px] text-muted mt-1">{tr("Generated on:", "ರಚಿಸಿದ ದಿನಾಂಕ:")} {new Date().toLocaleString()}</p>
+        <p className="text-xs text-muted">
+          {tr("Official Chat Conversation Transcript", "ಅಧಿಕೃತ ಸಂಭಾಷಣೆ ಪ್ರತಿ")}
+        </p>
+        <p className="text-[10px] text-muted mt-1">
+          {tr("Generated on:", "ರಚಿಸಿದ ದಿನಾಂಕ:")} {new Date().toLocaleString()}
+        </p>
       </div>
 
       {messages.map((m) => (
@@ -631,7 +639,10 @@ const MessageList = React.forwardRef<
 ));
 MessageList.displayName = "MessageList";
 
-const Bubble: React.FC<{ msg: ChatMessage; tr: (en: string, kn: string) => string }> = ({ msg, tr }) => {
+const Bubble: React.FC<{ msg: ChatMessage; tr: (en: string, kn: string) => string }> = ({
+  msg,
+  tr,
+}) => {
   const isUser = msg.role === "user";
   return (
     <div className={`flex items-start gap-3 ${isUser ? "justify-end" : ""}`}>
@@ -642,11 +653,19 @@ const Bubble: React.FC<{ msg: ChatMessage; tr: (en: string, kn: string) => strin
           className="h-8 w-8 rounded-full object-cover shrink-0 border border-line"
         />
       )}
-      <div className={`max-w-[92%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap sm:max-w-[86%] sm:px-4 sm:py-3 ${isUser ? "bg-brand text-white" : "bg-shell text-white border border-line"}`}>
+      <div
+        className={`max-w-[92%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap sm:max-w-[86%] sm:px-4 sm:py-3 ${
+          isUser ? "bg-brand text-white" : "bg-shell text-white border border-line"
+        }`}
+      >
         <Formatted text={msg.content} />
         {!isUser && msg.mapContext ? <ChatRouteCard context={msg.mapContext} tr={tr} /> : null}
       </div>
-      {isUser && <div className="h-8 w-8 rounded-full bg-panel border border-line grid place-items-center text-xs text-muted shrink-0">U</div>}
+      {isUser && (
+        <div className="h-8 w-8 rounded-full bg-panel border border-line grid place-items-center text-xs text-muted shrink-0">
+          U
+        </div>
+      )}
     </div>
   );
 };
@@ -660,7 +679,11 @@ const TypingBubble = () => (
     />
     <div className="bg-shell border border-line rounded-2xl px-4 py-3 flex gap-1.5">
       {[0, 1, 2].map((i) => (
-        <span key={i} className="h-1.5 w-1.5 rounded-full bg-muted animate-bounce" style={{ animationDelay: `${i * 120}ms` }} />
+        <span
+          key={i}
+          className="h-1.5 w-1.5 rounded-full bg-muted animate-bounce"
+          style={{ animationDelay: `${i * 120}ms` }}
+        />
       ))}
     </div>
   </div>
@@ -669,7 +692,13 @@ const TypingBubble = () => (
 const Formatted: React.FC<{ text: string }> = ({ text }) => (
   <>
     {text.split(/(\*\*[^*]+\*\*)/g).map((p, i) =>
-      /^\*\*[^*]+\*\*$/.test(p) ? <strong key={i} className="text-white font-semibold">{p.slice(2, -2)}</strong> : <span key={i}>{p}</span>
+      /^\*\*[^*]+\*\*$/.test(p) ? (
+        <strong key={i} className="text-white font-semibold">
+          {p.slice(2, -2)}
+        </strong>
+      ) : (
+        <span key={i}>{p}</span>
+      )
     )}
   </>
 );
@@ -710,9 +739,9 @@ const Composer: React.FC<{
   }, [value]);
 
   return (
-    <div className="rounded-2xl border border-line bg-shell px-3 py-2.5 shadow-soft focus-within:border-brand/50 focus-within:ring-2 focus-within:ring-brand/15 sm:px-4 sm:py-3">
+    <div className="rounded-2xl border border-line/60 bg-white dark:bg-[#14171f] px-3 py-2.5 shadow-[0_2px_14px_rgba(15,23,42,0.08)] dark:shadow-[0_2px_18px_rgba(0,0,0,0.35)] transition-all duration-200 ease-out focus-within:border-brand/50 focus-within:shadow-[0_2px_20px_rgba(37,99,235,0.15)] sm:px-4 sm:py-3">
       {attachment && (
-        <div className="mb-2 flex items-center gap-2 rounded-lg border border-brand/30 bg-brand/10 px-3 py-2 text-xs text-white">
+        <div className="mb-2 flex items-center gap-2 rounded-lg border border-brand/30 bg-brand/10 px-3 py-2 text-xs text-slate-800 dark:text-white">
           <span aria-hidden="true">📎</span>
           <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
           <button
@@ -724,7 +753,11 @@ const Composer: React.FC<{
           </button>
         </div>
       )}
-      {attachmentError && <p className="mb-2 text-xs text-red-300" role="alert">{attachmentError}</p>}
+      {attachmentError && (
+        <p className="mb-2 text-xs text-red-300" role="alert">
+          {attachmentError}
+        </p>
+      )}
       <textarea
         ref={taRef}
         value={value}
@@ -740,7 +773,7 @@ const Composer: React.FC<{
           "ಕೋಪೈಲಟ್ ಅನ್ನು ಕೇಳಿ - 'ಕಳೆದ ವಾರ ವೈಟ್‌ಫೀಲ್ಡ್‌ನ ಎಫ್‌ಐಆರ್‌ಗಳು' ಅಥವಾ 'ವಿಲೇವಾರಿ ದರ' ಎಂದು ಪ್ರಯತ್ನಿಸಿ"
         )}
         rows={1}
-        className="w-full bg-transparent text-white placeholder-muted outline-none resize-none text-sm leading-relaxed"
+        className="w-full bg-transparent text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-muted resize-none text-sm leading-relaxed !outline-none !shadow-none !border-none focus:!outline-none focus:!shadow-none focus:!border-none focus:!ring-0"
       />
       <div className="flex items-center gap-1 mt-1">
         <input
@@ -777,3 +810,5 @@ const Composer: React.FC<{
     </div>
   );
 };
+
+export default Chat;

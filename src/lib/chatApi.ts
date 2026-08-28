@@ -44,13 +44,6 @@ export type FirestoreChatSession = {
  * "CR-2026000001" -> "1/2026"  (CaseNo = YEAR + 6-digit zero-padded sequence)
  * "CR-01/2026"    -> "1/2026"  (CrimeNo = SEQ/YEAR)
  * "0001/2026"     -> "1/2026"
- *
- * This must stay in sync with normalizeCrimeNoUnified() in server/geminiservice.mjs.
- * The previous version here only handled the slash format and returned long
- * compact numbers (e.g. "2026000001") unchanged, so they never matched a
- * stored CrimeNo like "01/2026" — this is what caused directIdentityAnswer()
- * to silently miss "CR-2026000001" and fall through to the slower /api/chat
- * path (which, before the corresponding server fix, also failed to match).
  */
 function normalizedCrimeNumber(value: string): string {
   if (!value) return "";
@@ -214,7 +207,7 @@ export async function requestFirDraft(
 export async function fetchUserChatsFromFirebase(userId: string): Promise<FirestoreChatSession[]> {
   if (!userId) return [];
   try {
-    const chatsRef = collection(db, "users", userId, "chat_sessions");
+    const chatsRef = collection(db, "users", userId, "chats");
     const q = query(chatsRef, orderBy("timestamp", "desc"));
     const snapshot = await getDocs(q);
     return snapshot.docs.map((docSnap) => docSnap.data() as FirestoreChatSession);
@@ -230,7 +223,7 @@ export async function fetchUserChatsFromFirebase(userId: string): Promise<Firest
 export async function saveChatToFirebase(userId: string, session: FirestoreChatSession): Promise<void> {
   if (!userId || !session.id) return;
   try {
-    const sessionRef = doc(db, "users", userId, "chat_sessions", session.id);
+    const sessionRef = doc(db, "users", userId, "chats", session.id);
     await setDoc(sessionRef, session, { merge: true });
   } catch (error) {
     console.error("Error saving chat to Firestore:", error);
@@ -243,12 +236,9 @@ export async function saveChatToFirebase(userId: string, session: FirestoreChatS
 export async function deleteChatFromFirebase(userId: string, sessionId: string): Promise<void> {
   if (!userId || !sessionId) return;
   try {
-    const sessionRef = doc(db, "users", userId, "chat_sessions", sessionId);
+    const sessionRef = doc(db, "users", userId, "chats", sessionId);
     await deleteDoc(sessionRef);
   } catch (error) {
     console.error("Error deleting chat from Firestore:", error);
   }
 }
-
-
-// check

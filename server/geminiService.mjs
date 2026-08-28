@@ -93,6 +93,13 @@ const GROQ_KEYS = (process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || "")
 
 const FALLBACK_GROQ_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
 
+// Tertiary fallback, used only after every Groq key/model combination above
+// has failed (rate limit, quota, auth, or other error). Requires
+// OPENAI_API_KEY in .env. Left undefined-safe so the app still runs (minus
+// this last resort) if that key isn't configured.
+const OPENAI_KEY = (process.env.OPENAI_API_KEY || "").trim();
+const OPENAI_MODEL = "gpt-4o-mini";
+
 const STOP_WORDS = new Set([
   "give", "details", "complete", "about", "this", "case", "cases", "bearing",
   "number", "with", "total", "recorded", "today", "show", "what", "are",
@@ -319,6 +326,61 @@ async function generateWithGroq(prompt, apiKey, maxTokens = DEFAULT_CHAT_OUTPUT_
   throw new Error("All Groq models failed.");
 }
 
+// Tertiary fallback (only reached once both Groq keys above have failed).
+// Mirrors generateWithGroq's request shape, JSON-mode handling, refusal
+// check, and truncation/continuation logic exactly, so callers see identical
+// behavior regardless of which engine ultimately answered.
+async function generateWithOpenAI(prompt, apiKey, maxTokens = DEFAULT_CHAT_OUTPUT_TOKENS, isJson = false) {
+  if (!apiKey) throw new Error("OPENAI_API_KEY is not configured.");
+
+  console.log(`[Copilot Engine] Calling OpenAI model '${OPENAI_MODEL}'...`);
+  const requestCompletion = (requestPrompt, outputTokens) =>
+    fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        messages: [{ role: "user", content: requestPrompt }],
+        temperature: 0.0,
+        max_tokens: outputTokens,
+        ...(isJson ? { response_format: { type: "json_object" } } : {})
+      })
+    });
+
+  const res = await requestCompletion(prompt, maxTokens);
+
+  if (res.ok) {
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content;
+    const finishReason = data.choices?.[0]?.finish_reason;
+    if (!text) throw new Error("OpenAI returned an empty response.");
+    if (!isJson && looksLikeRefusal(text)) {
+      throw new Error(`OpenAI model '${OPENAI_MODEL}' returned a safety refusal instead of an answer: ${text.slice(0, 120)}`);
+    }
+    if (finishReason !== "length") return text.trim();
+    if (isJson) throw new Error("OpenAI JSON response reached its output limit.");
+
+    const continuationResponse = await requestCompletion(
+      continuationPrompt(prompt, text),
+      CONTINUATION_OUTPUT_TOKENS,
+    );
+    if (!continuationResponse.ok) {
+      throw new Error(`OpenAI continuation failed with HTTP ${continuationResponse.status}.`);
+    }
+    const continuationData = await continuationResponse.json();
+    const continuation = continuationData.choices?.[0]?.message?.content;
+    if (!continuation) throw new Error("OpenAI returned an empty continuation.");
+    return joinContinuation(text, continuation);
+  }
+
+  const errJson = await res.json().catch(() => ({}));
+  const reason = res.status === 429 ? "RATE LIMITED (429)" : `HTTP ${res.status}`;
+  throw new Error(`OpenAI model '${OPENAI_MODEL}' ${reason}: ${errJson?.error?.message || res.statusText}`);
+}
+
 async function generateWithFallback(
   fullPrompt,
   maxTokens = DEFAULT_CHAT_OUTPUT_TOKENS,
@@ -354,7 +416,21 @@ async function generateWithFallback(
     }
   }
 
-  throw new Error(`All Groq API keys/models failed. Last error: ${lastError?.message}`);
+  // Tertiary fallback: every Groq key/model above failed (rate limit, quota,
+  // auth, or otherwise) — try OpenAI before giving up on the request.
+  if (OPENAI_KEY) {
+    try {
+      console.log(`[Copilot Engine] 🚀 Executing request via OpenAI Engine (fallback)...`);
+      return await generateWithOpenAI(fullPrompt, OPENAI_KEY, maxTokens, isJson);
+    } catch (err) {
+      console.warn(`[Copilot Engine] ⚠️ OpenAI fallback failed:`, err.message);
+      lastError = err;
+    }
+  } else {
+    console.warn("[Copilot Engine] ⚠️ OpenAI fallback skipped: OPENAI_API_KEY not configured.");
+  }
+
+  throw new Error(`All Groq API keys/models and the OpenAI fallback failed. Last error: ${lastError?.message}`);
 }
 
 export function parseCaseDate(dateStr) {

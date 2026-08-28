@@ -132,17 +132,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           import("firebase/auth"),
         ]);
 
-        // Retained your safe check for client Auth config
         if (auth && auth.app.options.apiKey) {
-          const credential = await signInWithEmailAndPassword(
-            auth,
-            `${id}@ksph.gov.in`.toLowerCase(),
-            password,
-          );
+          const email = `${id}@ksph.gov.in`.toLowerCase();
+          const credential = await signInWithEmailAndPassword(auth, email, password);
           firebaseIdToken = await credential.user.getIdToken();
         }
       } catch (err) {
-        console.warn("[AuthContext] Firebase Auth step skipped/failed, proceeding with backend authentication.");
+        console.error("[AuthContext] Firebase Auth authentication failed:", err);
       }
 
       try {
@@ -216,7 +212,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     [clearLocalSession],
   );
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     if (user?.employeeId) {
       // Integrated friend's clear digest call:
       clearDigestPending(user.employeeId);
@@ -227,6 +223,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         if (key?.startsWith(prefix)) sessionStorage.removeItem(key);
       }
     }
+
+    try {
+      const { auth } = await import("../firebase");
+      const { signOut } = await import("firebase/auth");
+      if (auth) await signOut(auth);
+    } catch {
+      // Firebase signout fallback
+    }
+
     clearLocalSession();
     void fetch("/api/logout", {
       method: "POST",
@@ -299,3 +304,5 @@ export const useAuth = () => {
   if (!context) throw new Error("useAuth must be used inside <AuthProvider>");
   return context;
 };
+
+

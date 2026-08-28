@@ -15,6 +15,87 @@ const EXCLUDED_EXACT_PATHS = ["/"];
 // language of a question's text, independent of any manual toggle.
 const KANNADA_SCRIPT_RE = /[\u0C80-\u0CFF]/;
 
+// Voice-name patterns for the highest-quality natural voices, checked
+// before falling back to generic locale matching. These are the specific
+// engines known to sound natural rather than robotic, when installed.
+const PREFERRED_VOICE_NAME_PATTERNS: Record<SpokenLang, RegExp[]> = {
+  en: [
+    /neerja/i,
+    /prabhat/i,
+    /google.*english.*india/i,
+    /english.*india/i,
+    /india.*english/i
+  ],
+  kn: [
+    /sapna/i,
+    /kannada/i,
+    /google.*ಕನ್ನಡ/i,
+    /ಕನ್ನಡ/
+  ],
+};
+
+// Google Translate's public TTS endpoint rejects queries much beyond ~200
+// characters, so longer answers must be split into smaller chunks and
+// played back-to-back. 160 chars leaves comfortable headroom under that
+// limit even after URL-encoding.
+const GOOGLE_TTS_MAX_CHARS = 160;
+
+// A slightly sub-1.0 rate reads as noticeably more natural than the
+// browser's default (which many engines set to a fast, robotic cadence).
+// 0.95 sits comfortably within the 0.9–1.0 band that avoids the
+// "too fast, too staccato" problem while keeping answers brisk.
+const NATURAL_SPEECH_RATE = 0.95;
+
+// Split long answers into streamable chunks for Google Translate TTS.
+// Breaks at the last sentence/punctuation boundary within the limit so
+// words are never cut mid-syllable. Includes the Kannada danda (। ॥) so
+// Kannada text breaks at natural pauses too.
+function chunkTextForGoogleTts(text: string): string[] {
+  const chunks: string[] = [];
+  let remaining = text.trim();
+  while (remaining.length > 0) {
+    if (remaining.length <= GOOGLE_TTS_MAX_CHARS) {
+      chunks.push(remaining);
+      break;
+    }
+    let cut = -1;
+    const boundaries = ["।", "॥", ".", "!", "?"];
+    for (const b of boundaries) {
+      const idx = remaining.lastIndexOf(b, GOOGLE_TTS_MAX_CHARS);
+      if (idx > cut) cut = idx;
+    }
+    if (cut <= 0) {
+      // No sentence boundary in range — fall back to the last whitespace.
+      cut = remaining.lastIndexOf(" ", GOOGLE_TTS_MAX_CHARS);
+      if (cut <= 0) cut = GOOGLE_TTS_MAX_CHARS;
+    } else {
+      cut += 1; // keep the punctuation with the preceding chunk
+    }
+    chunks.push(remaining.slice(0, cut));
+    remaining = remaining.slice(cut).trim();
+  }
+  return chunks;
+}
+
+// Clean raw LLM output so it reads naturally aloud: strip markdown bold,
+// emoji, bullets, and special symbols, and normalize Kannada punctuation
+// to a plain period so a non-Kannada voice doesn't try to pronounce the
+// danda marks as unknown glyphs. Digits and Latin/Cannada letters are
+// intentionally preserved — TTS reads them correctly.
+function sanitizeForTts(text: string): string {
+  return text
+    .replace(/\*\*/g, "")
+    .replace(
+      /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu,
+      "",
+    )
+    .replace(/[•▪▸►✔︎✗︎✘︎📌👤🚨⚠️]/g, "")
+    .replace(/[।॥]/g, ".")
+    .replace(/[–—―]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 type WidgetState = "idle" | "listening" | "thinking" | "responding";
 type SpokenLang = "en" | "kn";
 
@@ -123,6 +204,8 @@ export const FloatingCopilot: React.FC = () => {
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const googleTtsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const textInputRef = useRef<HTMLInputElement | null>(null);
   const SpeechRecognitionCtor = useRef(getSpeechRecognition());
 
   // Setting utterance.lang alone ("en-IN"/"kn-IN") only picks a *locale*,
@@ -150,18 +233,26 @@ export const FloatingCopilot: React.FC = () => {
   const pickIndianVoice = useCallback(
     (lang: SpokenLang, voiceList: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined => {
       const wantedPrefix = lang === "kn" ? "kn" : "en";
-      const localeTag = lang === "kn" ? "kn-in" : "en-in";
+      const localeTagDash = lang === "kn" ? "kn-in" : "en-in";
+      const localeTagUnderscore = lang === "kn" ? "kn_in" : "en_in";
+      const namePatterns = PREFERRED_VOICE_NAME_PATTERNS[lang];
+
       return (
-        // Exact Indian locale match, e.g. "en-IN" / "kn-IN"
-        voiceList.find((v) => v.lang.toLowerCase() === localeTag) ||
-        // Any voice for the language whose lang/name flags it as Indian
+        // 1. A known natural-sounding voice by name (Neerja, Prabhat,
+        //    Sapna, Google English India, etc.) for this language.
+        voiceList.find(
+          (v) => v.lang.toLowerCase().startsWith(wantedPrefix) && namePatterns.some((p) => p.test(v.name)),
+        ) ||
+        // 2. Exact Indian locale match, e.g. "en-IN" / "kn-IN"
+        voiceList.find((v) => v.lang.toLowerCase() === localeTagDash) ||
+        // 3. Underscore locale variant some engines report, e.g. "en_IN"
+        voiceList.find((v) => v.lang.toLowerCase() === localeTagUnderscore) ||
+        // 4. Any voice for the language whose lang/name flags it as Indian
         voiceList.find(
           (v) =>
             v.lang.toLowerCase().startsWith(wantedPrefix) &&
             (v.lang.toLowerCase().includes("in") || /india/i.test(v.name)),
-        ) ||
-        // Fall back to any voice at all for that language
-        voiceList.find((v) => v.lang.toLowerCase().startsWith(wantedPrefix))
+        )
       );
     },
     [],
@@ -172,50 +263,136 @@ export const FloatingCopilot: React.FC = () => {
       window.speechSynthesis.cancel();
     }
     utteranceRef.current = null;
+    if (googleTtsAudioRef.current) {
+      googleTtsAudioRef.current.pause();
+      googleTtsAudioRef.current.src = "";
+      googleTtsAudioRef.current = null;
+    }
+  }, []);
+
+  // Primary streaming TTS path: pulls natural-sounding audio directly from
+  // Google Translate's public TTS endpoint via an HTMLAudioElement. This
+  // gives us authentic native Indian English (tl=en-IN) and authentic
+  // Kannada (tl=kn) audio regardless of what the user's OS/browser has
+  // installed locally — the standard speechSynthesis pipeline falls
+  // back to a robotic generic voice on most desktop browsers when no
+  // local voice matches. The endpoint caps a single query at ~200 chars,
+  // so longer replies are split via chunkTextForGoogleTts. Returns false
+  // (not throws) on any failure so the caller can fall through to the
+  // local engine.
+  const playViaGoogleTranslateTts = useCallback(async (text: string, langCode: string): Promise<boolean> => {
+    if (typeof window === "undefined") return false;
+    const chunks = chunkTextForGoogleTts(text);
+    try {
+      for (const chunk of chunks) {
+        if (!chunk.trim()) continue;
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(
+          chunk,
+        )}&tl=${langCode}&client=tw-ob`;
+        await new Promise<void>((resolve, reject) => {
+          const audio = new Audio(url);
+          googleTtsAudioRef.current = audio;
+          audio.onended = () => resolve();
+          audio.onerror = () => reject(new Error("Google Translate TTS playback failed"));
+          audio.play().catch(reject);
+        });
+      }
+      return true;
+    } catch {
+      return false;
+    } finally {
+      googleTtsAudioRef.current = null;
+    }
   }, []);
 
   const speak = useCallback(
-    (text: string, lang: SpokenLang) => {
+    async (text: string, lang: SpokenLang) => {
       if (isMuted) return;
       if (typeof window === "undefined" || !window.speechSynthesis) return;
       stopSpeaking();
-      // Strip markdown bold markers and emoji-ish bullets before speaking —
-      // TTS engines read "**" and stray symbols aloud otherwise.
-      const clean = text
-        .replace(/\*\*/g, "")
-        .replace(/[📌👤🚨⚠️]/g, "")
-        .trim();
+
+      const clean = sanitizeForTts(text);
       if (!clean) return;
 
-      // Pull the voice list fresh from the API right here instead of only
-      // trusting the mount-time `voices` state. onvoiceschanged doesn't
-      // fire reliably in every browser, and if this widget speaks its
-      // first reply before that event has landed, the state array can
-      // still be empty even though voices are actually available by now.
+      // A response is "Kannada" when the caller asked in Kannada OR the
+      // actual text contains Kannada script — either way we want authentic
+      // Kannada audio, not an English voice trying to pronounce raw Unicode.
+      const isKannada = lang === "kn" || KANNADA_SCRIPT_RE.test(clean);
+
+      // --- Kannada path ---------------------------------------------------
+      if (isKannada) {
+        setNoKannadaVoice(false);
+        // 1. Prefer a native local Kannada voice if the OS/browser has one
+        // (rare outside Chrome OS / Android, but we check first).
+        let freshVoices = window.speechSynthesis.getVoices();
+        if (!freshVoices.length) freshVoices = voices;
+        const knVoice = pickIndianVoice("kn", freshVoices);
+
+        if (knVoice) {
+          const utterance = new SpeechSynthesisUtterance(clean);
+          utterance.lang = "kn-IN";
+          utterance.rate = NATURAL_SPEECH_RATE;
+          utterance.pitch = 1.0;
+          utterance.voice = knVoice;
+          utteranceRef.current = utterance;
+          window.speechSynthesis.speak(utterance);
+          return;
+        }
+
+        // 2. No native Kannada voice is installed — stream authentic Kannada
+        //    audio directly from Google Translate's TTS endpoint. This is the
+        //    primary path and works on any browser with network access, with
+        //    no "No Kannada voice is installed" warning for the user.
+        const streamed = await playViaGoogleTranslateTts(clean, "kn");
+        if (streamed) return;
+
+        // 3. Streaming also failed (offline / endpoint blocked). Surface an
+        //    honest notice rather than silently playing a robotic English
+        //    voice that can't pronounce Kannada script.
+        setNoKannadaVoice(true);
+        return;
+      }
+
+      // --- English path ---------------------------------------------------
       let freshVoices = window.speechSynthesis.getVoices();
       if (!freshVoices.length) freshVoices = voices;
+      const indianVoice = pickIndianVoice("en", freshVoices);
 
-      const utterance = new SpeechSynthesisUtterance(clean);
-      utterance.lang = lang === "kn" ? "kn-IN" : "en-IN";
-      const indianVoice = pickIndianVoice(lang, freshVoices);
+      // 1. A native Indian English voice (Neerja, Prabhat, en-IN, etc.).
       if (indianVoice) {
-        utterance.voice = indianVoice;
-        if (lang === "kn") setNoKannadaVoice(false);
-      } else if (lang === "kn") {
-        // No Kannada voice exists on this device/browser at all, in the
-        // freshly-fetched list either — the browser will fall back to its
-        // default system voice (usually English) to read the Kannada
-        // text aloud. This is a device/browser voice-pack limitation, not
-        // something fixable in code, so we flag it for the UI instead of
-        // failing silently.
-        setNoKannadaVoice(true);
-      } else {
         setNoKannadaVoice(false);
+        const utterance = new SpeechSynthesisUtterance(clean);
+        utterance.lang = "en-IN";
+        utterance.rate = NATURAL_SPEECH_RATE;
+        utterance.pitch = 1.0;
+        utterance.voice = indianVoice;
+        utteranceRef.current = utterance;
+        window.speechSynthesis.speak(utterance);
+        return;
       }
+
+      // 2. No native Indian English voice — stream authentic English audio
+      //    from Google Translate instead of falling back to a generic US/UK
+      //    voice that would lose the local accent. Try the Indian locale tag
+      //    first; some deployments don't recognise "en-IN", so fall back to
+      //    plain "en".
+      let streamedEn = await playViaGoogleTranslateTts(clean, "en-IN");
+      if (!streamedEn) streamedEn = await playViaGoogleTranslateTts(clean, "en");
+      if (streamedEn) {
+        setNoKannadaVoice(false);
+        return;
+      }
+
+      // 3. Streaming failed too — last resort: let the browser's default
+      //    voice attempt it with the Indian locale tag set.
+      const utterance = new SpeechSynthesisUtterance(clean);
+      utterance.lang = "en-IN";
+      utterance.rate = NATURAL_SPEECH_RATE;
+      utterance.pitch = 1.0;
       utteranceRef.current = utterance;
       window.speechSynthesis.speak(utterance);
     },
-    [isMuted, pickIndianVoice, stopSpeaking, voices],
+    [isMuted, pickIndianVoice, stopSpeaking, voices, playViaGoogleTranslateTts],
   );
 
   const submitQuestion = useCallback(
@@ -391,6 +568,28 @@ export const FloatingCopilot: React.FC = () => {
   // Stop any in-flight speech when the component unmounts (logout, etc.)
   // so audio never keeps playing over a new page.
   useEffect(() => stopSpeaking, [stopSpeaking]);
+
+  // Belt-and-braces fix for the text input going unreadable (black-on-dark)
+  // in the host page's light mode. The CSS class below already sets
+  // `color: ... !important`, but if the host app's own global stylesheet
+  // also has an `!important` rule targeting bare `input` elements (common
+  // in some light/dark theme resets), a same-priority `!important` fight
+  // is resolved by selector specificity, and a page-wide reset can still
+  // win. Setting the style directly on the element via `setProperty(...,
+  // "important")` writes an INLINE !important declaration, which the CSS
+  // cascade always ranks above any external stylesheet rule regardless of
+  // its specificity — so this wins even against page-level overrides we
+  // can't see or control here. Runs whenever the text box mounts (it's
+  // conditionally rendered) so it's re-applied every time it appears.
+  useEffect(() => {
+    if (!isTextMode) return;
+    const el = textInputRef.current;
+    if (!el) return;
+    el.style.setProperty("background-color", "#14171f", "important");
+    el.style.setProperty("color", "#f2f4f8", "important");
+    el.style.setProperty("caret-color", "#f2f4f8", "important");
+    el.style.setProperty("-webkit-text-fill-color", "#f2f4f8", "important");
+  }, [isTextMode]);
 
   if (isExcludedRoute || !user) return null;
 
@@ -781,10 +980,21 @@ export const FloatingCopilot: React.FC = () => {
       {isTextMode && (
         <form className="kspp-fc-textform" onSubmit={handleTextSubmit}>
           <input
+            ref={textInputRef}
             autoFocus
             type="text"
             value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
+            onChange={(e) => {
+              setTextInput(e.target.value);
+              // Re-assert on every keystroke too: autofill/theme repaints
+              // in some browsers only kick in after the field has content,
+              // not on initial mount, so mount-time enforcement alone can
+              // miss it.
+              const el = e.currentTarget;
+              el.style.setProperty("background-color", "#14171f", "important");
+              el.style.setProperty("color", "#f2f4f8", "important");
+              el.style.setProperty("-webkit-text-fill-color", "#f2f4f8", "important");
+            }}
             placeholder={tr(
               "Type a question — crime number, station, complainant...",
               "ಪ್ರಶ್ನೆಯನ್ನು ಟೈಪ್ ಮಾಡಿ — ಅಪರಾಧ ಸಂಖ್ಯೆ, ಠಾಣೆ, ದೂರುದಾರ...",

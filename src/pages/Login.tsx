@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 import {
   KSPPBrandMark,
   KARNATAKA_GOVERNMENT,
@@ -18,6 +19,7 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -197,14 +199,28 @@ const Login: React.FC = () => {
 
               <label className="mt-5 block text-xs font-semibold uppercase tracking-wide text-muted">
                 {tr("Password", "ಪಾಸ್‌ವರ್ಡ್")}
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder={tr("Enter your password", "ನಿಮ್ಮ ಪಾಸ್‌ವರ್ಡ್ ನಮೂದಿಸಿ")}
-                  autoComplete="current-password"
-                  className="mt-2 h-11 w-full rounded-lg border border-line bg-panel px-3.5 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15"
-                />
+                <div className="relative mt-2">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder={tr("Enter your password", "ನಿಮ್ಮ ಪಾಸ್‌ವರ್ಡ್ ನಮೂದಿಸಿ")}
+                    autoComplete="current-password"
+                    className="h-11 w-full rounded-lg border border-line bg-panel pl-3.5 pr-10 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label={
+                      showPassword
+                        ? tr("Hide password", "ಪಾಸ್‌ವರ್ಡ್ ಮರೆಮಾಚಿ")
+                        : tr("Show password", "ಪಾಸ್‌ವರ್ಡ್ ತೋರಿಸಿ")
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-white transition focus:outline-none"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </label>
 
               {error && (
@@ -272,8 +288,3 @@ const Login: React.FC = () => {
 };
 
 export default Login;
-
-
-
-
-
