@@ -5,37 +5,49 @@ type Props = {
   language: "en" | "kn";
   onResult: (text: string) => void;
   disabled?: boolean;
+  /** Receives the flowing live-caption text (accumulated finals + interim) */
+  onLiveTranscript?: (text: string) => void;
 };
 
-export const VoiceButton: React.FC<Props> = ({ language, onResult, disabled = false }) => {
-  // Map "kn" to "kn-IN" and "en" to "en-IN"
+export const VoiceButton: React.FC<Props> = ({
+  language,
+  onResult,
+  disabled = false,
+  onLiveTranscript,
+}) => {
   const langCode = language === "kn" ? "kn-IN" : "en-IN";
-  
-  // Pass dynamic langCode down to the hook
+
   const {
     listening,
     starting,
     error,
-    interimTranscript,
+    captionText,
     start,
     stop,
     transcript,
   } = useSpeechRecognition(langCode);
+  const active = listening || starting;
 
-  // Keep a stable ref to onResult to prevent useEffect dependency loops
+  // Stable refs so useEffect doesn't loop
   const onResultRef = useRef(onResult);
-  useEffect(() => {
-    onResultRef.current = onResult;
-  }, [onResult]);
+  useEffect(() => { onResultRef.current = onResult; }, [onResult]);
+  const onLiveRef = useRef(onLiveTranscript);
+  useEffect(() => { onLiveRef.current = onLiveTranscript; }, [onLiveTranscript]);
 
+  // Forward every captionText change to the parent as live captions
   useEffect(() => {
-    if (transcript && transcript.trim() !== "") {
-      // 🚀 Dispatch result once
+    onLiveRef.current?.(captionText);
+  }, [captionText]);
+
+  // Dispatch the complete utterance only when the user stops recording.
+  // Web Speech can emit final phrases during a pause while the user is
+  // still speaking, so dispatching on every transcript update submits early.
+  useEffect(() => {
+    if (!active && transcript.trim() !== "") {
       onResultRef.current(transcript);
     }
-  }, [transcript]); // ONLY depend on transcript!
+  }, [active, transcript]);
 
-  const active = listening || starting;
   return (
     <div className="flex min-w-0 items-center gap-2">
       <button
@@ -54,8 +66,10 @@ export const VoiceButton: React.FC<Props> = ({ language, onResult, disabled = fa
         🎤
       </button>
       {active && (
-        <span className="max-w-40 truncate text-xs font-medium text-red-300" role="status">
-          {starting ? "Starting microphone…" : interimTranscript || "Listening…"}
+        <span className="max-w-56 truncate text-xs font-medium text-red-300" role="status">
+          {starting
+            ? "Starting microphone…"
+            : captionText || "Listening…"}
         </span>
       )}
       {!active && error && (
@@ -64,4 +78,3 @@ export const VoiceButton: React.FC<Props> = ({ language, onResult, disabled = fa
     </div>
   );
 };
-

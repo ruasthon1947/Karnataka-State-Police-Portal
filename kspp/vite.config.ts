@@ -3,9 +3,11 @@ import react from '@vitejs/plugin-react';
 import localDbPlugin from './server/localDbPlugin.mjs';
 import chatPlugin from './server/chatPlugin.mjs';
 import mapProxyPlugin from './server/mapProxyPlugin.mjs';
+import sttPlugin from './server/sttPlugin.mjs';
 
 export default defineConfig({
   plugins: [
+    sttPlugin(),
     react(),
     localDbPlugin(),
     chatPlugin(),

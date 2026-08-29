@@ -812,8 +812,10 @@ export async function handleApi(req, res, next) {
       if (session.role === "Constable" && !record.PoliceStation && session.policeStation) {
         record.PoliceStation = session.policeStation;
       }
-      if (!canAccessCase(session, record)) {
-        sendError(res, 403, "You can only save cases assigned to you or your police station.");
+      // Allow all authenticated officers to create new FIRs.
+      // Only enforce the assignment check when updating an existing case.
+      if (!created && !canAccessCase(session, record)) {
+        sendError(res, 403, "You do not have permission to update this case.");
         return;
       }
 
