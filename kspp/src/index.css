@@ -1,0 +1,1438 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  font-family: "Inter", "Noto Sans Kannada", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+/* Default application theme: LIGHT */
+html {
+  background: #f5f7fb;
+  color: #0b0f14;
+}
+
+html.dark {
+  background: #0b0f14;
+  color: #e6ebf2;
+}
+
+/* === Light mode overrides (applied via .light on <html>) === */
+html.light {
+  background: #f5f7fb;
+  color: #0b0f14;
+}
+html.light body { background: #f5f7fb; }
+
+/* Complete light-mode surface mapping */
+html.light .bg-ink { background-color: #f5f7fb !important; }
+html.light .bg-shell  { background-color: #ffffff !important; }
+html.light .bg-panel  { background-color: #fafbfd !important; }
+html.light .border-line { border-color: #e3e8f0 !important; }
+html.light .bg-shell\/40 { background-color: rgba(255,255,255,0.6) !important; }
+html.light .bg-panel\/40 { background-color: rgba(250,251,253,0.54) !important; }
+html.light .bg-panel\/50 { background-color: rgba(250,251,253,0.66) !important; }
+html.light .bg-panel\/60 { background-color: rgba(250,251,253,0.76) !important; }
+html.light .bg-panel\/70 { background-color: rgba(250,251,253,0.86) !important; }
+html.light .text-white { color: #0b0f14 !important; }
+html.light .text-muted { color: #5a6678 !important; }
+html.light .text-brand { color: #174a7e !important; }
+
+html.light .placeholder-muted::placeholder { color: #8a95a5 !important; }
+html.light input, html.light textarea, html.light select {
+  color: #0b0f14 !important;
+}
+html.light input::placeholder,
+html.light textarea::placeholder { color: #8a95a5 !important; }
+
+/* Code */
+html.light code { color: #174a7e !important; }
+
+/* Preserve inverse text on official action surfaces in light mode. */
+html.light .bg-brand,
+html.light .bg-sage,
+html.light .bg-gov-navy {
+  color: #ffffff !important;
+}
+html.light .bg-brand .text-white,
+html.light .bg-sage .text-white,
+html.light .bg-gov-navy .text-white,
+html.light .bg-gov-navy.text-white {
+  color: #ffffff !important;
+}
+
+.gov-utility-control {
+  color: #ffffff;
+}
+
+html.light .gov-utility-control {
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.gov-utility-control option {
+  background: #ffffff;
+  color: #0b0f14;
+}
+
+/* Re-skin any element using raw dark Tailwind utilities we use throughout */
+html.light .dark\:bg-ink    { background-color: #ffffff !important; }
+html.light .dark\:bg-shell  { background-color: #ffffff !important; }
+html.light .dark\:bg-panel  { background-color: #fafbfd !important; }
+html.light .dark\:text-white { color: #0b0f14 !important; }
+html.light .dark\:text-muted { color: #5a6678 !important; }
+html.light .dark\:border-line { border-color: #e3e8f0 !important; }
+
+/* Chart text/grid tweaks for light mode */
+html.light .recharts-text { fill: #5a6678 !important; }
+html.light .recharts-cartesian-grid line { stroke: #e3e8f0 !important; }
+
+/* Map our dark-only tokens to light equivalents via utility shortcuts */
+html.light .surface-card  { background-color: #ffffff !important; border-color: #e3e8f0 !important; }
+html.light .surface-panel { background-color: #fafbfd !important; border-color: #e3e8f0 !important; }
+html.light .surface-shell { background-color: #ffffff !important; }
+
+* { box-sizing: border-box; }
+
+img,
+video,
+canvas {
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  min-width: 0;
+}
+
+p,
+li,
+td,
+th {
+  overflow-wrap: anywhere;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1f2733; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #2a3441; }
+
+html.light ::-webkit-scrollbar-thumb { background: #d4dae3; }
+html.light ::-webkit-scrollbar-thumb:hover { background: #b8c0cc; }
+
+/* Tabular numerals for IDs/dates */
+.num { font-variant-numeric: tabular-nums; }
+
+/* Subtle dotted grid for AI canvas */
+.dotted-bg {
+  background-image:
+    radial-gradient(rgba(0,0,0,0.08) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+html:not(.light) .dotted-bg {
+  background-image:
+    radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
+}
+
+/* Modal backdrop */
+.modal-backdrop {
+  background: rgba(8, 12, 18, 0.7);
+  backdrop-filter: blur(4px);
+}
+html.light .modal-backdrop {
+  background: rgba(15, 23, 42, 0.45);
+}
+
+/* Smooth focus ring */
+.focus-ring:focus { outline: none; box-shadow: 0 0 0 2px rgba(23,74,126,0.45); }
+
+/* Chat case map is an intentionally dark operational inset in both themes. */
+.chat-map-card {
+  border-color: #334155;
+  background: #071827;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
+}
+.chat-map-header,
+.chat-map-footer,
+.chat-map-selector {
+  border-color: #334155;
+  background: #0f1f2e;
+}
+.chat-map-eyebrow { color: #7dd3fc !important; }
+.chat-map-title { color: #f8fafc !important; }
+.chat-map-metric { background: #334155; color: #e2e8f0 !important; }
+.chat-map-metric.is-primary { background: #075985; color: #e0f2fe !important; }
+.chat-map-button {
+  border-color: #64748b;
+  background: #17283a;
+  color: #e2e8f0 !important;
+}
+.chat-map-button:hover { border-color: #7dd3fc; background: #1e3a50; color: #ffffff !important; }
+.chat-map-navigation { background: #0b5cab; color: #ffffff !important; }
+.chat-map-navigation:hover { background: #1473cf; color: #ffffff !important; }
+.chat-map-input,
+.chat-map-selector select {
+  border-color: #475569 !important;
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+.chat-map-suggestions {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+}
+.chat-map-suggestions button {
+  border-color: #e2e8f0;
+  background: #ffffff;
+  color: #0f172a !important;
+}
+.chat-map-suggestions button:hover,
+.chat-map-suggestions button:focus-visible {
+  background: #eff6ff;
+  color: #0f3d6e !important;
+}
+.chat-map-card .maplibregl-ctrl-attrib {
+  max-width: calc(100% - 1rem);
+  font-size: 9px;
+  opacity: 0.82;
+}
+html.light .chat-map-card .chat-map-title,
+html.light .chat-map-card .chat-map-button,
+html.light .chat-map-card .chat-map-navigation,
+html.light .chat-map-card .chat-map-metric {
+  color: #ffffff !important;
+}
+html.light .chat-map-card .chat-map-metric:not(.is-primary),
+html.light .chat-map-card .chat-map-button { color: #e2e8f0 !important; }
+
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid #174a7e;
+  outline-offset: 2px;
+}
+
+/* Light mode navigation hover: never use the dark panel surface */
+html.light aside nav a:not([aria-current="page"]):hover {
+  background-color: #f1f5f9 !important;
+  color: #0b0f14 !important;
+}
+
+html.light aside nav a[aria-current="page"] {
+  color: #0b0f14 !important;
+}
+
+/* =========================================================
+   GLOBAL LIGHT MODE HOVER SAFETY
+   Prevent dark hover surfaces anywhere in the application.
+   ========================================================= */
+html.light .hover\:bg-panel:hover {
+  background-color: #f1f5f9 !important;
+}
+
+html.light .hover\:text-white:hover {
+  color: #0b0f14 !important;
+}
+
+html.light button:hover,
+html.light a:hover {
+  --tw-ring-color: rgba(23, 74, 126, 0.18);
+}
+
+/* Table rows must also remain light. */
+html.light tbody tr:hover,
+html.light tr:hover {
+  background-color: #f8fafc !important;
+}
+
+/* New FIR step rail: inactive step hover stays light. */
+html.light .new-fir-step:hover {
+  background-color: #f1f5f9 !important;
+  color: #0b0f14 !important;
+}
+
+/* Add FIR native controls and editable Sheet-backed suggestions follow the active theme. */
+.new-fir-page {
+  color-scheme: dark;
+}
+
+html.light .new-fir-page {
+  color-scheme: light;
+}
+
+.new-fir-option-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
+
+/* =========================================================
+   SIDEBAR ACCOUNT FOOTER
+   ========================================================= */
+.sidebar-account {
+  background: #0f151e;
+  color: #e6ebf2;
+}
+.sidebar-account-name { color: #e6ebf2; }
+.sidebar-theme-button {
+  background: #141a23;
+  color: #e6ebf2;
+}
+.sidebar-theme-button:hover { background: #192231; }
+html.light .sidebar-account {
+  background: #ffffff !important;
+  color: #0b0f14 !important;
+}
+html.light .sidebar-account-name { color: #0b0f14 !important; }
+html.light .sidebar-theme-button {
+  background: #f8fafc !important;
+  color: #0b0f14 !important;
+  border-color: #e3e8f0 !important;
+}
+html.light .sidebar-theme-button:hover { background: #f1f5f9 !important; }
+
+/* =========================================================
+   POLISHED SETTINGS CONTROLS
+   ========================================================= */
+.settings-card {
+  min-height: 0;
+}
+
+.settings-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #8fa1bd;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.settings-select-wrap {
+  position: relative;
+}
+
+.settings-select-wrap::after {
+  content: "⌄";
+  position: absolute;
+  right: 0.9rem;
+  top: 50%;
+  transform: translateY(-55%);
+  color: #8fa1bd;
+  font-size: 1rem;
+  pointer-events: none;
+}
+
+.settings-select {
+  width: 100%;
+  height: 2.75rem;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid #263142;
+  border-radius: 0.65rem;
+  background: #141a23;
+  color: #e6ebf2;
+  padding: 0 2.6rem 0 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.settings-select:hover {
+  border-color: #3b4a60;
+}
+
+.settings-select:focus {
+  outline: none;
+  border-color: #174a7e;
+  box-shadow: 0 0 0 3px rgba(23, 74, 126, 0.14);
+}
+
+html.light .settings-label {
+  color: #5a6678;
+}
+
+html.light .settings-select {
+  background: #ffffff;
+  border-color: #dce3ed;
+  color: #0b0f14;
+}
+
+html.light .settings-select:hover {
+  border-color: #b9c5d6;
+  background: #fafbfd;
+}
+
+html.light .settings-select:focus {
+  border-color: #174a7e;
+  background: #ffffff;
+}
+
+/* =========================================================
+   KSPP GOVERNMENT IDENTITY
+   ========================================================= */
+.gov-tricolor {
+  height: 4px;
+  background:
+    linear-gradient(
+      90deg,
+      #ff8f1f 0%,
+      #ff8f1f 33.333%,
+      #ffffff 33.333%,
+      #ffffff 66.666%,
+      #16834f 66.666%,
+      #16834f 100%
+    );
+}
+
+.gov-emblem-dot {
+  display: inline-grid;
+  height: 1.75rem;
+  min-width: 1.75rem;
+  place-items: center;
+  border: 1px solid rgba(229, 184, 63, 0.72);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-family: "Noto Sans Kannada", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 2px rgba(229, 184, 63, 0.08);
+}
+
+.gov-login-bg {
+  background:
+    radial-gradient(circle at 14% 18%, rgba(23, 74, 126, 0.11), transparent 28rem),
+    radial-gradient(circle at 86% 84%, rgba(22, 131, 79, 0.08), transparent 28rem),
+    linear-gradient(180deg, rgba(255,255,255,0.42), transparent);
+}
+
+html.dark .gov-login-bg {
+  background:
+    radial-gradient(circle at 14% 18%, rgba(229, 184, 63, 0.08), transparent 28rem),
+    radial-gradient(circle at 86% 84%, rgba(22, 131, 79, 0.08), transparent 28rem);
+}
+
+.gov-panel-pattern {
+  position: absolute;
+  inset: 0;
+  opacity: 0.12;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(255,255,255,0.7) 1px, transparent 1px),
+    linear-gradient(135deg, transparent 45%, rgba(255,255,255,0.16) 45%, rgba(255,255,255,0.16) 46%, transparent 46%);
+  background-size: 24px 24px, 48px 48px;
+  mask-image: linear-gradient(to bottom, #000, transparent 85%);
+}
+
+.kspp-brand-mark {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(229, 184, 63, 0.72);
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 2px rgba(11, 49, 95, 0.1),
+    0 5px 16px rgba(11, 49, 95, 0.18);
+}
+
+.kspp-brand-mark::after {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255,255,255,0.55);
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+}
+
+.button-spinner {
+  height: 1rem;
+  width: 1rem;
+  border: 2px solid rgba(255,255,255,0.45);
+  border-top-color: #ffffff;
+  border-radius: 999px;
+  animation: kspp-spin 0.75s linear infinite;
+}
+
+@keyframes kspp-spin {
+  to { transform: rotate(360deg); }
+}
+
+.kspp-sidebar {
+  will-change: transform;
+}
+
+/* Karnataka government-inspired navigation plaques: restrained navy,
+   ceremonial gold and the state red/yellow service accent. */
+.gov-nav-seal {
+  position: relative;
+  display: grid;
+  width: 1.9rem;
+  height: 1.9rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(238, 199, 90, 0.68);
+  border-radius: 0.58rem 0.58rem 0.7rem 0.7rem;
+  background:
+    linear-gradient(145deg, rgba(255, 237, 170, 0.92), rgba(181, 126, 24, 0.9));
+  padding: 2px;
+  box-shadow:
+    0 3px 8px rgba(2, 10, 22, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.gov-nav-seal::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  width: 0.9rem;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f4cc35 0 50%, #b2202d 50% 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transform: translateX(-50%);
+}
+
+.gov-nav-seal-inner {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  border: 1px solid rgba(247, 218, 125, 0.32);
+  border-radius: 0.43rem 0.43rem 0.54rem 0.54rem;
+  background:
+    radial-gradient(circle at 35% 25%, rgba(58, 99, 139, 0.72), transparent 48%),
+    #102a45;
+  color: #ffe39a;
+}
+
+.gov-nav-seal-cases .gov-nav-seal-inner { color: #ffc2bc; }
+.gov-nav-seal-reference .gov-nav-seal-inner { color: #d8e7f3; }
+.gov-nav-seal-insights .gov-nav-seal-inner { color: #9ee7f2; }
+
+.kspp-sidebar nav a:hover .gov-nav-seal {
+  border-color: #f0cc62;
+  box-shadow: 0 5px 13px rgba(2, 10, 22, 0.36), 0 0 0 2px rgba(229, 184, 63, 0.09);
+  transform: translateY(-1px);
+}
+
+.kspp-sidebar nav a[aria-current="page"] .gov-nav-seal {
+  border-color: #f3cf68;
+  background: linear-gradient(145deg, #fff0af, #c48a20);
+  box-shadow: 0 5px 15px rgba(23, 74, 126, 0.28), 0 0 0 2px rgba(229, 184, 63, 0.14);
+}
+
+.kspp-sidebar nav a[aria-current="page"] .gov-nav-seal-inner {
+  background:
+    radial-gradient(circle at 35% 20%, rgba(88, 137, 183, 0.8), transparent 48%),
+    #174a7e;
+  color: #fff7db;
+}
+
+html.light .gov-nav-seal {
+  box-shadow: 0 3px 8px rgba(15, 42, 70, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+html.light .kspp-sidebar a[aria-current="page"] {
+  color: #174a7e !important;
+}
+
+/* Make dense operational pages usable on small screens without changing data. */
+@media (max-width: 767px) {
+  main > div {
+    max-width: 100%;
+  }
+
+  main .p-5 {
+    padding: 1rem;
+  }
+
+  main .p-6 {
+    padding: 1rem;
+  }
+
+  table {
+    min-width: 720px;
+  }
+
+  main input,
+  main select,
+  main textarea {
+    font-size: 16px !important;
+  }
+
+  main button,
+  main a {
+    touch-action: manipulation;
+  }
+
+  .new-fir-steps {
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+    overscroll-behavior-inline: contain;
+  }
+
+  .new-fir-step {
+    scroll-snap-align: start;
+  }
+
+  .kspp-mobile-search input {
+    padding-right: 0.65rem;
+    font-size: 0.75rem;
+  }
+
+  .kspp-mobile-search input::placeholder {
+    color: transparent;
+  }
+}
+
+@media (max-width: 420px) {
+  .gov-emblem-dot {
+    height: 1.6rem;
+    min-width: 1.6rem;
+  }
+
+  .kspp-mobile-search {
+    max-width: none;
+  }
+
+  .new-fir-page textarea {
+    min-height: 7rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* =========================================================
+   CRIME INTELLIGENCE MAP
+   ========================================================= */
+.crime-intelligence-page {
+  --text: #0b0f14;
+  --muted: #5a6678;
+  --ink: #f5f7fb;
+  --shell: #ffffff;
+  --panel: #fafbfd;
+  --line: #e3e8f0;
+  --brand: #174a7e;
+  --intel-cyan: #54d7ff;
+  --intel-blue: #1d79c7;
+  --intel-gold: #e5b83f;
+  --intel-red: #ff5d68;
+  --intel-amber: #ffb547;
+  color: var(--text);
+}
+
+html.dark .crime-intelligence-page {
+  --text: #e6ebf2;
+  --muted: #8a95a5;
+  --ink: #0b0f14;
+  --shell: #0f141b;
+  --panel: #141a23;
+  --line: #1f2733;
+  --brand: #174a7e;
+}
+
+.crime-intelligence-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  padding: 0.35rem 0 1.25rem;
+}
+
+.intelligence-kicker,
+.neural-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.65rem;
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.intelligence-kicker {
+  border: 1px solid rgba(229, 184, 63, 0.35);
+  background: rgba(229, 184, 63, 0.08);
+  color: var(--intel-gold);
+}
+
+.neural-status {
+  border: 1px solid rgba(84, 215, 255, 0.25);
+  background: rgba(84, 215, 255, 0.07);
+  color: var(--intel-cyan);
+}
+
+.neural-status i {
+  width: 0.42rem;
+  height: 0.42rem;
+  margin-right: 0.45rem;
+  border-radius: 999px;
+  background: #4de2a7;
+  box-shadow: 0 0 0 4px rgba(77, 226, 167, 0.12), 0 0 14px rgba(77, 226, 167, 0.72);
+}
+
+.crime-intelligence-hero h1 {
+  margin-top: 0.85rem;
+  font-family: "Schibsted Grotesk", Inter, sans-serif;
+  font-size: clamp(1.75rem, 3vw, 2.65rem);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+
+.crime-intelligence-hero p {
+  max-width: 44rem;
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.model-signal {
+  display: flex;
+  width: 15rem;
+  height: 4.2rem;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  gap: 0.28rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: linear-gradient(135deg, rgba(84, 215, 255, 0.08), rgba(229, 184, 63, 0.04));
+  padding: 0.8rem 0.9rem;
+}
+
+.model-signal > span {
+  width: 0.22rem;
+  border-radius: 999px;
+  background: linear-gradient(to top, var(--intel-blue), var(--intel-cyan));
+  animation: intelligence-bars 1.5s ease-in-out infinite alternate;
+}
+
+.model-signal div {
+  display: grid;
+  margin-left: auto;
+  align-self: center;
+  text-align: right;
+}
+
+.model-signal strong { font-size: 1.4rem; }
+.model-signal small { color: var(--muted); font-size: 0.5rem; font-weight: 800; letter-spacing: 0.13em; }
+
+@keyframes intelligence-bars {
+  to { height: 28%; opacity: 0.55; }
+}
+
+.intelligence-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--shell);
+  padding: 0.7rem;
+}
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 0.7rem;
+  background: var(--ink);
+  padding: 0.22rem;
+}
+
+.mode-switch button,
+.tilt-toggle {
+  min-height: 2.5rem;
+  border-radius: 0.55rem;
+  padding: 0 0.9rem;
+  color: var(--muted);
+  font-size: 0.73rem;
+  font-weight: 700;
+  transition: 180ms ease;
+}
+
+.mode-switch button[aria-pressed="true"] {
+  background: var(--brand);
+  color: white;
+  box-shadow: 0 5px 20px rgba(23, 74, 126, 0.3);
+}
+
+.intelligence-toolbar label {
+  display: grid;
+  min-width: 10.5rem;
+  gap: 0.25rem;
+}
+
+.intelligence-toolbar label > span {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.intelligence-toolbar select {
+  height: 2.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  background: var(--panel);
+  padding: 0 2rem 0 0.75rem;
+  color: var(--text);
+  font-size: 0.73rem;
+  outline: none;
+}
+
+.intelligence-toolbar select:focus { border-color: var(--intel-cyan); }
+.intelligence-toolbar select:disabled { opacity: 0.45; }
+
+.live-sync-control {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(77, 226, 167, 0.3);
+  border-radius: 0.55rem;
+  background: rgba(77, 226, 167, 0.07);
+  padding: 0 0.75rem;
+  color: #20b978;
+  font-size: 0.65rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.live-sync-control i {
+  width: 0.48rem;
+  height: 0.48rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #4de2a7;
+  box-shadow: 0 0 0 4px rgba(77, 226, 167, 0.1), 0 0 13px rgba(77, 226, 167, 0.7);
+}
+
+.live-sync-control.is-syncing i { animation: live-sync-pulse 0.8s ease-in-out infinite alternate; }
+.live-sync-control:disabled { cursor: wait; opacity: 0.72; }
+
+@keyframes live-sync-pulse {
+  to { opacity: 0.35; transform: scale(0.7); }
+}
+
+.tilt-toggle {
+  margin-left: auto;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.tilt-toggle[aria-pressed="true"] { border-color: rgba(84, 215, 255, 0.35); color: var(--intel-cyan); }
+
+.intelligence-notice {
+  margin-top: 0.75rem;
+  border: 1px solid rgba(229, 184, 63, 0.22);
+  border-radius: 0.7rem;
+  background: rgba(229, 184, 63, 0.06);
+  padding: 0.65rem 0.8rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.intelligence-notice span {
+  margin-right: 0.55rem;
+  color: var(--intel-gold);
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.mode-definition { border-color: rgba(77, 226, 167, .24); background: rgba(77, 226, 167, .06); }
+.mode-definition span { color: #20b978; }
+.mode-definition.is-forecast { border-color: rgba(84, 215, 255, .3); background: rgba(84, 215, 255, .07); }
+.mode-definition.is-forecast span { color: #27aed9; }
+.data-warning { border-color: rgba(255, 93, 104, .28); background: rgba(255, 93, 104, .07); }
+.data-warning span { color: var(--intel-red); }
+.neural-status.is-limited { border-color: rgba(255, 181, 71, .25); color: #b97812; }
+.neural-status.is-limited i { background: var(--intel-amber); box-shadow: 0 0 10px rgba(255, 181, 71, .6); }
+
+.intelligence-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 21rem;
+  gap: 0.9rem;
+  margin-top: 0.9rem;
+}
+
+.crime-map-card,
+.hotspot-intelligence-panel,
+.intelligence-summary > div {
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--shell);
+}
+
+.crime-map-card { min-width: 0; overflow: hidden; }
+
+.map-status-row {
+  display: flex;
+  min-height: 2.8rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.6rem 0.85rem;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.map-status-row i {
+  display: inline-block;
+  width: 0.42rem;
+  height: 0.42rem;
+  margin-right: 0.35rem;
+  border-radius: 999px;
+}
+
+.live-dot { background: #4de2a7; box-shadow: 0 0 9px #4de2a7; }
+.forecast-dot { background: var(--intel-cyan); box-shadow: 0 0 9px var(--intel-cyan); }
+
+.map-legend { display: flex; align-items: center; gap: 0.35rem; }
+.map-legend span { width: 0.5rem; height: 0.5rem; margin-left: 0.45rem; border-radius: 999px; }
+.legend-low { background: #4de2a7; }
+.legend-medium { background: var(--intel-amber); }
+.legend-high { background: var(--intel-red); }
+
+.crime-map-viewport {
+  position: relative;
+  min-height: 35rem;
+  overflow: hidden;
+  background: #061522;
+  perspective: 900px;
+}
+
+.crime-map-plane {
+  position: absolute;
+  inset: 0;
+  transform-origin: center center;
+  transition: transform 260ms ease;
+}
+
+.crime-map-viewport.is-tilted .crime-map-plane {
+  inset: -1.2rem -0.6rem 0;
+  transform: rotateX(7deg) scale(0.99);
+  transform-origin: center 80%;
+}
+
+.crime-map-artwork { width: 100%; height: 100%; position: absolute; inset: 0; }
+
+.crime-map-districts path {
+  fill: rgba(19, 54, 84, 0.5);
+  stroke: rgba(94, 152, 194, 0.3);
+  stroke-width: 1.4;
+}
+
+.crime-map-districts path:nth-child(even) { fill: rgba(16, 47, 75, 0.72); }
+.crime-map-water path { fill: rgba(36, 125, 170, 0.3); stroke: rgba(84, 215, 255, 0.28); stroke-width: 1.5; }
+.crime-map-roads path { fill: none; stroke: rgba(157, 190, 215, 0.22); stroke-width: 4; stroke-linecap: round; }
+.crime-map-roads path::after { stroke: white; }
+.crime-map-ring-roads ellipse { fill: none; stroke: rgba(229, 184, 63, 0.14); stroke-width: 2; stroke-dasharray: 7 8; }
+.crime-map-labels text { fill: rgba(193, 218, 237, 0.42); font-size: 14px; font-weight: 800; letter-spacing: 2px; }
+.crime-map-compass circle { fill: rgba(5, 21, 34, 0.75); stroke: rgba(84, 215, 255, 0.35); }
+.crime-map-compass path { fill: var(--intel-cyan); }
+.crime-map-compass text { fill: var(--intel-cyan); font-size: 13px; font-weight: 800; text-anchor: middle; }
+
+.hotspot-marker {
+  --hotspot-color: #4de2a7;
+  position: absolute;
+  z-index: 3;
+  width: 3rem;
+  height: 3rem;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  color: white;
+  transition: filter 180ms ease, transform 180ms ease;
+}
+
+.hotspot-medium { --hotspot-color: var(--intel-amber); }
+.hotspot-high { --hotspot-color: var(--intel-red); }
+
+.hotspot-aura {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--pulse-size);
+  height: var(--pulse-size);
+  transform: translate(-50%, -50%);
+  border: 1px solid color-mix(in srgb, var(--hotspot-color) 48%, transparent);
+  border-radius: 999px;
+  background: radial-gradient(circle, color-mix(in srgb, var(--hotspot-color) 52%, transparent) 0, color-mix(in srgb, var(--hotspot-color) 17%, transparent) 36%, transparent 70%);
+  animation: hotspot-pulse 2.7s ease-out infinite;
+}
+
+.hotspot-core {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  border: 1px solid color-mix(in srgb, var(--hotspot-color) 80%, white);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--hotspot-color) 78%, #071727);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--hotspot-color) 58%, transparent), inset 0 0 12px rgba(255,255,255,.16);
+}
+
+.hotspot-core strong { font-size: 0.82rem; line-height: 1; }
+.hotspot-core small { font-size: 0.45rem; opacity: 0.8; }
+
+.hotspot-caption {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 50%;
+  width: max-content;
+  max-width: 8rem;
+  transform: translateX(-50%);
+  border-radius: 0.3rem;
+  background: rgba(4, 17, 29, 0.72);
+  padding: 0.2rem 0.35rem;
+  color: rgba(255,255,255,.82);
+  font-size: 0.54rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.hotspot-marker:hover,
+.hotspot-marker.is-selected { z-index: 6; filter: brightness(1.18); transform: translate(-50%, -50%) scale(1.13); }
+.hotspot-marker.is-selected .hotspot-core { outline: 2px solid white; outline-offset: 3px; }
+
+@keyframes hotspot-pulse {
+  0% { opacity: 0.86; transform: translate(-50%, -50%) scale(0.62); }
+  80%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.08); }
+}
+
+.map-zoom-controls {
+  position: absolute;
+  right: 0.8rem;
+  bottom: 0.8rem;
+  z-index: 9;
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgba(121, 170, 208, 0.28);
+  border-radius: 0.55rem;
+  background: rgba(4, 17, 29, 0.82);
+}
+
+.map-zoom-controls button { width: 2.5rem; height: 2.75rem; color: white; font-size: 1rem; }
+.map-zoom-controls button + button { border-top: 1px solid rgba(121, 170, 208, 0.22); }
+.map-loading { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(4,17,29,.72); color: var(--intel-cyan); font-size: 0.75rem; }
+
+.real-map-viewport { min-height: 35rem; perspective: none; }
+
+.real-crime-map-shell {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #061522;
+}
+
+.real-crime-map-shell .real-crime-map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.real-crime-map-shell::after {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 1px solid rgba(84, 215, 255, 0.14);
+  box-shadow: inset 0 0 80px rgba(3, 14, 25, 0.28);
+  content: "";
+  pointer-events: none;
+}
+
+.real-map-mode-badge,
+.real-map-city-badge,
+.real-map-help {
+  position: absolute;
+  z-index: 5;
+  border: 1px solid rgba(121, 170, 208, 0.25);
+  background: rgba(4, 17, 29, 0.82);
+  color: rgba(235, 247, 255, 0.94);
+  box-shadow: 0 8px 26px rgba(1, 8, 14, 0.24);
+  backdrop-filter: blur(12px);
+  pointer-events: none;
+}
+
+.real-map-mode-badge {
+  top: 0.8rem;
+  left: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  padding: 0.42rem 0.68rem;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.real-map-mode-badge i {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: var(--intel-cyan);
+  box-shadow: 0 0 12px var(--intel-cyan);
+  animation: live-pulse 1.8s ease-in-out infinite;
+}
+
+.real-map-city-badge {
+  top: 3.75rem;
+  left: 0.8rem;
+  display: grid;
+  min-width: 8.7rem;
+  border-left: 2px solid var(--intel-gold);
+  border-radius: 0.25rem 0.55rem 0.55rem 0.25rem;
+  padding: 0.55rem 0.65rem;
+}
+
+.real-map-city-badge span { font-size: 0.72rem; font-weight: 900; letter-spacing: 0.16em; }
+.real-map-city-badge small { margin-top: 0.16rem; color: rgba(174, 204, 226, 0.72); font-size: 0.5rem; }
+
+.real-map-help {
+  right: 0.75rem;
+  bottom: 2.15rem;
+  border-radius: 0.4rem;
+  padding: 0.34rem 0.5rem;
+  color: rgba(206, 227, 242, 0.72);
+  font-size: 0.5rem;
+}
+
+.real-map-state {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: grid;
+  place-content: center;
+  gap: 0.25rem;
+  background: radial-gradient(circle at center, rgba(16, 54, 84, 0.94), rgba(4, 17, 29, 0.98));
+  color: var(--intel-cyan);
+  font-size: 0.76rem;
+  text-align: center;
+}
+
+.real-map-state.is-error { color: #ffd3d6; }
+.real-map-state strong { font-size: 0.88rem; }
+.real-map-state span { color: rgba(220, 234, 244, 0.72); font-size: 0.62rem; }
+
+.map-data-loading {
+  position: absolute;
+  left: 50%;
+  bottom: 0.75rem;
+  z-index: 8;
+  transform: translateX(-50%);
+  border: 1px solid rgba(84, 215, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(4, 17, 29, 0.88);
+  padding: 0.42rem 0.7rem;
+  color: var(--intel-cyan);
+  font-size: 0.58rem;
+  backdrop-filter: blur(10px);
+}
+
+.map-data-empty {
+  position: absolute;
+  left: 50%;
+  bottom: 1rem;
+  z-index: 7;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 181, 71, .28);
+  border-radius: 999px;
+  background: rgba(4, 17, 29, .88);
+  padding: .45rem .75rem;
+  color: #ffd18b;
+  font-size: .58rem;
+  text-align: center;
+  backdrop-filter: blur(10px);
+}
+
+.real-crime-map-shell .maplibregl-ctrl-top-right { top: 0.55rem; right: 0.55rem; }
+.real-crime-map-shell .maplibregl-ctrl-group {
+  overflow: hidden;
+  border: 1px solid rgba(121, 170, 208, 0.28);
+  border-radius: 0.6rem;
+  background: rgba(4, 17, 29, 0.88);
+  box-shadow: 0 8px 24px rgba(1, 8, 14, 0.32);
+  backdrop-filter: blur(12px);
+}
+
+.real-crime-map-shell .maplibregl-ctrl-group button { width: 2.35rem; height: 2.35rem; }
+.real-crime-map-shell .maplibregl-ctrl-group button + button { border-top-color: rgba(121, 170, 208, 0.2); }
+.real-crime-map-shell .maplibregl-ctrl-icon { filter: invert(1) brightness(1.7); opacity: 0.88; }
+.real-crime-map-shell .maplibregl-ctrl-attrib { background: rgba(4, 17, 29, 0.74); color: rgba(213, 230, 242, 0.65); }
+.real-crime-map-shell .maplibregl-ctrl-attrib a { color: rgba(84, 215, 255, 0.86); }
+.real-crime-map-shell .maplibregl-ctrl-scale { border-color: rgba(235, 247, 255, 0.75); color: rgba(235, 247, 255, 0.82); background: rgba(4, 17, 29, 0.46); }
+
+.real-crime-map-shell:fullscreen,
+.real-crime-map-shell:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  background: #061522;
+}
+
+.real-crime-map-shell:fullscreen .real-crime-map,
+.real-crime-map-shell:-webkit-full-screen .real-crime-map { width: 100%; height: 100%; }
+
+.time-intelligence {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: 1rem;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding: 0.8rem 1rem 0.9rem;
+}
+
+.time-readout { display: grid; }
+.time-readout span { color: var(--muted); font-size: 0.52rem; font-weight: 900; letter-spacing: 0.13em; }
+.time-readout strong { margin-top: 0.15rem; color: var(--intel-cyan); font-size: 1.15rem; }
+.time-track input { width: 100%; accent-color: var(--intel-cyan); }
+.time-track div { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.5rem; }
+.time-intelligence.is-disabled { opacity: .52; }
+
+.hotspot-intelligence-panel {
+  position: relative;
+  overflow: hidden;
+  padding: 1.1rem;
+}
+
+.hotspot-intelligence-panel::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--intel-cyan), var(--intel-gold), transparent);
+  content: "";
+}
+
+.panel-eyebrow { color: var(--intel-cyan); font-size: 0.55rem; font-weight: 900; letter-spacing: 0.14em; }
+.hotspot-intelligence-panel h2 { margin-top: 0.55rem; font-size: 1.2rem; font-weight: 700; }
+.hotspot-intelligence-panel > p { margin-top: 0.15rem; color: var(--muted); font-size: 0.7rem; }
+
+.risk-ring {
+  --ring-color: #4de2a7;
+  display: grid;
+  width: 8.3rem;
+  height: 8.3rem;
+  margin: 1.15rem auto;
+  place-items: center;
+  border-radius: 999px;
+  background: conic-gradient(var(--ring-color) var(--risk), rgba(116,145,168,.14) 0);
+  box-shadow: 0 0 28px color-mix(in srgb, var(--ring-color) 15%, transparent);
+}
+
+.risk-ring::before { position: absolute; width: 6.7rem; height: 6.7rem; border-radius: 999px; background: var(--shell); content: ""; }
+.risk-ring > div { position: relative; display: grid; text-align: center; }
+.risk-ring strong { font-size: 1.7rem; }
+.risk-ring span { color: var(--ring-color); font-size: 0.55rem; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.risk-medium { --ring-color: var(--intel-amber); }
+.risk-high { --ring-color: var(--intel-red); }
+
+.prediction-primary,
+.prediction-metrics,
+.prediction-drivers,
+.patrol-recommendation {
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--panel);
+}
+
+.prediction-primary { display: grid; padding: 0.8rem; }
+.prediction-primary > span,
+.prediction-primary div span,
+.prediction-metrics span { color: var(--muted); font-size: 0.58rem; text-transform: uppercase; letter-spacing: .08em; }
+.prediction-primary > strong { margin-top: 0.18rem; font-size: 1rem; }
+.prediction-primary div { display: flex; justify-content: space-between; margin-top: 0.65rem; border-top: 1px solid var(--line); padding-top: 0.55rem; }
+.prediction-primary div b { color: var(--intel-gold); font-size: 0.7rem; }
+
+.prediction-metrics { display: grid; grid-template-columns: 1fr 1fr; margin-top: 0.6rem; }
+.prediction-metrics > div { display: grid; padding: 0.75rem; }
+.prediction-metrics > div + div { border-left: 1px solid var(--line); }
+.prediction-metrics strong { margin-top: 0.2rem; font-size: 1rem; }
+.trend-up { color: #4de2a7; }
+
+.prediction-drivers { margin-top: 0.6rem; padding: 0.8rem; }
+.prediction-drivers h3 { margin-bottom: 0.6rem; font-size: 0.7rem; }
+.prediction-drivers > div { display: flex; gap: 0.55rem; align-items: start; margin-top: 0.45rem; }
+.prediction-drivers > div span { display: grid; width: 1.15rem; height: 1.15rem; flex: none; place-items: center; border-radius: 999px; background: rgba(84,215,255,.1); color: var(--intel-cyan); font-size: 0.55rem; font-weight: 800; }
+.prediction-drivers p { color: var(--muted); font-size: 0.65rem; line-height: 1.45; }
+
+.patrol-recommendation { margin-top: 0.6rem; border-color: rgba(229,184,63,.22); background: rgba(229,184,63,.06); padding: 0.8rem; }
+.patrol-recommendation > span { color: var(--intel-gold); font-size: 0.53rem; font-weight: 900; letter-spacing: .12em; }
+.patrol-recommendation p { margin-top: 0.35rem; font-size: 0.68rem; line-height: 1.45; }
+.patrol-recommendation button { display: flex; width: 100%; min-height: 2.75rem; align-items: center; justify-content: space-between; margin-top: 0.7rem; border-radius: 0.55rem; background: var(--brand); padding: 0 0.75rem; color: white; font-size: 0.68rem; font-weight: 800; }
+.patrol-recommendation button:disabled { cursor: wait; opacity: .68; }
+.patrol-recommendation .patrol-result { margin-top: .55rem; border-radius: .45rem; padding: .45rem .55rem; background: rgba(77, 226, 167, .1); color: #238d65; font-size: .6rem; }
+.patrol-recommendation .patrol-result.is-error { background: rgba(255, 93, 104, .1); color: #d44350; }
+.empty-intelligence-panel { display: grid; min-height: 18rem; align-content: center; gap: .65rem; text-align: center; }
+.empty-intelligence-panel p { color: var(--muted); font-size: .7rem; line-height: 1.55; }
+
+.intelligence-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-top: 0.75rem; }
+.intelligence-summary > div { display: grid; min-height: 6rem; padding: 0.9rem; }
+.intelligence-summary span { color: var(--muted); font-size: 0.58rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.intelligence-summary strong { margin-top: 0.35rem; font-size: 1.35rem; }
+.intelligence-summary small { margin-top: 0.1rem; color: var(--muted); font-size: 0.6rem; }
+.model-ready { color: #4de2a7; }
+.intelligence-disclaimer { margin: 0.75rem 0 0; color: var(--muted); font-size: 0.6rem; text-align: center; }
+
+html.light .crime-map-card { box-shadow: 0 18px 45px rgba(11,49,95,.11); }
+
+@media (max-width: 1180px) {
+  .intelligence-layout { grid-template-columns: 1fr; }
+  .hotspot-intelligence-panel { display: grid; grid-template-columns: 1.2fr 8.3rem 1fr 1fr; gap: 0.75rem; align-items: center; }
+  .hotspot-intelligence-panel > .panel-eyebrow,
+  .hotspot-intelligence-panel > h2,
+  .hotspot-intelligence-panel > p { grid-column: 1; }
+  .hotspot-intelligence-panel .risk-ring { grid-column: 2; grid-row: 1 / span 3; margin: 0; }
+  .hotspot-intelligence-panel .prediction-primary { grid-column: 3; grid-row: 1 / span 3; }
+  .hotspot-intelligence-panel .prediction-metrics { grid-column: 4; grid-row: 1 / span 3; margin: 0; }
+  .prediction-drivers { grid-column: 1 / span 2; }
+  .patrol-recommendation { grid-column: 3 / span 2; }
+}
+
+@media (max-width: 767px) {
+  .crime-intelligence-hero { align-items: start; }
+  .model-signal { display: none; }
+  .intelligence-toolbar { display: grid; grid-template-columns: 1fr 1fr; }
+  .mode-switch { grid-column: 1 / -1; }
+  .intelligence-toolbar label { min-width: 0; }
+  .tilt-toggle { grid-column: 1 / -1; margin: 0; }
+  .map-status-row { align-items: start; }
+  .map-legend { display: none; }
+  .crime-map-viewport { min-height: 28rem; }
+  .real-map-viewport { min-height: 28rem; }
+  .real-map-city-badge { display: none; }
+  .real-map-help { right: auto; left: .65rem; bottom: 2rem; }
+  .crime-map-viewport.is-tilted .crime-map-plane { transform: rotateX(4deg) scale(.98); }
+  .time-intelligence { grid-template-columns: 5rem 1fr; padding-inline: .75rem; }
+  .hotspot-caption { display: none; }
+  .hotspot-intelligence-panel { display: block; }
+  .hotspot-intelligence-panel .risk-ring { margin: 1rem auto; }
+  .prediction-metrics { margin-top: .6rem; }
+  .intelligence-summary { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 420px) {
+  .crime-intelligence-page { padding: .75rem; }
+  .crime-intelligence-hero h1 { font-size: 1.55rem; }
+  .intelligence-toolbar { grid-template-columns: 1fr; }
+  .mode-switch,
+  .tilt-toggle { grid-column: 1; }
+  .crime-map-viewport { min-height: 24rem; }
+  .real-map-viewport { min-height: 24rem; }
+  .real-map-mode-badge { top: .6rem; left: .6rem; max-width: 10.5rem; }
+  .real-map-help { display: none; }
+  .hotspot-marker { width: 2.5rem; height: 2.5rem; }
+  .intelligence-summary { grid-template-columns: 1fr; }
+}
+
+/* Final crime-intelligence visual pass */
+.crime-intelligence-page { position: relative; isolation: isolate; }
+.crime-intelligence-page::before {
+  position: absolute;
+  inset: -2rem 8% auto;
+  z-index: -1;
+  height: 22rem;
+  background: radial-gradient(ellipse, rgba(37, 154, 210, .13), transparent 68%);
+  content: "";
+  pointer-events: none;
+}
+
+.crime-intelligence-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(84, 215, 255, .18);
+  border-radius: 1rem;
+  background:
+    linear-gradient(120deg, rgba(84, 215, 255, .07), transparent 42%),
+    linear-gradient(300deg, rgba(229, 184, 63, .06), transparent 38%),
+    var(--panel);
+  padding: 1.1rem 1.2rem;
+  box-shadow: 0 18px 55px rgba(3, 20, 34, .09);
+}
+
+.crime-intelligence-hero::after {
+  position: absolute;
+  top: -4rem;
+  right: 12%;
+  width: 12rem;
+  height: 12rem;
+  border: 1px solid rgba(84, 215, 255, .16);
+  border-radius: 999px;
+  box-shadow: 0 0 60px rgba(84, 215, 255, .08), inset 0 0 45px rgba(84, 215, 255, .05);
+  content: "";
+  pointer-events: none;
+}
+
+.crime-map-card {
+  border-color: rgba(84, 215, 255, .2);
+  box-shadow: 0 22px 65px rgba(3, 19, 33, .18), 0 0 0 1px rgba(84, 215, 255, .04);
+}
+
+.map-status-row {
+  background: linear-gradient(90deg, rgba(84, 215, 255, .06), transparent 45%, rgba(229, 184, 63, .05));
+}
+
+.real-crime-map-shell .maplibregl-canvas { filter: saturate(1.1) contrast(1.035); }
+
+.mode-switch button { transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease; }
+.mode-switch button[aria-pressed="true"] { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(11, 73, 121, .22); }
+.mode-switch button:disabled { cursor: not-allowed; opacity: .42; filter: grayscale(.55); }
+
+.hotspot-intelligence-panel {
+  border-color: rgba(84, 215, 255, .18);
+  background:
+    radial-gradient(circle at 100% 0, rgba(84, 215, 255, .08), transparent 28%),
+    var(--shell);
+  box-shadow: 0 20px 55px rgba(3, 19, 33, .13);
+}
+
+.risk-ring { filter: drop-shadow(0 9px 22px color-mix(in srgb, var(--ring-color) 24%, transparent)); }
+.prediction-primary,
+.prediction-metrics,
+.prediction-drivers { box-shadow: inset 0 1px rgba(255, 255, 255, .025); }
+
+.intelligence-summary > div {
+  border-color: rgba(84, 215, 255, .14);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+.intelligence-summary > div:hover {
+  transform: translateY(-2px);
+  border-color: rgba(84, 215, 255, .3);
+  box-shadow: 0 12px 28px rgba(3, 19, 33, .1);
+}
+
+html.light .crime-intelligence-hero,
+html.light .hotspot-intelligence-panel { box-shadow: 0 18px 48px rgba(11, 49, 95, .1); }
+
+
