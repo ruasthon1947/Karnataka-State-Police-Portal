@@ -63,6 +63,7 @@ export const Chat: React.FC = () => {
   const userId = user?.employeeId || "";
 
   const [input, setInput] = useState("");
+  const [liveCaption, setLiveCaption] = useState("");
   const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
   const [attachmentError, setAttachmentError] = useState("");
 
@@ -317,9 +318,10 @@ export const Chat: React.FC = () => {
     scrollToBottom();
 
     try {
+      const detectedLang = /[\u0C80-\u0CFF]/.test(trimmed) ? "kn" : language === "kn" ? "kn" : "en";
       const reply = await askCopilot({
         question: trimmed,
-        language: language === "kn" ? "kn" : "en",
+        language: detectedLang,
         history: recentHistory,
         attachment: outgoingAttachment || undefined,
       });
@@ -549,7 +551,9 @@ export const Chat: React.FC = () => {
                 value={input}
                 onChange={setInput}
                 onSend={() => send()}
-                onVoiceResult={(text) => send(text)}
+                onVoiceResult={(text) => { setLiveCaption(""); send(text); }}
+                liveCaption={liveCaption}
+                onLiveTranscript={setLiveCaption}
                 attachment={attachment}
                 attachmentError={attachmentError}
                 onAttachmentSelected={selectAttachment}
@@ -747,7 +751,7 @@ const Bubble: React.FC<{ msg: ChatMessage; tr: (en: string, kn: string) => strin
       )}
       <div
         className={`max-w-[92%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap sm:max-w-[86%] sm:px-4 sm:py-3 ${
-          isUser ? "bg-brand text-white" : "bg-shell text-white border border-line"
+          isUser ? "bg-brand text-white" : "bg-shell text-white border border-line max-h-72 overflow-y-auto"
         }`}
       >
         <Formatted text={msg.content} />
@@ -800,6 +804,8 @@ const Composer: React.FC<{
   onChange: (v: string) => void;
   onSend: () => void;
   onVoiceResult: (text: string) => void;
+  liveCaption: string;
+  onLiveTranscript: (text: string) => void;
   attachment: ChatAttachment | null;
   attachmentError: string;
   onAttachmentSelected: (file: File) => void;
@@ -812,6 +818,8 @@ const Composer: React.FC<{
   onChange,
   onSend,
   onVoiceResult,
+  liveCaption,
+  onLiveTranscript,
   attachment,
   attachmentError,
   onAttachmentSelected,
@@ -832,6 +840,18 @@ const Composer: React.FC<{
 
   return (
     <div className="rounded-2xl border border-line/60 bg-white dark:bg-[#14171f] px-3 py-2.5 shadow-[0_2px_14px_rgba(15,23,42,0.08)] dark:shadow-[0_2px_18px_rgba(0,0,0,0.35)] transition-all duration-200 ease-out focus-within:border-brand/50 focus-within:shadow-[0_2px_20px_rgba(37,99,235,0.15)] sm:px-4 sm:py-3">
+      {liveCaption && (
+        <div className="mb-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 shadow-[0_0_12px_rgba(239,68,68,0.15)]">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-block h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-red-400">Live Caption</span>
+          </div>
+          <p className="text-sm leading-relaxed text-white/90 break-words">
+            {liveCaption}
+            <span className="inline-block w-0.5 h-4 bg-red-400 animate-pulse ml-0.5 align-text-bottom" />
+          </p>
+        </div>
+      )}
       {attachment && (
         <div className="mb-2 flex items-center gap-2 rounded-lg border border-brand/30 bg-brand/10 px-3 py-2 text-xs text-slate-800 dark:text-white">
           <span aria-hidden="true">📎</span>
@@ -888,7 +908,12 @@ const Composer: React.FC<{
           ＋
         </button>
 
-        <VoiceButton language={language} onResult={(text) => onVoiceResult(text)} disabled={busy} />
+        <VoiceButton
+          language={language}
+          onResult={(text) => { onLiveTranscript(""); onVoiceResult(text); }}
+          disabled={busy}
+          onLiveTranscript={onLiveTranscript}
+        />
 
         <div className="flex-1" />
         <button

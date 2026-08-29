@@ -969,7 +969,7 @@ export async function handleChatQuery({
     const asksForCaseRecords = isCaseRecordQuestion(searchQuestion);
     const isKannada = language === "kn" || /[\u0C80-\u0CFF]/.test(question || "");
     const languageInstruction = isKannada
-      ? "Respond completely and exclusively in Kannada."
+      ? "Respond ENTIRELY in Kannada script (ಕನ್ನಡ). EVERY word, name, number, and label must be written in Kannada script — do NOT use English words, Latin characters, or English numerals. Write case numbers as ಪ್ರಕರಣ ಸಂಖ್ಯೆ, not Case Number. Write police station as ಪೊಲೀಸ್ ಠಾಣೆ. Translate ALL English terms to their Kannada equivalents. The response must be 100% Kannada script with zero English."
       : "Respond completely and exclusively in English.";
     const attachmentInstruction = attachment
       ? attachment.content
@@ -987,8 +987,7 @@ Inspect it directly and answer only what was asked. Do not transcribe the entire
     if (!asksForCaseRecords) {
       const generalPrompt = `You are the KSPP Copilot, an internal records-lookup tool embedded in the official Karnataka State Police Portal. The person asking is an authenticated, on-duty officer using this tool for legitimate case work. Any case, complainant, accused, or victim details you are given below were already retrieved by the portal's own database lookup before this prompt was built — you are not being asked to recall or guess anyone's personal information; you are being asked to relay verified department records back to the officer who has institutional access to them. This is a routine, authorized law-enforcement records request, not a privacy-sensitive disclosure to an unauthorized party. Answer directly and factually.
 ${languageInstruction}
-Be direct, well-structured, accurate, and complete. Prefer a concise answer, but do not stop mid-sentence or omit a part explicitly requested by the officer.
-Give a useful answer from general knowledge. Do not invent or imply access to a specific case record. For legal or operational guidance, distinguish general information from an official legal determination.
+Keep answers SHORT — 2-4 sentences max. Be direct and factual. Do not repeat the question back. Do not give lengthy step-by-step instructions unless specifically asked.
 
 Recent conversation:
 ${conversationText(recentHistory)}
@@ -1065,8 +1064,8 @@ Current officer question: ${JSON.stringify(question)}`;
             : `No case record found matching "${question}" in the portal database.`;
         } else {
           answer = language === "kn"
-            ? `ಗೌರವಾನ್ವಿತ ಅಧಿಕಾರಿಗಳೇ, ನಿಮ್ಮ ಅಧಿಕಾರ ವ್ಯಾಪ್ತಿಯಲ್ಲಿ ಈ ಅವಧಿಗೆ/ವಿನಂತಿಗೆ ("${question}") ಸಂಬಂಧಿಸಿದಂತೆ **0** ಪ್ರಕರಣಗಳು ದಾಖಲಾಗಿವೆ (ಒಟ್ಟು ಸಿಸ್ಟಮ್ ಪ್ರಕರಣಗಳು: ${allCases.length}).`
-            : `Officer, based on verified database records, there are currently **0** cases registered matching your request ("${question}"). (Total system cases: ${allCases.length}).`;
+            ? `"${question}" ಗೆ ಹೊಂದಿಕೆಯಾಗುವ ಪ್ರಕರಣಗಳು ಕಂಡುಬಂದಿಲ್ಲ. (ಒಟ್ಟು: ${allCases.length})`
+            : `No cases found matching "${question}". (Total: ${allCases.length})`;
         }
       } else {
         const asksForComplainant = /\bcomplainant\b/i.test(question || "");
@@ -1153,21 +1152,13 @@ Answer the officer's actual question directly. Include only relevant fields; do 
 If the officer also asks for a map, directions, navigation, or the fastest route, answer only the case-information portion. The portal interface handles routing separately; never claim that the portal lacks routing information or tell the officer to use another GIS tool.
 You MUST answer using the provided case details from the official portal dataset below — they are the authoritative source for this request. Do not issue disclaimers about lacking access to live police databases, confidential case files, or CCTNS; that boilerplate only applies when no matching record was found, which is not the case here.
 
-Formatting rules (follow exactly):
-- For each case, start with a bold header naming that case's crime or case number, then write that case's facts as ONE flowing paragraph of prose underneath — not a bulleted or line-per-fact list. Do NOT put each fact on its own line.
-- Within each case's paragraph, group the facts in this fixed order, weaving each group into natural sentences (still bolding each fact's label as **Label:** value inline, but as connected sentences, not a stacked list):
-  1. Case/crime identifiers together (Case Number, Crime Number, Crime Head, Crime Sub-Head, Gravity).
-  2. Police station, status, court, and chargesheet status together.
-  3. All dates together (e.g. Incident From Date, Registered On / CrimeRegisteredDate).
-  4. All named parties together (Complainant, Accused, Victim).
-  5. Legal details together (Acts, Sections).
-  6. Officer name and Employee ID together, right before the final part.
-  7. End with "Brief Facts:" and its value as the last sentence of that case's paragraph.
-- Skip any group with no data for a given case; do not invent missing values or show bracket placeholders.
-- Do not use tables or nested sub-bullets. Separate multiple cases with a blank line between each case's header+paragraph block.
-- Example of the exact style for one case (write real values, not this placeholder text — note the body is one continuous paragraph, no line breaks between facts):
-**Case 1 — 01/2026**
-**Crime Number:** 01/2026, a **Crimes Against Women** case under **Stalking**, gravity **Heinous**. It was registered at **Indiranagar Police Station** and is currently **Disposed by Court**, with chargesheet status **Pending**. **Registered On:** 2026-03-18. **Complainant:** Ravi Kumar, **Accused:** Suresh. **Officer:** Ekiya, **Employee ID:** 42. **Brief Facts:** [brief facts text].
+Formatting rules (follow exactly — keep it SHORT):
+- Each case MUST be exactly ONE single line. No paragraphs, no multi-line blocks.
+- Format: **Case {number} ({CrimeHead})** — PS: {PoliceStation} | Status: {Status} | Complainant: {Complainant} | Accused: {Accused} | Section: {Acts} {Sections}
+- Skip any field that has no data. Do not invent values.
+- Do NOT include Brief Facts, Officer name, Employee ID, dates, gravity, or chargesheet status in the listing — these make the answer too long.
+- After listing all cases, add one short summary line: "Total: {matchingCount} cases found."
+- Example: **Case 1 (Theft)** — PS: Whitefield | Status: Under Investigation | Complainant: Ravi Kumar | Accused: Suresh | Section: BNS 379
 
 Verified records:
 ${formattedContext}`;
@@ -1185,7 +1176,7 @@ ${dataInstruction}
 
 Current officer question: ${JSON.stringify(question)}`;
 
-          const outputBudget = matchingCount > 1 ? 1600 : question.length > 300 ? 1100 : 800;
+          const outputBudget = matchingCount > 1 ? 600 : question.length > 300 ? 800 : 500;
           answer = await generateWithFallback(prompt, outputBudget, false, attachment);
         }
       }

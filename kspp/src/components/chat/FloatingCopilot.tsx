@@ -15,6 +15,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { askCopilot } from "../../lib/chatApi";
 import { KSPP_AVATAR_SRC } from "../../assets/kspp-avatar";
+import { listenViaServer, startStreamingSTT } from "../../lib/speechApi";
 
 // The dedicated full-page AI Assistant lives at the root route.
 // Hide the floating copilot there so the user never sees two copilots.
@@ -445,7 +446,8 @@ function transliterateEnToKn(text: string): string {
   return result;
 }
 
-function getTranscriptLabel(text: string, lang: SpokenLang): { primary: string; secondary: string; primaryLang: 'kn' | 'en'; secondaryLang: 'kn' | 'en' } {
+function getTranscriptLabel(text: string, _lang: SpokenLang): { primary: string; secondary: string; primaryLang: 'kn' | 'en'; secondaryLang: 'kn' | 'en' } {
+  // Always show the original text as primary — no garbled transliteration.
   const isKannada = KANNADA_SCRIPT_RE.test(text);
   if (isKannada) {
     return {
@@ -455,11 +457,12 @@ function getTranscriptLabel(text: string, lang: SpokenLang): { primary: string; 
       secondaryLang: 'en',
     };
   }
+  // For English text, show it as-is (no Kannada transliteration)
   return {
     primary: text,
-    secondary: transliterateEnToKn(text),
+    secondary: text,
     primaryLang: 'en',
-    secondaryLang: 'kn',
+    secondaryLang: 'en',
   };
 }
 
@@ -552,7 +555,10 @@ export const FloatingCopilot: React.FC = () => {
   // State mirror of `vexylPlayingFlag` so the UI re-renders when audio starts/stops.
   const [vexylPlayingState, setVexylPlayingState] = useState(false);
   const textInputRef = useRef<HTMLInputElement | null>(null);
-  const SpeechRecognitionCtor = useRef(getSpeechRecognition());
+  // Flag to prevent onend from resetting state while server STT fallback is active.
+  const serverSttActiveRef = useRef(false);
+  // Streaming STT stop function — called when user clicks mic to stop.
+  const streamingSttStopRef = useRef<((discard?: boolean) => void) | null>(null);
 
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [interimTranscript, setInterimTranscript] = useState("");
@@ -784,8 +790,11 @@ export const FloatingCopilot: React.FC = () => {
       const trimmed = question.trim();
       if (!trimmed) return;
 
-      const answerLang: SpokenLang = viaVoice
-        ? voiceLangHint ?? "en"
+      // When KN mode is selected, always reply in Kannada — even if the
+      // question was typed in English.  Only auto-detect from script when
+      // the user is in EN mode but typed Kannada characters.
+      const answerLang: SpokenLang = spokenLang === "kn"
+        ? "kn"
         : KANNADA_SCRIPT_RE.test(trimmed)
           ? "kn"
           : "en";
@@ -822,112 +831,113 @@ export const FloatingCopilot: React.FC = () => {
         setState("idle");
       }
     },
-    [speak, stopSpeaking, tr],
+    [speak, spokenLang, stopSpeaking, tr],
   );
 
-  const toggleListening = useCallback(() => {
-    if (state === "listening") {
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
-      setState("idle");
-      return;
-    }
-
-    const Ctor = SpeechRecognitionCtor.current;
-
-    if (!Ctor) {
-      setErrorMsg(
-        tr(
-          "Voice input isn't supported in this browser.",
-          "ಈ ಬ್ರೌಸರ್‌ನಲ್ಲಿ ಧ್ವನಿ ಇನ್‌ಪುಟ್ ಬೆಂಬಲಿತವಾಗಿಲ್ಲ.",
-        ),
-      );
-      setIsOpen(true);
-      return;
-    }
-
+  // Server-side STT fallback — streaming with real-time captions.
+  // Used when the browser Web Speech API is unavailable (Brave, Electron, etc.).
+  const serverListenFallback = useCallback(() => {
     stopSpeaking();
     setErrorMsg(null);
     setAnswer(null);
     setAskedQuestion(null);
     setInterimTranscript("");
     setIsOpen(true);
+    // Stop any browser STT that might be running from a previous mode.
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+
     setState("listening");
+    serverSttActiveRef.current = true;
 
-    const recognition = new Ctor();
-    recognition.lang = spokenLang === "kn" ? "kn-IN" : "en-IN";
-    recognition.continuous = false;
-    recognition.interimResults = true;
+    const lang: "en" | "kn" = spokenLang === "kn" ? "kn" : "en";
+    setBilingualMode(lang);
+    let finalTranscript = "";
+    let stopped = false;
 
-    recognition.onresult = (event: any) => {
-      let combined = "";
-      let interim = "";
-      let isFinal = false;
-
-      for (let i = 0; i < event.results.length; i += 1) {
-        const piece = event.results[i][0]?.transcript || "";
-        if (event.results[i].isFinal) {
-          combined += piece;
-          isFinal = true;
-        } else {
-          interim += piece;
-        }
-      }
-
-      const displayText = (combined + interim).trim();
-      setInterimTranscript(displayText);
-      setAskedQuestion(displayText);
-
-      if (isFinal && combined.trim()) {
-        void submitQuestion(combined, true, spokenLang);
-      } else if (isFinal) {
-        setState("idle");
-      }
+    const finishServerStt = () => {
+      serverSttActiveRef.current = false;
+      streamingSttStopRef.current = null;
     };
 
-    recognition.onerror = (event: any) => {
-      const code = event?.error;
+    const { stop } = startStreamingSTT(
+      lang,
+      // onTranscript — called every ~3 seconds with live captions.
+      // Keep interimTranscript updated so the user sees captions.
+      // Only set askedQuestion on final submission.
+      (text, isFinal) => {
+        if (stopped) return;
+        setInterimTranscript(text);
+        finalTranscript = text;
 
-      const message =
-        code === "not-allowed" || code === "permission-denied"
-          ? tr(
-              "Microphone access is blocked. Please allow it in your browser settings.",
-              "ಮೈಕ್ರೊಫೋನ್ ಪ್ರವೇಶ ನಿರ್ಬಂಧಿಸಲಾಗಿದೆ. ದಯವಿಟ್ಟು ನಿಮ್ಮ ಬ್ರೌಸರ್ ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ಅನುಮತಿಸಿ.",
-            )
-          : code === "no-speech"
+        // When the final chunk arrives, submit the question
+        if (isFinal && text.trim()) {
+          stopped = true;
+          finishServerStt();
+          setInterimTranscript("");
+          void submitQuestion(text, true, lang);
+        } else if (isFinal) {
+          // Final chunk but no speech detected
+          stopped = true;
+          finishServerStt();
+          setInterimTranscript("");
+          setErrorMsg(
+            tr(
+              "No speech detected. Please try again.",
+              "ಧ್ವನಿ ಪತ್ತೆಯಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+            ),
+          );
+          setState("idle");
+        }
+      },
+      // onError
+      (errorMsg) => {
+        if (stopped) return;
+        setErrorMsg(
+          errorMsg.includes("Microphone")
             ? tr(
-                "Didn't catch that — try again.",
-                "ಅದು ಕೇಳಿಸಲಿಲ್ಲ — ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+                "Microphone is not available. Please allow microphone access and try again.",
+                "ಮೈಕ್ರೊಫೋನ್ ಲಭ್ಯವಿಲ್ಲ. ದಯವಿಟ್ಟು ಮೈಕ್ರೊಫೋನ್ ಪ್ರವೇಶವನ್ನು ಅನುಮತಿಸಿ.",
               )
             : tr(
-                "Couldn't hear that. Please try again.",
-                "ಅದು ಕೇಳಿಸಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
-              );
+                "Live captions are temporarily unavailable; recording is still active.",
+                "ಲೈವ್ ಶೀರ್ಷಿಕೆಗಳು ತಾತ್ಕಾಲಿಕವಾಗಿ ಲಭ್ಯವಿಲ್ಲ; ರೆಕಾರ್ಡಿಂಗ್ ಇನ್ನೂ ಸಕ್ರಿಯವಾಗಿದೆ.",
+              ),
+        );
+        if (errorMsg.includes("Microphone") || errorMsg.includes("supported")) {
+          stopped = true;
+          finishServerStt();
+          setState("idle");
+        }
+      },
+    );
 
-      setErrorMsg(message);
-      setState("idle");
-    };
+    streamingSttStopRef.current = stop;
+  }, [spokenLang, stopSpeaking, submitQuestion, tr]);
 
-    recognition.onend = () => {
+  const toggleListening = useCallback(() => {
+    if (state === "listening") {
+      // Stop browser Web Speech API if active
+      recognitionRef.current?.stop();
       recognitionRef.current = null;
-      setState((prev) => (prev === "listening" ? "idle" : prev));
-    };
-
-    recognitionRef.current = recognition;
-
-    try {
-      recognition.start();
-    } catch (error) {
-      console.error("Speech recognition could not start:", error);
-      recognitionRef.current = null;
+      // Stop server streaming STT if active
+      if (streamingSttStopRef.current) {
+        streamingSttStopRef.current();
+        streamingSttStopRef.current = null;
+      }
+      serverSttActiveRef.current = false;
       setState("idle");
-      setErrorMsg(
-        tr(
-          "Voice input could not be started. Please try again.",
-          "ಧ್ವನಿ ಇನ್‌ಪುಟ್ ಪ್ರಾರಂಭಿಸಲಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
-        ),
-      );
+      setInterimTranscript("");
+      return;
     }
+
+    // If server STT is already running (from KN mode), don't start browser STT.
+    if (serverSttActiveRef.current) return;
+
+    // Use the PCM streaming path for both languages. It supports long speech
+    // and avoids browser Web Speech ending after a short pause.
+    serverListenFallback();
+    return;
   }, [spokenLang, state, stopSpeaking, submitQuestion, tr]);
 
   const openConsole = useCallback(() => {
@@ -1101,7 +1111,7 @@ export const FloatingCopilot: React.FC = () => {
             <div className="mx-auto flex max-w-[205px] rounded-full border border-white/10 bg-[#07142b] p-0.5 shadow-inner">
               <button
                 type="button"
-                onClick={() => setSpokenLang("en")}
+                onClick={() => { setSpokenLang("en"); setBilingualMode("en"); }}
                 onPointerDown={(e) => e.stopPropagation()}
                 className={`flex-1 rounded-full px-4 py-1.5 text-[11px] font-semibold transition ${
                   spokenLang === "en"
@@ -1113,7 +1123,7 @@ export const FloatingCopilot: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setSpokenLang("kn")}
+                onClick={() => { setSpokenLang("kn"); setBilingualMode("kn"); }}
                 onPointerDown={(e) => e.stopPropagation()}
                 className={`flex-1 rounded-full px-4 py-1.5 text-[11px] font-semibold transition ${
                   spokenLang === "kn"
@@ -1181,8 +1191,8 @@ export const FloatingCopilot: React.FC = () => {
             </button>
           </div>
 
-          {/* Live transcript bubble (bilingual with KN/EN toggle) */}
-          {isListening && interimTranscript && (
+          {/* Live transcript bubble — hidden once askedQuestion is shown to avoid duplicate */}
+          {isListening && interimTranscript && !askedQuestion && (
             <div className="flex items-center gap-2 bg-slate-800/80 border border-slate-700/60 rounded-full px-4 py-2 text-xs text-white my-3">
               <span className="text-blue-400">👤</span>
               <span className="truncate flex-1">
@@ -1225,6 +1235,29 @@ export const FloatingCopilot: React.FC = () => {
                   EN
                 </button>
               </div>
+              {/* Send icon — submit what you've said so far */}
+              <button
+                type="button"
+                onClick={() => {
+                  // Stop streaming STT
+                  if (streamingSttStopRef.current) {
+                    streamingSttStopRef.current();
+                    streamingSttStopRef.current = null;
+                  }
+                  // Also stop browser speech recognition if active
+                  recognitionRef.current?.stop();
+                  recognitionRef.current = null;
+                  setInterimTranscript("");
+                }}
+                className="ml-1 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#1264e6] text-white shadow transition hover:bg-[#1a7af7] active:scale-95"
+                title={tr("Send", "ಕಳುಹಿಸಿ")}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
             </div>
           )}
 
@@ -1302,7 +1335,7 @@ export const FloatingCopilot: React.FC = () => {
                 <ShieldCheck size={22} strokeWidth={2.1} />
               </div>
 
-              <div className="min-w-0 flex-1 text-[12px] font-semibold leading-5">
+              <div className="min-w-0 flex-1 text-[12px] font-semibold leading-5 max-h-48 overflow-y-auto">
                 {answer}
               </div>
 
@@ -1362,40 +1395,47 @@ export const FloatingCopilot: React.FC = () => {
               onPointerDown={(e) => e.stopPropagation()}
               className="mx-3 mb-3 flex items-center gap-2 rounded-xl border border-white/10 bg-[#07142b] p-1.5"
             >
-              <input
-                ref={textInputRef}
-                autoFocus
-                type="text"
-                value={textInput}
-                onChange={(e) => {
-                  setTextInput(e.target.value);
-                  const el = e.currentTarget;
-                  el.style.setProperty(
-                    "background-color",
-                    "#071b3a",
-                    "important",
-                  );
-                  el.style.setProperty("color", "#ffffff", "important");
-                  el.style.setProperty(
-                    "-webkit-text-fill-color",
-                    "#ffffff",
-                    "important",
-                  );
-                }}
-                placeholder={tr(
-                  "Type a question...",
-                  "ಪ್ರಶ್ನೆಯನ್ನು ಟೈಪ್ ಮಾಡಿ...",
-                )}
-                className="min-w-0 flex-1 rounded-lg border-0 bg-[#071b3a] px-2.5 py-2 text-xs text-white outline-none placeholder:text-white/35 focus:ring-0"
-              />
-              <button
-                type="submit"
-                onPointerDown={(e) => e.stopPropagation()}
-                disabled={!textInput.trim() || isThinking}
-                className="rounded-lg bg-[#1264e6] px-3 py-2 text-[11px] font-semibold text-white transition hover:bg-[#2173f0] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {tr("Ask", "ಕೇಳಿ")}
+              <div className="relative min-w-0 flex-1">
+                <input
+                  ref={textInputRef}
+                  autoFocus
+                  type="text"
+                  value={textInput}
+                  onChange={(e) => {
+                    setTextInput(e.target.value);
+                    const el = e.currentTarget;
+                    el.style.setProperty(
+                      "background-color",
+                      "#071b3a",
+                      "important",
+                    );
+                    el.style.setProperty("color", "#ffffff", "important");
+                    el.style.setProperty(
+                      "-webkit-text-fill-color",
+                      "#ffffff",
+                      "important",
+                    );
+                  }}
+                  placeholder={tr(
+                    "Type a question...",
+                    "ಪ್ರಶ್ನೆಯನ್ನು ಟೈಪ್ ಮಾಡಿ...",
+                  )}
+                  className="w-full rounded-lg border-0 bg-[#071b3a] pl-2.5 pr-8 py-2 text-xs outline-none placeholder:text-white/35 focus:ring-0"
+                  style={{ color: '#ffffff', WebkitTextFillColor: '#ffffff', caretColor: '#ffffff' }}
+                />
+                <button
+                  type="submit"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  disabled={!textInput.trim() || isThinking}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full text-white/40 transition hover:text-[#2173f0] disabled:cursor-not-allowed disabled:opacity-30"
+                  title={tr("Send", "ಕಳುಹಿಸಿ")}
+                >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
               </button>
+              </div>
             </form>
           )}
 
@@ -1420,35 +1460,95 @@ export const FloatingCopilot: React.FC = () => {
               </button>
 
               <div className="flex flex-col items-center">
-                <button
-                  type="button"
-                  onClick={toggleListening}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  disabled={isThinking}
-                  className={`grid h-14 w-14 place-items-center rounded-full border border-[#378af1] bg-[#075bc9] text-white shadow-[0_7px_20px_rgba(0,87,201,0.32)] transition hover:bg-[#126bdf] disabled:cursor-not-allowed disabled:opacity-50 ${
-                    isListening ? "animate-pulse" : ""
-                  }`}
-                  title={
-                    isListening
-                      ? tr("Stop listening", "ಆಲಿಸುವುದನ್ನು ನಿಲ್ಲಿಸಿ")
-                      : tr("Ask again", "ಮತ್ತೆ ಕೇಳಿ")
-                  }
-                  aria-label={
-                    isListening
-                      ? tr("Stop listening", "ಆಲಿಸುವುದನ್ನು ನಿಲ್ಲಿಸಿ")
-                      : tr("Ask again", "ಮತ್ತೆ ಕೇಳಿ")
-                  }
-                >
-                  {isListening ? (
-                    <MicOff size={24} />
-                  ) : (
-                    <Mic size={24} />
-                  )}
-                </button>
+                {/* When listening with captions, show Retry + Send; otherwise Mic/Stop */}
+                {isListening && interimTranscript ? (
+                  <div className="flex items-center gap-3">
+                    {/* Retry — discard current captions and re-record */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInterimTranscript("");
+                        setAskedQuestion(null);
+                        // Discard the current stream before starting a new one.
+                        if (streamingSttStopRef.current) {
+                          streamingSttStopRef.current(true);
+                          streamingSttStopRef.current = null;
+                        }
+                        recognitionRef.current?.stop();
+                        recognitionRef.current = null;
+                        setState("idle");
+                        setTimeout(() => serverListenFallback(), 150);
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className="grid h-11 w-11 place-items-center rounded-full border border-white/20 bg-white/10 text-white/70 transition hover:bg-white/20 hover:text-white"
+                      title={tr("Re-record", "ಮರು-ರೆಕಾರ್ಡ್")}
+                      aria-label={tr("Re-record", "ಮರು-ರೆಕಾರ್ಡ್")}
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="23 4 23 10 17 10" />
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                      </svg>
+                    </button>
+
+                    {/* Send — submit what was said */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const text = interimTranscript.trim();
+                        if (streamingSttStopRef.current) {
+                          streamingSttStopRef.current();
+                          streamingSttStopRef.current = null;
+                        }
+                        recognitionRef.current?.stop();
+                        recognitionRef.current = null;
+                        setInterimTranscript("");
+                        if (!text) setState("idle");
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      disabled={isThinking}
+                      className="grid h-14 w-14 place-items-center rounded-full border border-emerald-400 bg-emerald-600 text-white shadow-[0_7px_20px_rgba(16,185,129,0.35)] transition hover:bg-emerald-500"
+                      title={tr("Send", "ಕಳುಹಿಸಿ")}
+                      aria-label={tr("Send message", "ಸಂದೇಶ ಕಳುಹಿಸಿ")}
+                    >
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13" />
+                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                      </svg>
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={toggleListening}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    disabled={isThinking}
+                    className={`grid h-14 w-14 place-items-center rounded-full border border-[#378af1] bg-[#075bc9] text-white shadow-[0_7px_20px_rgba(0,87,201,0.32)] transition hover:bg-[#126bdf] disabled:cursor-not-allowed disabled:opacity-50 ${
+                      isListening ? "animate-pulse" : ""
+                    }`}
+                    title={
+                      isListening
+                        ? tr("Stop listening", "ಆಲಿಸುವುದನ್ನು ನಿಲ್ಲಿಸಿ")
+                        : tr("Ask again", "ಮತ್ತೆ ಕೇಳಿ")
+                    }
+                    aria-label={
+                      isListening
+                        ? tr("Stop listening", "ಆಲಿಸುವುದನ್ನು ನಿಲ್ಲಿಸಿ")
+                        : tr("Ask again", "ಮತ್ತೆ ಕೇಳಿ")
+                    }
+                  >
+                    {isListening ? (
+                      <MicOff size={24} />
+                    ) : (
+                      <Mic size={24} />
+                    )}
+                  </button>
+                )}
                 <span className="mt-1.5 text-[10px] text-white/55">
-                  {isListening
-                    ? tr("Listening", "ಆಲಿಸಲಾಗುತ್ತಿದೆ")
-                    : tr("Ask again", "ಮತ್ತೆ ಕೇಳಿ")}
+                  {isListening && interimTranscript
+                    ? tr("Retry / Send", "ಮರು-ರೆಕಾರ್ಡ್ / ಕಳುಹಿಸಿ")
+                    : isListening
+                      ? tr("Listening", "ಆಲಿಸಲಾಗುತ್ತಿದೆ")
+                      : tr("Ask again", "ಮತ್ತೆ ಕೇಳಿ")}
                 </span>
               </div>
 
