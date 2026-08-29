@@ -225,12 +225,7 @@ const CrimeIntelligence: React.FC = () => {
             <div className="prediction-primary"><span>{tr("Dominant recorded pattern", "ಪ್ರಮುಖ ದಾಖಲಾದ ಮಾದರಿ")}</span><strong>{displayKnownValue(selected.category, language)}</strong><div><span>{tr("Peak recorded window", "ಗರಿಷ್ಠ ದಾಖಲಾದ ಅವಧಿ")}</span><b>{selected.peakWindow}</b></div></div>
             <div className="prediction-metrics"><div><span>{tr("Nearby FIRs", "ಹತ್ತಿರದ ಎಫ್‌ಐಆರ್‌ಗಳು")}</span><strong>{selected.nearbyCases}</strong></div><div><span>{tr("7-day trend", "7 ದಿನಗಳ ಪ್ರವೃತ್ತಿ")}</span><strong className={selected.trend > 0 ? "trend-up" : ""}>{selected.trend > 0 ? "↗" : "↘"} {Math.abs(selected.trend)}%</strong></div></div>
             <div className="prediction-drivers"><h3>{tr("How this score was calculated", "ಈ ಅಂಕವನ್ನು ಹೇಗೆ ಲೆಕ್ಕ ಹಾಕಲಾಗಿದೆ")}</h3>{selectedDrivers(selected).map((driver, index) => <div key={driver}><span>{index + 1}</span><p>{driver}</p></div>)}</div>
-            <div className="patrol-recommendation">
-              <span>{tr("TWILIO PATROL ALERT", "TWILIO ಗಸ್ತು ಎಚ್ಚರಿಕೆ")}</span>
-              <p>{tr(`Send a real SMS alert to verified, opted-in officers mapped to ${selected.station}.`, `${displayPlaceName(selected.station, language)} ಗೆ ನಿಯೋಜಿಸಲಾದ ದೃಢೀಕೃತ, ಒಪ್ಪಿಗೆ ನೀಡಿದ ಅಧಿಕಾರಿಗಳಿಗೆ ನೈಜ SMS ಎಚ್ಚರಿಕೆ ಕಳುಹಿಸಿ.`)}</p>
-              <button type="button" disabled={patrol.status === "sending"} onClick={() => void sendSelectedPatrolAlert()}>{patrol.status === "sending" ? tr("Sending SMS…", "SMS ಕಳುಹಿಸಲಾಗುತ್ತಿದೆ…") : tr("Send patrol SMS alert", "ಗಸ್ತು SMS ಎಚ್ಚರಿಕೆ ಕಳುಹಿಸಿ")}<b>{patrol.status === "sent" ? "✓" : "→"}</b></button>
-              {patrol.message ? <p className={`patrol-result is-${patrol.status}`}>{patrol.message}</p> : null}
-            </div>
+            
           </> : <div className="empty-intelligence-panel"><div className="panel-eyebrow">{tr("NO LOCATION SELECTED", "ಯಾವುದೇ ಸ್ಥಳ ಆಯ್ಕೆ ಮಾಡಿಲ್ಲ")}</div><h2>{tr("Waiting for geocoded FIR data", "ಜಿಯೋ-ಕೋಡ್ ಎಫ್‌ಐಆರ್ ದತ್ತಾಂಶಕ್ಕಾಗಿ ಕಾಯಲಾಗುತ್ತಿದೆ")}</h2><p>{tr("Add valid Bengaluru latitude and longitude values to the Google Sheet, then refresh this page.", "Google Sheet ಗೆ ಮಾನ್ಯ ಬೆಂಗಳೂರು ಅಕ್ಷಾಂಶ ಮತ್ತು ರೇಖಾಂಶ ಮೌಲ್ಯಗಳನ್ನು ಸೇರಿಸಿ, ನಂತರ ಈ ಪುಟವನ್ನು ರಿಫ್ರೆಶ್ ಮಾಡಿ.")}</p></div>}
         </aside>
       </section>

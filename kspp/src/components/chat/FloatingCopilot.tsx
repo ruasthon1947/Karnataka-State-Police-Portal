@@ -1184,9 +1184,9 @@ export const FloatingCopilot: React.FC = () => {
               }
             >
               {isListening ? (
-                <MicOff size={30} strokeWidth={1.8} />
-              ) : (
                 <Mic size={31} strokeWidth={1.8} />
+              ) : (
+                <MicOff size={30} strokeWidth={1.8} />
               )}
             </button>
           </div>
@@ -1537,9 +1537,9 @@ export const FloatingCopilot: React.FC = () => {
                     }
                   >
                     {isListening ? (
-                      <MicOff size={24} />
-                    ) : (
                       <Mic size={24} />
+                    ) : (
+                      <MicOff size={24} />
                     )}
                   </button>
                 )}
