@@ -3,7 +3,6 @@ dns.setDefaultResultOrder("ipv4first");
 
 import { readExplicitTabRecords } from "./sheetsStore.mjs";
 import { casesFromGoogle } from "./googleSheets.mjs";
-import { filterCasesForSession } from "./security.mjs";
 
 const chatHistoryStore = new Map();
 
@@ -148,57 +147,6 @@ export function normalizeSheetRecord(row) {
   };
 }
 
-export function isPendingCase(record) {
-  const status = String(record?.Status || "").trim().toLowerCase();
-  if (!status) return false;
-  return !/(disposed|closed|acquit|charge\s*sheeted|convict|cancelled|canceled)/i.test(status);
-}
-
-function asksForAssignedPoliceStation(question) {
-  const text = String(question || "").trim();
-  return (
-    /\b(?:which|what)\s+(?:is\s+)?(?:my|our)\s+(?:assigned\s+)?police\s+station\b/i.test(text) ||
-    /\b(?:my|our)\s+(?:assigned\s+)?police\s+station\b/i.test(text) ||
-    /(?:ನನ್ನ|ನಮ್ಮ).*(?:ಪೊಲೀಸ್\s*ಠಾಣೆ|ಠಾಣೆ)/u.test(text)
-  );
-}
-
-function asksForPendingCaseCount(question) {
-  const text = String(question || "").trim();
-  return (
-    /\b(?:how\s+many|number\s+of|count|total)\b.*\b(?:pending|active|under\s+investigation)\b.*\b(?:cases?|firs?)\b/i.test(text) ||
-    /\b(?:how\s+many|number\s+of|count|total)\b.*\b(?:cases?|firs?)\b.*\b(?:pending|active|under\s+investigation)\b/i.test(text) ||
-    /\b(?:pending|active|under\s+investigation)\b.*\b(?:cases?|firs?)\b/i.test(text) ||
-    /(?:ಎಷ್ಟು|ಸಂಖ್ಯೆ).*(?:ಬಾಕಿ|ತನಿಖೆ).*(?:ಪ್ರಕರಣ|ಎಫ್\.?ಐ\.?ಆರ್)/u.test(text) ||
-    /(?:ಬಾಕಿ|ತನಿಖೆ).*(?:ಪ್ರಕರಣ|ಎಫ್\.?ಐ\.?ಆರ್)/u.test(text)
-  );
-}
-
-const KANNADA_STATION_NAMES = new Map([
-  ["byappanahalli", "ಬೈಯಪ್ಪನಹಳ್ಳಿ ಪೊಲೀಸ್ ಠಾಣೆ"],
-  ["baiyappanahalli", "ಬೈಯಪ್ಪನಹಳ್ಳಿ ಪೊಲೀಸ್ ಠಾಣೆ"],
-  ["whitefield", "ವೈಟ್‌ಫೀಲ್ಡ್ ಪೊಲೀಸ್ ಠಾಣೆ"],
-  ["indiranagar", "ಇಂದಿರಾನಗರ ಪೊಲೀಸ್ ಠಾಣೆ"],
-  ["jayanagar", "ಜಯನಗರ ಪೊಲೀಸ್ ಠಾಣೆ"],
-  ["koramangala", "ಕೋರಮಂಗಲ ಪೊಲೀಸ್ ಠಾಣೆ"],
-  ["yelahanka", "ಯಲಹಂಕ ಪೊಲೀಸ್ ಠಾಣೆ"],
-]);
-
-function stationNameForKannada(value) {
-  const official = String(value || "").trim();
-  const key = official
-    .toLowerCase()
-    .replace(/\bpolice\s+station\b/g, "")
-    .replace(/\bps\b/g, "")
-    .replace(/[^a-z]/g, "");
-  return KANNADA_STATION_NAMES.get(key) || official;
-}
-
-function kannadaNumber(value) {
-  const digits = "೦೧೨೩೪೫೬೭೮೯";
-  return String(value).replace(/\d/g, (digit) => digits[Number(digit)]);
-}
-
 function normalizeLocationOrTerm(term) {
   const t = String(term || "").toLowerCase().trim();
   if (t === "whitefiled" || t === "whitefield") return "whitefield";
@@ -278,6 +226,201 @@ function sanitizeFieldValue(key, value) {
     return "⚠ data formatting issue in source sheet — verify against the original record";
   }
   return v;
+}
+
+// Narrow "just the name/value" follow-ups (e.g. "who was the accused in
+// this case", "which police station handled this") don't need — and were
+// incorrectly getting — the full flowing-paragraph case summary. The prompt
+// used for that summary says "include only fields relevant to the question"
+// but the formatting rules right below that line mandate the full
+// grouped-paragraph template with an example showing every field, and in
+// practice the model followed the template over the narrower instruction,
+// so every follow-up came back as the entire case dump again.
+// This table drives a deterministic, LLM-free short answer for these
+// specific single/few-field lookups instead, so the reply is always exactly
+// what was asked for and can't regress to the full paragraph again.
+const NAMED_FIELD_RULES = [
+  { key: "Complainant", test: /\bcomplainant\b|\breporter\b/i, emoji: "👤", label: { en: "Complainant", kn: "ದೂರುದಾರ" } },
+  { key: "AccusedNames", test: /\baccused\b|\bculprit\b|\bsuspect\b/i, emoji: "🚨", label: { en: "Accused", kn: "ಆರೋಪಿ" } },
+  { key: "VictimNames", test: /\bvictim\b/i, emoji: "🧍", label: { en: "Victim", kn: "ಬಲಿಪಶು" } },
+  { key: "Officer", test: /\bofficer\b|\binvestigating\s+officer\b|\binvestigator\b|\bio\b/i, emoji: "🧑‍✈️", label: { en: "Officer", kn: "ಅಧಿಕಾರಿ" } },
+  {
+    key: "PoliceStation",
+    test: /\bpolice\s*station\b|\bstation\b|\bvenue\b|\bregistration\s+station\b|\bwhere\s+was\s+it\s+registered\b|\bwhere\s+was\s+this\s+registered\b/i,
+    emoji: "🏢",
+    label: { en: "Registered Police Station", kn: "ನೋಂದಾಯಿತ ಪೊಲೀಸ್ ಠಾಣೆ" },
+  },
+  {
+    key: "PoliceStation",
+    test: /\b(?:location|place)\b/i,
+    emoji: "🏢",
+    label: { en: "Registered Police Station", kn: "ನೋಂದಾಯಿತ ಪೊಲೀಸ್ ಠಾಣೆ" },
+  },
+  {
+    key: "Date",
+    test: /\b(?:date|registered\s+on|registration\s+date|crime\s+registered\s+date|incident\s+date|when\s+was\s+(?:it|this)\s+registered)\b/i,
+    emoji: "📅",
+    label: { en: "Date", kn: "ದಿನಾಂಕ" },
+    fields: ["CrimeRegisteredDate", "RegisteredOn", "IncidentFromDate", "IncidentDate"],
+  },
+  {
+    key: "IncidentLocation",
+    test: /\bincident\s*location\b|\bplace\s*of\s*(?:occurrence|incident)\b|\bcrime\s*location\b|\bwhere\s*(?:did|was)\b[\s\S]*\b(?:happen|occur(?:red)?|took\s*place)\b/i,
+    emoji: "📍",
+    label: { en: "Incident Location", kn: "ಘಟನೆ ಸ್ಥಳ" },
+    // The actual column name varies by sheet, so try every known variant.
+    fields: ["PlaceOfOccurrence", "PlaceOfIncident", "CrimeLocation", "Location", "IncidentPlace", "Address"],
+  },
+];
+
+// Full-detail intent must win over the narrow entity shortcut when the officer
+// is asking for the case as a whole. Specific-field wording (complainant,
+// accused, officer, victim, station, etc.) is handled separately below.
+const FULL_DETAIL_INTENT_RE =
+  /(?:\b(?:complete|full|entire|every|all)\b[\s\S]*\b(?:details?|info(?:rmation)?)\b|\b(?:details?|info(?:rmation)?)\b[\s\S]*\b(?:complete|full|entire|every|all)\b|\b(?:give|show|provide|display)\b[\s\S]*\b(?:case|report|summary|details?|info(?:rmation)?)\b|\b(?:show|give|provide|display)\s+(?:the\s+)?(?:case|full\s+report|report|summary|details?|info(?:rmation)?)\b|\b(?:full\s+report|case\s+summary|summary\s+of\s+(?:the\s+)?case|case\s+details|complete\s+case|all\s+(?:the\s+)?info(?:rmation)?|all\s+info|summary)\b)/i;
+
+function matchNamedFieldQuery(question) {
+  const q = String(question || "");
+  const matches = NAMED_FIELD_RULES.filter((rule) => rule.test.test(q));
+
+  // An explicitly named field wins over generic "give details" wording.
+  // This keeps "give details of the complainant" as a targeted extraction,
+  // while "give details of CR-202600002" remains a full case request.
+  if (matches.length > 0) return matches;
+  if (FULL_DETAIL_INTENT_RE.test(q)) return [];
+  return matches;
+}
+
+function fieldValueForRule(record, rule) {
+  const candidates = rule.fields || [rule.key];
+  for (const key of candidates) {
+    const v = sanitizeFieldValue(key, record?.[key]);
+    if (v && v !== "N/A" && v !== "None listed.") return v;
+  }
+  return "";
+}
+
+// Catches narrow single-entity questions phrased in ways NAMED_FIELD_RULES
+// doesn't cover (e.g. "name the perpetrator", "point of registration") —
+// only questions that look like they want one specific fact, never broader
+// ones, so this never competes with the full-paragraph flow below.
+const SHORT_ENTITY_QUESTION_RE = /^(?:who|what|which|where)\b/i;
+
+function buildEntityContextLine(record) {
+  const parts = [];
+  const push = (label, value) => {
+    const v = sanitizeFieldValue(label, value);
+    if (v && v !== "N/A" && v !== "None listed.") parts.push(`${label}: ${v}`);
+  };
+  push("Complainant", record.Complainant);
+  push("Accused", record.AccusedNames);
+  push("Victim", record.VictimNames);
+  push("Officer", record.Officer);
+  push("Registered Police Station", record.PoliceStation);
+  push("Date", fieldValueForRule(record, NAMED_FIELD_RULES.find((r) => r.key === "Date")));
+  return parts.join(", ");
+}
+
+// Strips any label/prefix the model added despite being told not to
+// (e.g. "Officer: Ekiya" -> "Ekiya"), and keeps only the first line, so the
+// result can never regress into a multi-line or prefixed answer even if the
+// model doesn't follow the formatting instruction exactly.
+function cleanSingleLineEntity(raw) {
+  const firstLine = String(raw || "").split("\n").map((s) => s.trim()).filter(Boolean)[0] || "";
+  return firstLine.replace(/^[\p{Emoji_Presentation}\p{So}]?\s*\**[A-Za-z ]{2,30}:\**\s*/u, "").trim();
+}
+
+async function resolveNamedFieldViaModel(record, question, isKannada) {
+  if (!SHORT_ENTITY_QUESTION_RE.test(String(question || "").trim())) return "";
+  const context = buildEntityContextLine(record);
+  if (!context) return "";
+
+  const languageLine = isKannada
+    ? "Respond in Kannada only."
+    : "Respond in English only.";
+
+  const prompt = `You are a strict QA and Entity Extraction Assistant for crime records.
+
+STRICT OUTPUT FORMAT RULES:
+1. If the user asks for "complete details", "full report", or "all info", respond with the entire context summary.
+2. If the user asks for a specific field (Accused, Officer, Complainant, Station, Victim, Location, Date, etc.), output ONLY the value matching that field.
+3. NEVER repeat the full context text when a specific question is asked.
+4. Output MUST be short, direct, and contain ZERO conversational filler.
+
+FIELD MAPPING GUIDE:
+- Accused / Culprit / Suspect -> Return "Accused"
+- Officer / IO / Investigator -> Return "Officer"
+- Complainant / Reporter -> Return "Complainant"
+- Victim -> Return "Victim"
+- Police Station / Location -> Return "Registered Police Station"
+- Date -> Return "Date"
+
+FEW-SHOT EXAMPLES:
+
+Context: UCase 202600002 ... Complainant: Bhavya Chander, Accused: Mohammed Sehgal, Officer: Ekiya ...
+User: who is the accused in this case
+Assistant: Mohammed Sehgal
+
+Context: UCase 202600002 ... Complainant: Bhavya Chander, Accused: Mohammed Sehgal, Officer: Ekiya ...
+User: who is the officer in this case
+Assistant: Ekiya
+
+Context: UCase 202600002 ... Complainant: Bhavya Chander, Accused: Mohammed Sehgal, Officer: Ekiya ...
+User: who is the complainant in this case
+Assistant: Bhavya Chander
+
+Context: UCase 202600002 ... Complainant: Bhavya Chander, Accused: Mohammed Sehgal, Officer: Ekiya ...
+User: give me the complete details of cr 202600002
+Assistant: UCase 202600002 Crime Number: 2, a Crimes Against Women case under Stalking...
+
+Additional extraction rule: Never invent a value. If the requested field is absent from the supplied context, output exactly: Not recorded.
+
+Context:
+${context}
+
+User: ${question}
+
+OUTPUT:`;
+
+  try {
+    const raw = await generateWithFallback(prompt, 40, false, null);
+    return cleanSingleLineEntity(raw);
+  } catch {
+    return "";
+  }
+}
+
+function buildNamedFieldAnswer(record, matches, isKannada) {
+  const notRecorded = isKannada ? "ದಾಖಲಾಗಿಲ್ಲ" : "Not recorded";
+  const reference = record.CrimeNo || record.CaseNo || record.CaseMasterID ||
+    (isKannada ? "ಹೊಂದಾಣಿಕೆಯಾದ ಪ್ರಕರಣ" : "Matched case");
+
+  // Preserve the exact previously-confirmed output for the
+  // complainant+accused combo query, byte-for-byte.
+  const matchedKeys = matches.map((m) => m.key);
+  if (matchedKeys.length === 2 && matchedKeys.includes("Complainant") && matchedKeys.includes("AccusedNames")) {
+    const complainant = record.Complainant || notRecorded;
+    const accused = record.AccusedNames || notRecorded;
+    return isKannada
+      ? `📌 **ಪ್ರಕರಣ:** ${reference}\n👤 **ದೂರುದಾರ:** ${complainant}\n🚨 **ಆರೋಪಿ:** ${accused}`
+      : `📌 **Case:** ${reference}\n👤 **Complainant:** ${complainant}\n🚨 **Accused:** ${accused}`;
+  }
+
+  const lines = matches.map((rule) => {
+    const value = fieldValueForRule(record, rule) || notRecorded;
+    const label = isKannada ? rule.label.kn : rule.label.en;
+    return `${rule.emoji} **${label}:** ${value}`;
+  });
+
+  // A single requested field returns ONLY the target value, matching the
+  // strict extraction contract. Multiple requested fields keep the existing
+  // compact labeled format (and the complainant+accused output above remains
+  // byte-for-byte compatible with the previously confirmed behavior).
+  if (lines.length === 1) {
+    return fieldValueForRule(record, matches[0]) || notRecorded;
+  }
+  const header = isKannada ? `📌 **ಪ್ರಕರಣ:** ${reference}` : `📌 **Case:** ${reference}`;
+  return [header, ...lines].join("\n");
 }
 
 const DEFAULT_CHAT_OUTPUT_TOKENS = 900;
@@ -1005,9 +1148,7 @@ export async function handleChatQuery({
   role,
   stationId,
   employeeId,
-  officerName,
   language,
-  spoken = false,
   history,
   attachment,
   sessionId,
@@ -1023,11 +1164,8 @@ export async function handleChatQuery({
     const asksForCaseRecords = isCaseRecordQuestion(searchQuestion);
     const isKannada = language === "kn" || /[\u0C80-\u0CFF]/.test(question || "");
     const languageInstruction = isKannada
-      ? "Respond ENTIRELY in Kannada script (ಕನ್ನಡ). EVERY word, name, number, and label must be written in Kannada script — do NOT use English words, Latin characters, or English numerals. Write case numbers as ಪ್ರಕರಣ ಸಂಖ್ಯೆ, not Case Number. Write police station as ಪೊಲೀಸ್ ಠಾಣೆ. Translate ALL English terms to their Kannada equivalents. The response must be 100% Kannada script with zero English."
+      ? "Respond completely and exclusively in Kannada."
       : "Respond completely and exclusively in English.";
-    const spokenInstruction = spoken
-      ? "This response will be read aloud. Use natural, grammatically complete sentences suitable for a Karnataka police officer. Keep it to 1-3 short sentences unless more detail was explicitly requested. Use commas and full stops to create natural pauses. Do not use markdown, emoji, bullets, tables, slash-separated labels, or sentence fragments. Preserve exact case identifiers and names. This spoken-answer rule overrides any visual formatting rule below."
-      : "";
     const attachmentInstruction = attachment
       ? attachment.content
         ? `The officer attached ${JSON.stringify(attachment.name)} (${attachment.mimeType}).
@@ -1041,44 +1179,11 @@ Inspect it directly and answer only what was asked. Do not transcribe the entire
 
     let answer = "";
 
-    // Answer signed-in profile and workload questions directly. These do not
-    // need a model call, so they are faster, deterministic, and remain scoped
-    // to the officer's existing record permissions.
-    if (asksForAssignedPoliceStation(question)) {
-      const station = String(stationId || "").trim();
-      if (isKannada) {
-        return station
-          ? `ನಿಮಗೆ ನಿಯೋಜಿಸಲಾದ ಠಾಣೆ ${stationNameForKannada(station)}.`
-          : "ನಿಮ್ಮ ಉದ್ಯೋಗಿ ಪ್ರೊಫೈಲ್‌ನಲ್ಲಿ ನಿಯೋಜಿತ ಪೊಲೀಸ್ ಠಾಣೆಯ ಮಾಹಿತಿ ಲಭ್ಯವಿಲ್ಲ.";
-      }
-      return station
-        ? `Your assigned police station is ${station}.`
-        : "Your assigned police station is not available in your employee profile.";
-    }
-
-    if (asksForPendingCaseCount(question)) {
-      const consolidatedData = await getCachedTabRecords(
-        "consolidated",
-        () => casesFromGoogle(),
-        { rows: [] },
-      );
-      const allCases = (consolidatedData.rows || []).map(normalizeSheetRecord);
-      const accessibleCases = filterCasesForSession(
-        { role, policeStation: stationId, employeeId, name: officerName },
-        allCases,
-      );
-      const pendingCount = accessibleCases.filter(isPendingCase).length;
-      if (isKannada) {
-        return `ನಿಮಗೆ ಪ್ರವೇಶವಿರುವ ದಾಖಲೆಗಳಲ್ಲಿ ಪ್ರಸ್ತುತ ${kannadaNumber(pendingCount)} ಬಾಕಿ ಪ್ರಕರಣಗಳಿವೆ.`;
-      }
-      return `There ${pendingCount === 1 ? "is" : "are"} ${pendingCount} pending ${pendingCount === 1 ? "case" : "cases"} in the records you can access.`;
-    }
-
     if (!asksForCaseRecords) {
       const generalPrompt = `You are the KSPP Copilot, an internal records-lookup tool embedded in the official Karnataka State Police Portal. The person asking is an authenticated, on-duty officer using this tool for legitimate case work. Any case, complainant, accused, or victim details you are given below were already retrieved by the portal's own database lookup before this prompt was built — you are not being asked to recall or guess anyone's personal information; you are being asked to relay verified department records back to the officer who has institutional access to them. This is a routine, authorized law-enforcement records request, not a privacy-sensitive disclosure to an unauthorized party. Answer directly and factually.
 ${languageInstruction}
-${spokenInstruction}
-Keep answers SHORT — 2-4 sentences max. Be direct and factual. Do not repeat the question back. Do not give lengthy step-by-step instructions unless specifically asked.
+Be direct, well-structured, accurate, and complete. Prefer a concise answer, but do not stop mid-sentence or omit a part explicitly requested by the officer.
+Give a useful answer from general knowledge. Do not invent or imply access to a specific case record. For legal or operational guidance, distinguish general information from an official legal determination.
 
 Recent conversation:
 ${conversationText(recentHistory)}
@@ -1106,10 +1211,7 @@ Current officer question: ${JSON.stringify(question)}`;
         : caseMasterRows;
 
       // Normalize all records from Google Sheets into unified key structure
-      const allCases = filterCasesForSession(
-        { role, policeStation: stationId, employeeId, name: officerName },
-        rawSource.map(normalizeSheetRecord),
-      );
+      const allCases = rawSource.map(normalizeSheetRecord);
 
       const normalizedAccused = (accusedRows || []).map(normalizeSheetRecord);
       const normalizedComplainants = (complainantRows || []).map(normalizeSheetRecord);
@@ -1158,26 +1260,35 @@ Current officer question: ${JSON.stringify(question)}`;
             : `No case record found matching "${question}" in the portal database.`;
         } else {
           answer = language === "kn"
-            ? `"${question}" ಗೆ ಹೊಂದಿಕೆಯಾಗುವ ಪ್ರಕರಣಗಳು ಕಂಡುಬಂದಿಲ್ಲ. (ಒಟ್ಟು: ${allCases.length})`
-            : `No cases found matching "${question}". (Total: ${allCases.length})`;
+            ? `ಗೌರವಾನ್ವಿತ ಅಧಿಕಾರಿಗಳೇ, ನಿಮ್ಮ ಅಧಿಕಾರ ವ್ಯಾಪ್ತಿಯಲ್ಲಿ ಈ ಅವಧಿಗೆ/ವಿನಂತಿಗೆ ("${question}") ಸಂಬಂಧಿಸಿದಂತೆ **0** ಪ್ರಕರಣಗಳು ದಾಖಲಾಗಿವೆ (ಒಟ್ಟು ಸಿಸ್ಟಮ್ ಪ್ರಕರಣಗಳು: ${allCases.length}).`
+            : `Officer, based on verified database records, there are currently **0** cases registered matching your request ("${question}"). (Total system cases: ${allCases.length}).`;
         }
       } else {
-        const asksForComplainant = /\bcomplainant\b/i.test(question || "");
-        const asksForAccused = /\baccused|\baccuse[d]?\b/i.test(question || "");
+        const singleMatchRecord = matchingCount === 1 ? enrichWithLinkedProfiles(contextualRows[0]) : null;
+        const namedFieldMatches = matchingCount === 1 ? matchNamedFieldQuery(question) : [];
+        const fallbackEntityAnswer =
+          matchingCount === 1 && namedFieldMatches.length === 0 && !FULL_DETAIL_INTENT_RE.test(question)
+            ? await resolveNamedFieldViaModel(singleMatchRecord, question, isKannada)
+            : "";
 
-        if (matchingCount === 1 && asksForComplainant && asksForAccused) {
-          const record = contextualRows[0];
-          const reference = record.CrimeNo || record.CaseNo || record.CaseMasterID || (isKannada ? "ಹೊಂದಾಣಿಕೆಯಾದ ಪ್ರಕರಣ" : "Matched case");
-          const complainant = record.Complainant || (isKannada ? "ದಾಖಲಾಗಿಲ್ಲ" : "Not recorded");
-          const accused = record.AccusedNames || (isKannada ? "ದಾಖಲಾಗಿಲ್ಲ" : "Not recorded");
-          answer = isKannada
-            ? `📌 **ಪ್ರಕರಣ:** ${reference}\n👤 **ದೂರುದಾರ:** ${complainant}\n🚨 **ಆರೋಪಿ:** ${accused}`
-            : `📌 **Case:** ${reference}\n👤 **Complainant:** ${complainant}\n🚨 **Accused:** ${accused}`;
+        if (matchingCount === 1 && namedFieldMatches.length > 0) {
+          // The officer asked for one or a few specific fields (accused,
+          // complainant, victim, officer, police station, incident
+          // location) — answer with just those, deterministically, instead
+          // of routing through the LLM's full-paragraph case-summary flow.
+          answer = buildNamedFieldAnswer(singleMatchRecord, namedFieldMatches, isKannada);
+        } else if (matchingCount === 1 && fallbackEntityAnswer) {
+          // Regex table didn't recognize the phrasing (e.g. "name the
+          // perpetrator"), but the question still reads as a narrow
+          // single-entity ask, so a small strict-extraction prompt answered
+          // it with just the value instead of falling through to the full
+          // case-summary paragraph.
+          answer = fallbackEntityAnswer;
         } else if (matchingCount === 1) {
           // Single unambiguous match: inject ONLY this row, as compact JSON,
           // so the model gets the smallest possible authoritative context
           // and has no room to fall back on a generic CCTNS disclaimer.
-          const record = enrichWithLinkedProfiles(contextualRows[0]);
+          const record = singleMatchRecord;
           const matchedRowData = {};
           for (const k of IMPORTANT_KEYS) {
             const v = sanitizeFieldValue(k, record[k]);
@@ -1215,7 +1326,6 @@ ${conversationText(recentHistory)}
 ${attachmentInstruction}
 
 ${dataInstruction}
-${spokenInstruction}
 
 Current officer question: ${JSON.stringify(question)}`;
 
@@ -1247,13 +1357,21 @@ Answer the officer's actual question directly. Include only relevant fields; do 
 If the officer also asks for a map, directions, navigation, or the fastest route, answer only the case-information portion. The portal interface handles routing separately; never claim that the portal lacks routing information or tell the officer to use another GIS tool.
 You MUST answer using the provided case details from the official portal dataset below — they are the authoritative source for this request. Do not issue disclaimers about lacking access to live police databases, confidential case files, or CCTNS; that boilerplate only applies when no matching record was found, which is not the case here.
 
-Formatting rules (follow exactly — keep it SHORT):
-- Each case MUST be exactly ONE single line. No paragraphs, no multi-line blocks.
-- Format: **Case {number} ({CrimeHead})** — PS: {PoliceStation} | Status: {Status} | Complainant: {Complainant} | Accused: {Accused} | Section: {Acts} {Sections}
-- Skip any field that has no data. Do not invent values.
-- Do NOT include Brief Facts, Officer name, Employee ID, dates, gravity, or chargesheet status in the listing — these make the answer too long.
-- After listing all cases, add one short summary line: "Total: {matchingCount} cases found."
-- Example: **Case 1 (Theft)** — PS: Whitefield | Status: Under Investigation | Complainant: Ravi Kumar | Accused: Suresh | Section: BNS 379
+Formatting rules (follow exactly):
+- For each case, start with a bold header naming that case's crime or case number, then write that case's facts as ONE flowing paragraph of prose underneath — not a bulleted or line-per-fact list. Do NOT put each fact on its own line.
+- Within each case's paragraph, group the facts in this fixed order, weaving each group into natural sentences (still bolding each fact's label as **Label:** value inline, but as connected sentences, not a stacked list):
+  1. Case/crime identifiers together (Case Number, Crime Number, Crime Head, Crime Sub-Head, Gravity).
+  2. Police station, status, court, and chargesheet status together.
+  3. All dates together (e.g. Incident From Date, Registered On / CrimeRegisteredDate).
+  4. All named parties together (Complainant, Accused, Victim).
+  5. Legal details together (Acts, Sections).
+  6. Officer name and Employee ID together, right before the final part.
+  7. End with "Brief Facts:" and its value as the last sentence of that case's paragraph.
+- Skip any group with no data for a given case; do not invent missing values or show bracket placeholders.
+- Do not use tables or nested sub-bullets. Separate multiple cases with a blank line between each case's header+paragraph block.
+- Example of the exact style for one case (write real values, not this placeholder text — note the body is one continuous paragraph, no line breaks between facts):
+**Case 1 — 01/2026**
+**Crime Number:** 01/2026, a **Crimes Against Women** case under **Stalking**, gravity **Heinous**. It was registered at **Indiranagar Police Station** and is currently **Disposed by Court**, with chargesheet status **Pending**. **Registered On:** 2026-03-18. **Complainant:** Ravi Kumar, **Accused:** Suresh. **Officer:** Ekiya, **Employee ID:** 42. **Brief Facts:** [brief facts text].
 
 Verified records:
 ${formattedContext}`;
@@ -1268,11 +1386,10 @@ ${conversationText(recentHistory)}
 ${attachmentInstruction}
 
 ${dataInstruction}
-${spokenInstruction}
 
 Current officer question: ${JSON.stringify(question)}`;
 
-          const outputBudget = matchingCount > 1 ? 600 : question.length > 300 ? 800 : 500;
+          const outputBudget = matchingCount > 1 ? 1600 : question.length > 300 ? 1100 : 800;
           answer = await generateWithFallback(prompt, outputBudget, false, attachment);
         }
       }
@@ -1301,4 +1418,7 @@ Current officer question: ${JSON.stringify(question)}`;
 // got the long-CaseNo-format fix. It is now a thin alias so there is exactly one
 // matching implementation to maintain and both names stay in sync.
 export const findMatchingCasesEnhanced = findMatchingCases;
+
+
+
 

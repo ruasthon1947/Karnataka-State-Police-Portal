@@ -81,6 +81,21 @@ const containsIdentifier = (text: string, value: string) => {
 const MAP_WORTHY = /\b(case|cases|fir|crime|incident|location|where|route|navigate|directions?|reach|patrol|station|spot|scene)\b/i;
 const SMALL_TALK = /^(hi|hello|hey|thanks?|thank you|ok(?:ay)?|bye|good\s*(?:morning|afternoon|evening))[\s!.,]*$/i;
 
+// MAP_WORTHY treats the bare word "case"/"cases" as enough to consider a map,
+// which means an ordinary follow-up like "give the details of complainant in
+// this case" or "give me the officer details" passes that gate purely
+// because it says "case" — even though the officer is asking about a person
+// or a specific record field, not a place. That was attaching a route/map
+// card to the reply instead of (or alongside) the actual text answer.
+// This guard skips map resolution for that narrow class of question, unless
+// the question also carries genuine location/navigation wording — so real
+// requests like "show the route to this case's location" or "where did the
+// incident happen" still get a map exactly as before.
+const PERSON_OR_FIELD_DETAIL_ONLY =
+  /\b(officer|complainant|accused|victim|employee\s*id|emp\s*id|chargesheet|court|acts?|sections?|gravity|status|brief\s*facts?)\b/i;
+const EXPLICIT_MAP_INTENT =
+  /\b(location|where|route|navigate|navigation|directions?|reach|patrol|spot|scene|map|distance|near(?:by)?|how\s*far)\b/i;
+
 export async function resolveChatMapContext(
   question: string,
   answer: string,
@@ -88,6 +103,7 @@ export async function resolveChatMapContext(
   policeStation: string,
 ): Promise<ChatMapContext | undefined> {
   if (SMALL_TALK.test(question.trim()) || !MAP_WORTHY.test(question)) return undefined;
+  if (PERSON_OR_FIELD_DETAIL_ONLY.test(question) && !EXPLICIT_MAP_INTENT.test(question)) return undefined;
 
   try {
     const { cases } = await fetchCases();
@@ -155,3 +171,9 @@ export async function resolveChatMapContext(
     return undefined;
   }
 }
+
+
+
+
+
+
