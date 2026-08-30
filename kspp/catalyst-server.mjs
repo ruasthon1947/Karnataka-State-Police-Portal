@@ -6,6 +6,7 @@ import localDbPlugin from "./server/localDbPlugin.mjs";
 import chatPlugin from "./server/chatPlugin.mjs";
 import mapProxyPlugin from "./server/mapProxyPlugin.mjs";
 import sttPlugin from "./server/sttPlugin.mjs";
+import ttsPlugin from "./server/ttsPlugin.mjs";
 
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url));
 const staticDirectory = path.join(rootDirectory, "dist");
@@ -20,6 +21,7 @@ const previewServer = {
 };
 
 sttPlugin().configurePreviewServer(previewServer);
+ttsPlugin().configurePreviewServer(previewServer);
 localDbPlugin().configurePreviewServer(previewServer);
 chatPlugin().configurePreviewServer(previewServer);
 mapProxyPlugin().configurePreviewServer(previewServer);

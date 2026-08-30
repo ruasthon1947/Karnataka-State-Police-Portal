@@ -95,6 +95,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 async function directIdentityAnswer(
   question: string,
   language: "en" | "kn",
+  spoken = false,
 ): Promise<string | null> {
   if (!/\bcomplainant\b/i.test(question) && !/\baccused\b/i.test(question)) {
     return null;
@@ -123,6 +124,11 @@ async function directIdentityAnswer(
     const complainant = record.Complainant || (language === "kn" ? "ದಾಖಲಾಗಿಲ್ಲ" : "Not recorded");
     const accused = record.AccusedNames || (language === "kn" ? "ದಾಖಲಾಗಿಲ್ಲ" : "Not recorded");
 
+    if (spoken) {
+      return language === "kn"
+        ? `ಪ್ರಕರಣ ${reference} ರ ದೂರುದಾರರು ${complainant}. ಆರೋಪಿಗಳು ${accused}.`
+        : `For case ${reference}, the complainant is ${complainant}. The accused is ${accused}.`;
+    }
     return language === "kn"
       ? `📌 **ಪ್ರಕರಣ:** ${reference}\n👤 **ದೂರುದಾರ:** ${complainant}\n🚨 **ಆರೋಪಿ:** ${accused}`
       : `📌 **Case:** ${reference}\n👤 **Complainant:** ${complainant}\n🚨 **Accused:** ${accused}`;
@@ -134,12 +140,13 @@ async function directIdentityAnswer(
 export async function askCopilot(params: {
   question: string;
   language: "en" | "kn";
+  spoken?: boolean;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
   attachment?: ChatAttachment;
 }): Promise<string> {
   const directAnswer = params.attachment
     ? null
-    : await directIdentityAnswer(params.question, params.language);
+    : await directIdentityAnswer(params.question, params.language, params.spoken);
   if (directAnswer) return directAnswer;
 
   const headers = await getAuthHeaders();
@@ -150,6 +157,7 @@ export async function askCopilot(params: {
     body: JSON.stringify({
       question: params.question,
       language: params.language,
+      spoken: Boolean(params.spoken),
       history: params.history,
       attachment: params.attachment,
     }),
@@ -201,20 +209,15 @@ export async function requestFirDraft(
 // FIREBASE FIRESTORE SYNC HELPERS
 // -------------------------------------------------------------------
 
+const FIRESTORE_CHAT_ENABLED =
+  String(import.meta.env.VITE_FIRESTORE_CHAT_ENABLED || "false").toLowerCase() === "true";
+
 /**
  * Fetch all chat sessions for a logged-in user ordered by most recent
  */
 export async function fetchUserChatsFromFirebase(userId: string): Promise<FirestoreChatSession[]> {
   const safeUserId = String(userId || "").trim();
-
-  console.log("[chatApi] fetchUserChatsFromFirebase", {
-    userId: safeUserId,
-  });
-
-  if (!safeUserId) {
-    console.log("[chatApi] fetchUserChatsFromFirebase skipped: empty userId");
-    return [];
-  }
+  if (!FIRESTORE_CHAT_ENABLED || !safeUserId) return [];
 
   try {
     const chatsRef = collection(db, "users", safeUserId, "chats");
@@ -233,18 +236,9 @@ export async function fetchUserChatsFromFirebase(userId: string): Promise<Firest
       } as FirestoreChatSession;
     });
 
-    console.log("[chatApi] fetchUserChatsFromFirebase result", {
-      userId: safeUserId,
-      count: chats.length,
-      chats,
-    });
-
     return chats;
   } catch (error) {
-    console.error("[chatApi] Error fetching chats from Firestore:", {
-      userId: safeUserId,
-      error,
-    });
+    console.warn("[chatApi] Firestore chat history is unavailable; using the officer's local cache.", error);
     return [];
   }
 }
@@ -255,20 +249,7 @@ export async function fetchUserChatsFromFirebase(userId: string): Promise<Firest
 export async function saveChatToFirebase(userId: string, session: FirestoreChatSession): Promise<void> {
   const safeUserId = String(userId || "").trim();
   const sessionId = String(session?.id || "").trim();
-
-  console.log("[chatApi] saveChatToFirebase", {
-    userId: safeUserId,
-    sessionId,
-    session,
-  });
-
-  if (!safeUserId || !sessionId) {
-    console.log("[chatApi] saveChatToFirebase skipped: invalid userId/sessionId", {
-      userId: safeUserId,
-      sessionId,
-    });
-    return;
-  }
+  if (!FIRESTORE_CHAT_ENABLED || !safeUserId || !sessionId) return;
 
   try {
     const sessionRef = doc(db, "users", safeUserId, "chats", sessionId);
@@ -281,11 +262,6 @@ export async function saveChatToFirebase(userId: string, session: FirestoreChatS
       },
       { merge: true }
     );
-
-    console.log("[chatApi] saveChatToFirebase success", {
-      userId: safeUserId,
-      sessionId,
-    });
   } catch (error) {
     console.error("[chatApi] Error saving chat to Firestore:", {
       userId: safeUserId,
@@ -299,7 +275,7 @@ export async function saveChatToFirebase(userId: string, session: FirestoreChatS
  * Delete a chat session for a logged-in user
  */
 export async function deleteChatFromFirebase(userId: string, sessionId: string): Promise<void> {
-  if (!userId || !sessionId) return;
+  if (!FIRESTORE_CHAT_ENABLED || !userId || !sessionId) return;
   try {
     const sessionRef = doc(db, "users", userId, "chats", sessionId);
     await deleteDoc(sessionRef);

@@ -42,6 +42,8 @@ const KNOWN_PLACES: Record<string, string> = {
   bommanahalli: "ಬೊಮ್ಮನಹಳ್ಳಿ",
   kamakshipalya: "ಕಾಮಾಕ್ಷಿಪಾಳ್ಯ",
   byatarayanapura: "ಬ್ಯಾಟರಾಯನಪುರ",
+  byappanahalli: "ಬೈಯಪ್ಪನಹಳ್ಳಿ",
+  baiyappanahalli: "ಬೈಯಪ್ಪನಹಳ್ಳಿ",
   "wilson garden": "ವಿಲ್ಸನ್ ಗಾರ್ಡನ್",
   "ashok nagar": "ಅಶೋಕ ನಗರ",
   "high grounds": "ಹೈ ಗ್ರೌಂಡ್ಸ್",

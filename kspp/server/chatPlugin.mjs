@@ -2,7 +2,7 @@ import "dotenv/config";
 import dns from "node:dns";
 import { findMatchingCases, generateFirDraft, handleChatQuery } from "./geminiService.mjs";
 import { casesFromGoogle } from "./googleSheets.mjs";
-import { checkChatRateLimit, requireSession } from "./security.mjs";
+import { checkChatRateLimit, filterCasesForSession, requireSession } from "./security.mjs";
 
 dns.setDefaultResultOrder("ipv4first");
 
@@ -147,7 +147,7 @@ export async function handleChatApi(req, res, next) {
   }
 
   try {
-    const { question, complaint, language, history, attachment, context } = await readBody(req);
+    const { question, complaint, language, spoken, history, attachment, context } = await readBody(req);
     const cleanedQuestion = String(isFirDraftRequest ? complaint : question || "").trim();
     if (!cleanedQuestion) {
       sendJson(res, 400, {
@@ -181,13 +181,18 @@ export async function handleChatApi(req, res, next) {
     // truncate or redact the names that the officer explicitly asked for.
     if (/\bcomplainant\b/i.test(normalizedQuestion) && /\baccused\b/i.test(normalizedQuestion)) {
       const { rows } = await casesFromGoogle();
-      const matches = findMatchingCases(normalizedQuestion, rows);
+      const matches = findMatchingCases(
+        normalizedQuestion,
+        filterCasesForSession(session, rows),
+      );
       if (matches.length === 1) {
         const record = matches[0];
         const reference = record.CrimeNo || record.CaseNo || record.CaseMasterID || "Matched case";
         sendJson(res, 200, {
           ok: true,
-          answer: `📌 **Case:** ${reference}\n👤 **Complainant:** ${record.Complainant || "Not recorded"}\n🚨 **Accused:** ${record.AccusedNames || "Not recorded"}`,
+          answer: spoken
+            ? `For case ${reference}, the complainant is ${record.Complainant || "not recorded"}. The accused is ${record.AccusedNames || "not recorded"}.`
+            : `📌 **Case:** ${reference}\n👤 **Complainant:** ${record.Complainant || "Not recorded"}\n🚨 **Accused:** ${record.AccusedNames || "Not recorded"}`,
         });
         return;
       }
@@ -197,7 +202,9 @@ export async function handleChatApi(req, res, next) {
       role: session.role,
       stationId: session.policeStation,
       employeeId: session.employeeId,
+      officerName: session.name,
       language: language === "kn" ? "kn" : "en",
+      spoken: Boolean(spoken),
       history,
       attachment: normalizeChatAttachment(attachment),
     });

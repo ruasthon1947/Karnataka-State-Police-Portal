@@ -96,6 +96,25 @@ html.light .dark\:text-white { color: #0b0f14 !important; }
 html.light .dark\:text-muted { color: #5a6678 !important; }
 html.light .dark\:border-line { border-color: #e3e8f0 !important; }
 
+/* The voice console is an intentional dark operational surface in both
+   themes. Keep its labels, icons, controls, and typed text readable after all
+   global light-theme utility remapping has been applied. */
+.kspp-voice-console { color: #ffffff; }
+html.light .kspp-voice-console,
+html.light .kspp-voice-console.dark\:text-white,
+html.light .kspp-voice-console .text-white {
+  color: #ffffff !important;
+}
+html.light .kspp-voice-console input {
+  background-color: #071b3a !important;
+  color: #ffffff !important;
+  caret-color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+html.light .kspp-voice-console input::placeholder {
+  color: rgba(255, 255, 255, 0.48) !important;
+}
+
 /* Chart text/grid tweaks for light mode */
 html.light .recharts-text { fill: #5a6678 !important; }
 html.light .recharts-cartesian-grid line { stroke: #e3e8f0 !important; }

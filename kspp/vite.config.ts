@@ -4,10 +4,15 @@ import localDbPlugin from './server/localDbPlugin.mjs';
 import chatPlugin from './server/chatPlugin.mjs';
 import mapProxyPlugin from './server/mapProxyPlugin.mjs';
 import sttPlugin from './server/sttPlugin.mjs';
+import ttsPlugin from './server/ttsPlugin.mjs';
 
 export default defineConfig({
+  // The shared deployment/local environment file lives at the workspace root.
+  // Vite still exposes only VITE_-prefixed values to the browser bundle.
+  envDir: '..',
   plugins: [
     sttPlugin(),
+    ttsPlugin(),
     react(),
     localDbPlugin(),
     chatPlugin(),

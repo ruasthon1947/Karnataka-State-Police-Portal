@@ -35,8 +35,35 @@ import {
   importFromGoogleSheets,
   updateTodo,
 } from "./todoService.mjs";
+import { readExplicitTabRecords } from "./sheetsStore.mjs";
 
 const execFileAsync = promisify(execFile);
+let unitLookupCache = { expiresAt: 0, rows: [] };
+
+async function resolveProfilePoliceStation(profile) {
+  const assigned = String(profile?.policeStation || "").trim();
+  if (!assigned || !/^\d+$/.test(assigned)) return profile;
+  try {
+    if (unitLookupCache.expiresAt <= Date.now()) {
+      unitLookupCache = {
+        rows: await readExplicitTabRecords("Unit"),
+        expiresAt: Date.now() + 5 * 60_000,
+      };
+    }
+    const unit = unitLookupCache.rows.find(
+      (row) => String(row.UnitID || "").trim() === assigned,
+    );
+    const stationName = String(
+      unit?.UnitName || unit?.PoliceStation || unit?.Station || "",
+    ).trim();
+    return stationName ? { ...profile, policeStation: stationName } : profile;
+  } catch (error) {
+    console.warn("[Login] Could not resolve the assigned station name.", {
+      message: error?.message || String(error),
+    });
+    return profile;
+  }
+}
 
 function normalizeValue(value) {
   if (value == null) return "";
@@ -337,7 +364,9 @@ export async function handleApi(req, res, next) {
       }
 
       clearLoginRateLimit(clientKey(req), employeeId);
-      const user = profileFromEmployee(row, employeeId);
+      const user = await resolveProfilePoliceStation(
+        profileFromEmployee(row, employeeId),
+      );
       const createdSession = setSessionCookie(req, res, user);
       sendJson(res, 200, {
         ok: true,

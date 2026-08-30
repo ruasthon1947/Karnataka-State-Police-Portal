@@ -97,7 +97,11 @@ export async function resolveChatMapContext(
     const searchable = normalize(`${question} ${answer} ${/\b(?:case|record)\s*\d+\b/i.test(question) ? lastAssistant : ""}`);
     const questionText = normalize(question);
 
-    const explicitCaseId = questionText.match(/\b(?:case\s*(?:master\s*)?id|id)\s*[-:#]?\s*0*(\d+)\b/i)?.[1];
+    // Keep the separators as alternatives so Tailwind's source scanner does
+    // not mistake this regular expression for an arbitrary CSS utility.
+    const explicitCaseId = questionText.match(
+      /\b(?:case\s*(?:master\s*)?id|id)\s*(?:-|:|#)?\s*0*(\d+)\b/i,
+    )?.[1];
     const exactIdRecords = explicitCaseId
       ? allCases.filter((record) => String(Number.parseInt(record.CaseMasterID || "", 10)) === String(Number.parseInt(explicitCaseId, 10)))
       : [];

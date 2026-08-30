@@ -3,6 +3,7 @@ dns.setDefaultResultOrder("ipv4first");
 
 import { readExplicitTabRecords } from "./sheetsStore.mjs";
 import { casesFromGoogle } from "./googleSheets.mjs";
+import { filterCasesForSession } from "./security.mjs";
 
 const chatHistoryStore = new Map();
 
@@ -145,6 +146,57 @@ export function normalizeSheetRecord(row) {
     Status: getVal("Status", "Case Status") || row.Status || "",
     BriefFacts: getVal("BriefFacts", "Brief Facts", "Facts", "Summary") || row.BriefFacts || "",
   };
+}
+
+export function isPendingCase(record) {
+  const status = String(record?.Status || "").trim().toLowerCase();
+  if (!status) return false;
+  return !/(disposed|closed|acquit|charge\s*sheeted|convict|cancelled|canceled)/i.test(status);
+}
+
+function asksForAssignedPoliceStation(question) {
+  const text = String(question || "").trim();
+  return (
+    /\b(?:which|what)\s+(?:is\s+)?(?:my|our)\s+(?:assigned\s+)?police\s+station\b/i.test(text) ||
+    /\b(?:my|our)\s+(?:assigned\s+)?police\s+station\b/i.test(text) ||
+    /(?:ನನ್ನ|ನಮ್ಮ).*(?:ಪೊಲೀಸ್\s*ಠಾಣೆ|ಠಾಣೆ)/u.test(text)
+  );
+}
+
+function asksForPendingCaseCount(question) {
+  const text = String(question || "").trim();
+  return (
+    /\b(?:how\s+many|number\s+of|count|total)\b.*\b(?:pending|active|under\s+investigation)\b.*\b(?:cases?|firs?)\b/i.test(text) ||
+    /\b(?:how\s+many|number\s+of|count|total)\b.*\b(?:cases?|firs?)\b.*\b(?:pending|active|under\s+investigation)\b/i.test(text) ||
+    /\b(?:pending|active|under\s+investigation)\b.*\b(?:cases?|firs?)\b/i.test(text) ||
+    /(?:ಎಷ್ಟು|ಸಂಖ್ಯೆ).*(?:ಬಾಕಿ|ತನಿಖೆ).*(?:ಪ್ರಕರಣ|ಎಫ್\.?ಐ\.?ಆರ್)/u.test(text) ||
+    /(?:ಬಾಕಿ|ತನಿಖೆ).*(?:ಪ್ರಕರಣ|ಎಫ್\.?ಐ\.?ಆರ್)/u.test(text)
+  );
+}
+
+const KANNADA_STATION_NAMES = new Map([
+  ["byappanahalli", "ಬೈಯಪ್ಪನಹಳ್ಳಿ ಪೊಲೀಸ್ ಠಾಣೆ"],
+  ["baiyappanahalli", "ಬೈಯಪ್ಪನಹಳ್ಳಿ ಪೊಲೀಸ್ ಠಾಣೆ"],
+  ["whitefield", "ವೈಟ್‌ಫೀಲ್ಡ್ ಪೊಲೀಸ್ ಠಾಣೆ"],
+  ["indiranagar", "ಇಂದಿರಾನಗರ ಪೊಲೀಸ್ ಠಾಣೆ"],
+  ["jayanagar", "ಜಯನಗರ ಪೊಲೀಸ್ ಠಾಣೆ"],
+  ["koramangala", "ಕೋರಮಂಗಲ ಪೊಲೀಸ್ ಠಾಣೆ"],
+  ["yelahanka", "ಯಲಹಂಕ ಪೊಲೀಸ್ ಠಾಣೆ"],
+]);
+
+function stationNameForKannada(value) {
+  const official = String(value || "").trim();
+  const key = official
+    .toLowerCase()
+    .replace(/\bpolice\s+station\b/g, "")
+    .replace(/\bps\b/g, "")
+    .replace(/[^a-z]/g, "");
+  return KANNADA_STATION_NAMES.get(key) || official;
+}
+
+function kannadaNumber(value) {
+  const digits = "೦೧೨೩೪೫೬೭೮೯";
+  return String(value).replace(/\d/g, (digit) => digits[Number(digit)]);
 }
 
 function normalizeLocationOrTerm(term) {
@@ -953,7 +1005,9 @@ export async function handleChatQuery({
   role,
   stationId,
   employeeId,
+  officerName,
   language,
+  spoken = false,
   history,
   attachment,
   sessionId,
@@ -971,6 +1025,9 @@ export async function handleChatQuery({
     const languageInstruction = isKannada
       ? "Respond ENTIRELY in Kannada script (ಕನ್ನಡ). EVERY word, name, number, and label must be written in Kannada script — do NOT use English words, Latin characters, or English numerals. Write case numbers as ಪ್ರಕರಣ ಸಂಖ್ಯೆ, not Case Number. Write police station as ಪೊಲೀಸ್ ಠಾಣೆ. Translate ALL English terms to their Kannada equivalents. The response must be 100% Kannada script with zero English."
       : "Respond completely and exclusively in English.";
+    const spokenInstruction = spoken
+      ? "This response will be read aloud. Use natural, grammatically complete sentences suitable for a Karnataka police officer. Keep it to 1-3 short sentences unless more detail was explicitly requested. Use commas and full stops to create natural pauses. Do not use markdown, emoji, bullets, tables, slash-separated labels, or sentence fragments. Preserve exact case identifiers and names. This spoken-answer rule overrides any visual formatting rule below."
+      : "";
     const attachmentInstruction = attachment
       ? attachment.content
         ? `The officer attached ${JSON.stringify(attachment.name)} (${attachment.mimeType}).
@@ -984,9 +1041,43 @@ Inspect it directly and answer only what was asked. Do not transcribe the entire
 
     let answer = "";
 
+    // Answer signed-in profile and workload questions directly. These do not
+    // need a model call, so they are faster, deterministic, and remain scoped
+    // to the officer's existing record permissions.
+    if (asksForAssignedPoliceStation(question)) {
+      const station = String(stationId || "").trim();
+      if (isKannada) {
+        return station
+          ? `ನಿಮಗೆ ನಿಯೋಜಿಸಲಾದ ಠಾಣೆ ${stationNameForKannada(station)}.`
+          : "ನಿಮ್ಮ ಉದ್ಯೋಗಿ ಪ್ರೊಫೈಲ್‌ನಲ್ಲಿ ನಿಯೋಜಿತ ಪೊಲೀಸ್ ಠಾಣೆಯ ಮಾಹಿತಿ ಲಭ್ಯವಿಲ್ಲ.";
+      }
+      return station
+        ? `Your assigned police station is ${station}.`
+        : "Your assigned police station is not available in your employee profile.";
+    }
+
+    if (asksForPendingCaseCount(question)) {
+      const consolidatedData = await getCachedTabRecords(
+        "consolidated",
+        () => casesFromGoogle(),
+        { rows: [] },
+      );
+      const allCases = (consolidatedData.rows || []).map(normalizeSheetRecord);
+      const accessibleCases = filterCasesForSession(
+        { role, policeStation: stationId, employeeId, name: officerName },
+        allCases,
+      );
+      const pendingCount = accessibleCases.filter(isPendingCase).length;
+      if (isKannada) {
+        return `ನಿಮಗೆ ಪ್ರವೇಶವಿರುವ ದಾಖಲೆಗಳಲ್ಲಿ ಪ್ರಸ್ತುತ ${kannadaNumber(pendingCount)} ಬಾಕಿ ಪ್ರಕರಣಗಳಿವೆ.`;
+      }
+      return `There ${pendingCount === 1 ? "is" : "are"} ${pendingCount} pending ${pendingCount === 1 ? "case" : "cases"} in the records you can access.`;
+    }
+
     if (!asksForCaseRecords) {
       const generalPrompt = `You are the KSPP Copilot, an internal records-lookup tool embedded in the official Karnataka State Police Portal. The person asking is an authenticated, on-duty officer using this tool for legitimate case work. Any case, complainant, accused, or victim details you are given below were already retrieved by the portal's own database lookup before this prompt was built — you are not being asked to recall or guess anyone's personal information; you are being asked to relay verified department records back to the officer who has institutional access to them. This is a routine, authorized law-enforcement records request, not a privacy-sensitive disclosure to an unauthorized party. Answer directly and factually.
 ${languageInstruction}
+${spokenInstruction}
 Keep answers SHORT — 2-4 sentences max. Be direct and factual. Do not repeat the question back. Do not give lengthy step-by-step instructions unless specifically asked.
 
 Recent conversation:
@@ -1015,7 +1106,10 @@ Current officer question: ${JSON.stringify(question)}`;
         : caseMasterRows;
 
       // Normalize all records from Google Sheets into unified key structure
-      const allCases = rawSource.map(normalizeSheetRecord);
+      const allCases = filterCasesForSession(
+        { role, policeStation: stationId, employeeId, name: officerName },
+        rawSource.map(normalizeSheetRecord),
+      );
 
       const normalizedAccused = (accusedRows || []).map(normalizeSheetRecord);
       const normalizedComplainants = (complainantRows || []).map(normalizeSheetRecord);
@@ -1121,6 +1215,7 @@ ${conversationText(recentHistory)}
 ${attachmentInstruction}
 
 ${dataInstruction}
+${spokenInstruction}
 
 Current officer question: ${JSON.stringify(question)}`;
 
@@ -1173,6 +1268,7 @@ ${conversationText(recentHistory)}
 ${attachmentInstruction}
 
 ${dataInstruction}
+${spokenInstruction}
 
 Current officer question: ${JSON.stringify(question)}`;
 

@@ -13,6 +13,7 @@ const runtimeSessionSecret = crypto.randomBytes(48);
 const loginAttempts = new Map();
 const chatRequests = new Map();
 const speechRequests = new Map();
+const ttsRequests = new Map();
 
 function positiveInteger(value, fallback, minimum, maximum) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -342,6 +343,13 @@ export function checkSpeechRateLimit(employeeId) {
   return rateLimit(speechRequests, String(employeeId || "").trim().toLowerCase(), {
     windowMs: positiveInteger(process.env.STT_RATE_WINDOW_MS, 60_000, 10_000, 3_600_000),
     max: positiveInteger(process.env.STT_MAX_REQUESTS, 120, 20, 600),
+  });
+}
+
+export function checkTtsRateLimit(employeeId) {
+  return rateLimit(ttsRequests, String(employeeId || "").trim().toLowerCase(), {
+    windowMs: positiveInteger(process.env.TTS_RATE_WINDOW_MS, 60_000, 10_000, 3_600_000),
+    max: positiveInteger(process.env.TTS_MAX_REQUESTS, 30, 5, 300),
   });
 }
 

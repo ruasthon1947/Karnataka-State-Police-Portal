@@ -43,6 +43,14 @@ const VEXYL_WS_OPEN_TIMEOUT_MS = 8_000;
 // returns; we give it room before re-polling.
 const VEXYL_POLL_INTERVAL_MS = 700;
 const VEXYL_POLL_TIMEOUT_MS = 55_000;
+const PORTAL_TTS_TIMEOUT_MS = 30_000;
+const PORTAL_SPEECH_CACHE_MAX = 24;
+const portalSpeechCache = new Map<string, Promise<ArrayBuffer>>();
+
+const VOICE_GREETINGS: Record<SpokenLang, string> = {
+  en: "Hello. I'm the KSPP Copilot. How can I help you today?",
+  kn: "ನಮಸ್ಕಾರ. ನಾನು ಕೆಎಸ್‌ಪಿಪಿ ಸಹಾಯಕಿ. ಇಂದು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಲಿ?",
+};
 
 const KANNADA_SCRIPT_RE = /[\u0C80-\u0CFF]/;
 
@@ -326,28 +334,52 @@ async function vexylViaWs(
 }
 
 /**
- * Unified entry point: try REST first, then WS, then give up and throw so the
- * caller falls through to the browser/Google TTS ladder.
+ * Use the portal's same-origin voice endpoint so production browsers never
+ * depend on localhost, mixed-content requests, or device-installed voices.
  */
-async function synthesizeWithVexyl(
+async function synthesizeWithPortal(
   text: string,
   lang: SpokenLang,
 ): Promise<ArrayBuffer> {
   const clean = text.trim();
-  if (!clean) throw new Error("Empty text for Vexyl TTS");
+  if (!clean) throw new Error("Empty text for portal TTS");
+  const cacheKey = `${lang}\0${clean}`;
+  const cached = portalSpeechCache.get(cacheKey);
+  if (cached) return cached;
 
-  // REST is primary because it handles proxies and slow cold-start inference.
-  try {
-    return await vexylViaRest(clean, lang);
-  } catch {
-    // REST failed — try WebSocket as a faster low-latency fallback.
+  while (portalSpeechCache.size >= PORTAL_SPEECH_CACHE_MAX) {
+    const oldestKey = portalSpeechCache.keys().next().value;
+    if (!oldestKey) break;
+    portalSpeechCache.delete(oldestKey);
+  }
+
+  const request = (async () => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), PORTAL_TTS_TIMEOUT_MS);
     try {
-      return await vexylViaWs(clean, lang);
-    } catch (wsErr) {
-      throw new Error(
-        `Vexyl TTS unreachable (REST+WS): ${wsErr instanceof Error ? wsErr.message : String(wsErr)}`,
-      );
+      const response = await fetch("/api/text-to-speech", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: clean, language: lang }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || `Portal TTS failed with HTTP ${response.status}`);
+      }
+      return response.arrayBuffer();
+    } finally {
+      window.clearTimeout(timer);
     }
+  })();
+
+  portalSpeechCache.set(cacheKey, request);
+  try {
+    return await request;
+  } catch (error) {
+    portalSpeechCache.delete(cacheKey);
+    throw error;
   }
 }
 
@@ -481,6 +513,7 @@ export const FloatingCopilot: React.FC = () => {
   const [askedQuestion, setAskedQuestion] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [isPreparingSpeech, setIsPreparingSpeech] = useState(false);
   const [wasVoiceQuery, setWasVoiceQuery] = useState(false);
   const [noKannadaVoice, setNoKannadaVoice] = useState(false);
   const [spokenLang, setSpokenLang] = useState<SpokenLang>(
@@ -593,7 +626,6 @@ export const FloatingCopilot: React.FC = () => {
           ? [/sapna/i, /kannada/i, /google.*ಕನ್ನಡ/i, /ಕನ್ನಡ/]
           : [
               /neerja/i,
-              /prabhat/i,
               /google.*english.*india/i,
               /english.*india/i,
               /india.*english/i,
@@ -623,6 +655,7 @@ export const FloatingCopilot: React.FC = () => {
   );
 
   const stopSpeaking = useCallback(() => {
+    setIsPreparingSpeech(false);
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
@@ -687,7 +720,7 @@ export const FloatingCopilot: React.FC = () => {
   const speak = useCallback(
     async (text: string, lang: SpokenLang) => {
       if (isMuted) return;
-      if (typeof window === "undefined" || !window.speechSynthesis) return;
+      if (typeof window === "undefined") return;
 
       stopSpeaking();
 
@@ -696,25 +729,33 @@ export const FloatingCopilot: React.FC = () => {
 
       const isKannada = lang === "kn" || KANNADA_SCRIPT_RE.test(clean);
 
-      // Prefer the vexyl-tts server (ai4bharat/indic-parler-tts) for natural
-      // Indian-accent voices. If it's reachable the answer is read in proper
-      // Kannada / Indian English. Falls back to browser/Google TTS only if the
-      // server is not running.
+      // Prefer the authenticated, same-origin cloud voice for consistent
+      // Kannada / Indian English. Keep browser voices as a resilient fallback.
+      setIsPreparingSpeech(true);
       try {
-        const audioBuffer = await synthesizeWithVexyl(clean, isKannada ? "kn" : "en");
+        const audioBuffer = await synthesizeWithPortal(clean, isKannada ? "kn" : "en");
+        setIsPreparingSpeech(false);
         await playVexylAudio(audioBuffer);
-        // Vexyl played successfully — clear any prior "no Kannada voice" flag.
         setNoKannadaVoice(false);
         return;
-      } catch (vexylErr) {
-        // Vexyl server unavailable — log and fall through to the existing TTS ladder.
-        console.warn("Vexyl TTS unavailable, using fallback:", vexylErr);
+      } catch (portalTtsError) {
+        setIsPreparingSpeech(false);
+        if (import.meta.env.DEV) {
+          console.warn("Natural portal voice unavailable, using fallback:", portalTtsError);
+        }
       }
+
+      const browserSpeech = window.speechSynthesis;
 
       if (isKannada) {
         setNoKannadaVoice(false);
 
-        let freshVoices = window.speechSynthesis.getVoices();
+        // Prefer the online Kannada voice over a device synthesizer. The
+        // latter is the source of the robotic voice heard on some PCs.
+        const streamed = await playViaGoogleTranslateTts(clean, "kn");
+        if (streamed) return;
+
+        let freshVoices = browserSpeech?.getVoices() || [];
         if (!freshVoices.length) freshVoices = voices;
 
         const knVoice = pickIndianVoice("kn", freshVoices);
@@ -726,18 +767,27 @@ export const FloatingCopilot: React.FC = () => {
           utterance.pitch = 1;
           utterance.voice = knVoice;
           utteranceRef.current = utterance;
-          window.speechSynthesis.speak(utterance);
+          browserSpeech?.speak(utterance);
           return;
         }
-
-        const streamed = await playViaGoogleTranslateTts(clean, "kn");
-        if (streamed) return;
 
         setNoKannadaVoice(true);
         return;
       }
 
-      let freshVoices = window.speechSynthesis.getVoices();
+      // Keep the network Indian-English voice ahead of Windows/macOS voices;
+      // the latter can sound robotic even when their locale is en-IN.
+      let streamedEn = await playViaGoogleTranslateTts(clean, "en-IN");
+      if (!streamedEn) {
+        streamedEn = await playViaGoogleTranslateTts(clean, "en");
+      }
+
+      if (streamedEn) {
+        setNoKannadaVoice(false);
+        return;
+      }
+
+      let freshVoices = browserSpeech?.getVoices() || [];
       if (!freshVoices.length) freshVoices = voices;
 
       const indianVoice = pickIndianVoice("en", freshVoices);
@@ -751,26 +801,18 @@ export const FloatingCopilot: React.FC = () => {
         utterance.pitch = 1;
         utterance.voice = indianVoice;
         utteranceRef.current = utterance;
-        window.speechSynthesis.speak(utterance);
+        browserSpeech?.speak(utterance);
         return;
       }
 
-      let streamedEn = await playViaGoogleTranslateTts(clean, "en-IN");
-      if (!streamedEn) {
-        streamedEn = await playViaGoogleTranslateTts(clean, "en");
+      if (browserSpeech) {
+        const utterance = new SpeechSynthesisUtterance(clean);
+        utterance.lang = "en-IN";
+        utterance.rate = NATURAL_SPEECH_RATE;
+        utterance.pitch = 1;
+        utteranceRef.current = utterance;
+        browserSpeech.speak(utterance);
       }
-
-      if (streamedEn) {
-        setNoKannadaVoice(false);
-        return;
-      }
-
-      const utterance = new SpeechSynthesisUtterance(clean);
-      utterance.lang = "en-IN";
-      utterance.rate = NATURAL_SPEECH_RATE;
-      utterance.pitch = 1;
-      utteranceRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
     },
     [
       isMuted,
@@ -780,6 +822,42 @@ export const FloatingCopilot: React.FC = () => {
       voices,
     ],
   );
+
+  const announceVoiceLanguage = useCallback(
+    (nextLanguage: SpokenLang) => {
+      const greeting = VOICE_GREETINGS[nextLanguage];
+      setSpokenLang(nextLanguage);
+      setBilingualMode(nextLanguage);
+      setErrorMsg(null);
+      setAskedQuestion(null);
+      setAnswer(greeting);
+      setState("responding");
+      void speak(greeting, nextLanguage);
+    },
+    [speak],
+  );
+
+  const isOpenRef = useRef(isOpen);
+  const speakRef = useRef(speak);
+  isOpenRef.current = isOpen;
+  speakRef.current = speak;
+
+  useEffect(() => {
+    const portalLanguage: SpokenLang = language === "kn" ? "kn" : "en";
+    setSpokenLang(portalLanguage);
+    setBilingualMode(portalLanguage);
+
+    // A portal-language change must immediately update an already-open voice
+    // console. When closed, openConsole will use the synchronized language.
+    if (isOpenRef.current) {
+      const greeting = VOICE_GREETINGS[portalLanguage];
+      setErrorMsg(null);
+      setAskedQuestion(null);
+      setAnswer(greeting);
+      setState("responding");
+      void speakRef.current(greeting, portalLanguage);
+    }
+  }, [language]);
 
   const submitQuestion = useCallback(
     async (
@@ -811,6 +889,7 @@ export const FloatingCopilot: React.FC = () => {
         const reply = await askCopilot({
           question: trimmed,
           language: answerLang,
+          spoken: viaVoice,
         });
 
         setAnswer(reply);
@@ -941,10 +1020,21 @@ export const FloatingCopilot: React.FC = () => {
   }, [spokenLang, state, stopSpeaking, submitQuestion, tr]);
 
   const openConsole = useCallback(() => {
+    const greeting = VOICE_GREETINGS[spokenLang];
     setIsOpen(true);
     setIsTextMode(false);
     setErrorMsg(null);
-  }, []);
+    setAskedQuestion(null);
+    setAnswer(greeting);
+    setState("responding");
+    try {
+      const context = getAudioContext();
+      if (context.state === "suspended") void context.resume();
+    } catch {
+      // Browser speech remains available as a fallback.
+    }
+    void speak(greeting, spokenLang);
+  }, [speak, spokenLang]);
 
   const closeConsole = useCallback(() => {
     recognitionRef.current?.stop();
@@ -1002,6 +1092,13 @@ export const FloatingCopilot: React.FC = () => {
   useEffect(() => stopSpeaking, [stopSpeaking]);
 
   useEffect(() => {
+    if (!user) return;
+    void synthesizeWithPortal(VOICE_GREETINGS[spokenLang], spokenLang).catch(() => {
+      // The normal speech fallback will handle a provider outage on open.
+    });
+  }, [spokenLang, user]);
+
+  useEffect(() => {
     // Register the state setter so the module-level playVexylAudio can flip
     // the React state when playback starts/ends.
     vexylStateSetter = setVexylPlayingState;
@@ -1036,6 +1133,8 @@ export const FloatingCopilot: React.FC = () => {
     ? tr("Listening...", "ಆಲಿಸಲಾಗುತ್ತಿದೆ...")
     : isThinking
       ? tr("Checking records...", "ದಾಖಲೆಗಳನ್ನು ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ...")
+      : isPreparingSpeech
+        ? tr("Preparing natural voice...", "ನೈಸರ್ಗಿಕ ಧ್ವನಿಯನ್ನು ಸಿದ್ಧಪಡಿಸಲಾಗುತ್ತಿದೆ...")
       : isResponding
         ? tr("Secure response", "ಸುರಕ್ಷಿತ ಉತ್ತರ")
         : tr("Voice ready", "ಧ್ವನಿ ಸಿದ್ಧ");
@@ -1056,8 +1155,9 @@ export const FloatingCopilot: React.FC = () => {
       {/* Expanded KSPP Voice Console */}
       {isOpen && (
         <div
-          className="w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-white/10 bg-[#061b3c] text-white shadow-[0_24px_70px_rgba(0,0,0,0.45)] ring-1 ring-[#2d8cff]/10 dark:text-white"
+          className="kspp-voice-console w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-white/10 bg-[#061b3c] text-white shadow-[0_24px_70px_rgba(0,0,0,0.45)] ring-1 ring-[#2d8cff]/10 dark:text-white"
           role="dialog"
+          aria-busy={isThinking || isPreparingSpeech}
           aria-modal="false"
           aria-label={tr("KSPP Voice Console", "ಕೆಎಸ್‌ಪಿಪಿ ಧ್ವನಿ ಕನ್ಸೋಲ್")}
           onPointerDown={onDragPointerDown}
@@ -1111,7 +1211,7 @@ export const FloatingCopilot: React.FC = () => {
             <div className="mx-auto flex max-w-[205px] rounded-full border border-white/10 bg-[#07142b] p-0.5 shadow-inner">
               <button
                 type="button"
-                onClick={() => { setSpokenLang("en"); setBilingualMode("en"); }}
+                onClick={() => announceVoiceLanguage("en")}
                 onPointerDown={(e) => e.stopPropagation()}
                 className={`flex-1 rounded-full px-4 py-1.5 text-[11px] font-semibold transition ${
                   spokenLang === "en"
@@ -1123,7 +1223,7 @@ export const FloatingCopilot: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => { setSpokenLang("kn"); setBilingualMode("kn"); }}
+                onClick={() => announceVoiceLanguage("kn")}
                 onPointerDown={(e) => e.stopPropagation()}
                 className={`flex-1 rounded-full px-4 py-1.5 text-[11px] font-semibold transition ${
                   spokenLang === "kn"
@@ -1335,8 +1435,8 @@ export const FloatingCopilot: React.FC = () => {
                 <ShieldCheck size={22} strokeWidth={2.1} />
               </div>
 
-              <div className="min-w-0 flex-1 text-[12px] font-semibold leading-5 max-h-48 overflow-y-auto">
-                {answer}
+              <div className="min-w-0 flex-1 whitespace-pre-wrap text-[12px] font-semibold leading-5 max-h-48 overflow-y-auto">
+                {answer?.replace(/\*\*/g, "").replace(/^\s*[-•]\s+/gm, "")}
               </div>
 
               <button
@@ -1372,18 +1472,14 @@ export const FloatingCopilot: React.FC = () => {
             </div>
           )}
 
-          {/* Kannada voice fallback notice — shown only when ALL TTS paths (Vexyl + browser + Google) failed */}
+          {/* Shown only when the cloud, browser, and streamed Kannada voices all fail. */}
           {noKannadaVoice &&
             !isThinking &&
             !isMuted && (
               <div className="mx-3 mb-3 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-[10px] leading-4 text-amber-200">
                 {tr(
-                  "⚠ Vexyl TTS server not reachable at " +
-                    VEXYL_HTTP_BASE +
-                    ". To hear Kannada / Indian English with natural voice, start it: cd vexyl-tts && ./run.sh",
-                  "⚠ Vexyl TTS ಸರ್ವರ್ " +
-                    VEXYL_HTTP_BASE +
-                    " ತಲುಪಲಾಗುತ್ತಿಲ್ಲ. ನೈಸರ್ಗಿಕ ಕನ್ನಡ/ಇಂಗ್ಲಿಷ್ ಧ್ವನಿಯನ್ನು ಕೇಳಲು: cd vexyl-tts && ./run.sh",
+                  "Natural Kannada audio is temporarily unavailable. Please try the speaker button again.",
+                  "ನೈಸರ್ಗಿಕ ಕನ್ನಡ ಧ್ವನಿ ತಾತ್ಕಾಲಿಕವಾಗಿ ಲಭ್ಯವಿಲ್ಲ. ದಯವಿಟ್ಟು ಸ್ಪೀಕರ್ ಬಟನ್ ಅನ್ನು ಮತ್ತೆ ಒತ್ತಿ.",
                 )}
               </div>
             )}
