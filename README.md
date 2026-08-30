@@ -94,7 +94,7 @@ By integrating an autonomous **AI Copilot Engine** (powered by dual-engine **Goo
 
 <div align="center">
 
-### `Welcome`
+### `Welcome Message`
 
 <img width="1080" height="760" alt="image" src="https://github.com/user-attachments/assets/3e049f14-65be-4aed-8ad3-fc4ad3b14d64" />
 
@@ -112,6 +112,8 @@ By integrating an autonomous **AI Copilot Engine** (powered by dual-engine **Goo
 <img width="1919" height="950" alt="image" src="https://github.com/user-attachments/assets/8b5ac3e4-9d3f-4d7c-931d-65b7602f8483" />
 
 <img width="1919" height="943" alt="image" src="https://github.com/user-attachments/assets/8a4b2b28-6297-416f-aa97-e199313e920b" />
+
+<img width="1313" height="650" alt="image" src="https://github.com/user-attachments/assets/f0af8a52-4326-4c31-941e-78914d10f3a9" />
 
 <img width="1919" height="949" alt="image" src="https://github.com/user-attachments/assets/d66bf2ca-3bab-42a2-8a6c-29ab241f5fdd" />
 
@@ -260,7 +262,6 @@ Ensure you have the following installed on your machine:
 ```bash
 # Clone the repository
 git clone https://github.com/ruasthon1947/Karnataka-State-Police-Portal.git
-<img width="1919" height="945" alt="Screenshot 2026-08-30 135406" src="https://github.com/user-attachments/assets/893df768-af52-4805-a12b-7aa10005e5ac" />
 
 # Navigate into the project directory
 cd Karnataka-State-Police-Portal
