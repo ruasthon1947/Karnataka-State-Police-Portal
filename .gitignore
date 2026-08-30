@@ -1,0 +1,24 @@
+# Local credentials and runtime configuration
+.env
+service-account.json
+
+# Generated logs, builds, and deployment workspaces
+catalyst-debug.log
+.catalyst-deployment-work/
+appsail-build/
+dist/
+
+# Workspace-level package artifacts
+node_modules/
+package-lock.json
+
+# Cache, temporary directories, and binaries
+.codex-temp/
+kspp/.codex-temp/
+
+# Office temporary files
+~$*
+
+# Nested environments / folders
+voice/vexyl-tts/
+

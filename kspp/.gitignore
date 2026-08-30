@@ -10,3 +10,6 @@ catalyst-debug.log
 appsail-build/
 vite.config.ts.timestamp-*.mjs
 local_db/__pycache__/
+.codex-temp/
+~$*
+
