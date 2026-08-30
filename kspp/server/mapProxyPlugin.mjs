@@ -273,7 +273,10 @@ const proxyMapRequest = (request, response, next) => {
       const chunks = [];
       upstreamResponse.on("data", (chunk) => chunks.push(chunk));
       upstreamResponse.on("end", () => {
-        const forwardedProtocol = String(request.headers["x-forwarded-proto"] || "http")
+        const fallbackProtocol = request.socket?.encrypted || String(request.headers.host || "").endsWith(":443")
+          ? "https"
+          : "http";
+        const forwardedProtocol = String(request.headers["x-forwarded-proto"] || fallbackProtocol)
           .split(",")[0]
           .trim();
         const protocol = forwardedProtocol === "https" ? "https" : "http";

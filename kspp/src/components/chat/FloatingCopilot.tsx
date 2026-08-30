@@ -585,6 +585,9 @@ export const FloatingCopilot: React.FC = () => {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const googleTtsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const googleTtsCancelRef = useRef<(() => void) | null>(null);
+  const speechRequestIdRef = useRef(0);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   // State mirror of `vexylPlayingFlag` so the UI re-renders when audio starts/stops.
   const [vexylPlayingState, setVexylPlayingState] = useState(false);
   const textInputRef = useRef<HTMLInputElement | null>(null);
@@ -655,6 +658,10 @@ export const FloatingCopilot: React.FC = () => {
   );
 
   const stopSpeaking = useCallback(() => {
+    // Invalidate every async synthesis/playback task that started earlier.
+    // Pausing the current audio alone is not enough because an older provider
+    // request can resolve later and otherwise begin playing over the new one.
+    speechRequestIdRef.current += 1;
     setIsPreparingSpeech(false);
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -662,11 +669,9 @@ export const FloatingCopilot: React.FC = () => {
 
     utteranceRef.current = null;
 
-    if (googleTtsAudioRef.current) {
-      googleTtsAudioRef.current.pause();
-      googleTtsAudioRef.current.src = "";
-      googleTtsAudioRef.current = null;
-    }
+    googleTtsCancelRef.current?.();
+    googleTtsCancelRef.current = null;
+    googleTtsAudioRef.current = null;
 
     if (vexylAudioSource) {
       try {
@@ -697,21 +702,39 @@ export const FloatingCopilot: React.FC = () => {
 
           await new Promise<void>((resolve, reject) => {
             const audio = new Audio(url);
+            let settled = false;
+            const finish = (error?: Error) => {
+              if (settled) return;
+              settled = true;
+              if (googleTtsAudioRef.current === audio) {
+                googleTtsAudioRef.current = null;
+              }
+              if (googleTtsCancelRef.current === cancel) {
+                googleTtsCancelRef.current = null;
+              }
+              if (error) reject(error);
+              else resolve();
+            };
+            const cancel = () => {
+              audio.pause();
+              audio.removeAttribute("src");
+              audio.load();
+              finish(new Error("Speech playback was replaced."));
+            };
             googleTtsAudioRef.current = audio;
+            googleTtsCancelRef.current = cancel;
 
-            audio.onended = () => resolve();
+            audio.onended = () => finish();
             audio.onerror = () =>
-              reject(new Error("Google Translate TTS playback failed"));
+              finish(new Error("Google Translate TTS playback failed"));
 
-            audio.play().catch(reject);
+            audio.play().catch((error) => finish(error));
           });
         }
 
         return true;
       } catch {
         return false;
-      } finally {
-        googleTtsAudioRef.current = null;
       }
     },
     [],
@@ -723,6 +746,7 @@ export const FloatingCopilot: React.FC = () => {
       if (typeof window === "undefined") return;
 
       stopSpeaking();
+      const speechRequestId = speechRequestIdRef.current;
 
       const clean = sanitizeForTts(text);
       if (!clean) return;
@@ -734,11 +758,14 @@ export const FloatingCopilot: React.FC = () => {
       setIsPreparingSpeech(true);
       try {
         const audioBuffer = await synthesizeWithPortal(clean, isKannada ? "kn" : "en");
+        if (speechRequestId !== speechRequestIdRef.current) return;
         setIsPreparingSpeech(false);
         await playVexylAudio(audioBuffer);
+        if (speechRequestId !== speechRequestIdRef.current) return;
         setNoKannadaVoice(false);
         return;
       } catch (portalTtsError) {
+        if (speechRequestId !== speechRequestIdRef.current) return;
         setIsPreparingSpeech(false);
         if (import.meta.env.DEV) {
           console.warn("Natural portal voice unavailable, using fallback:", portalTtsError);
@@ -753,6 +780,7 @@ export const FloatingCopilot: React.FC = () => {
         // Prefer the online Kannada voice over a device synthesizer. The
         // latter is the source of the robotic voice heard on some PCs.
         const streamed = await playViaGoogleTranslateTts(clean, "kn");
+        if (speechRequestId !== speechRequestIdRef.current) return;
         if (streamed) return;
 
         let freshVoices = browserSpeech?.getVoices() || [];
@@ -761,6 +789,7 @@ export const FloatingCopilot: React.FC = () => {
         const knVoice = pickIndianVoice("kn", freshVoices);
 
         if (knVoice) {
+          if (speechRequestId !== speechRequestIdRef.current) return;
           const utterance = new SpeechSynthesisUtterance(clean);
           utterance.lang = "kn-IN";
           utterance.rate = NATURAL_SPEECH_RATE;
@@ -778,8 +807,10 @@ export const FloatingCopilot: React.FC = () => {
       // Keep the network Indian-English voice ahead of Windows/macOS voices;
       // the latter can sound robotic even when their locale is en-IN.
       let streamedEn = await playViaGoogleTranslateTts(clean, "en-IN");
+      if (speechRequestId !== speechRequestIdRef.current) return;
       if (!streamedEn) {
         streamedEn = await playViaGoogleTranslateTts(clean, "en");
+        if (speechRequestId !== speechRequestIdRef.current) return;
       }
 
       if (streamedEn) {
@@ -793,6 +824,7 @@ export const FloatingCopilot: React.FC = () => {
       const indianVoice = pickIndianVoice("en", freshVoices);
 
       if (indianVoice) {
+        if (speechRequestId !== speechRequestIdRef.current) return;
         setNoKannadaVoice(false);
 
         const utterance = new SpeechSynthesisUtterance(clean);
@@ -806,6 +838,7 @@ export const FloatingCopilot: React.FC = () => {
       }
 
       if (browserSpeech) {
+        if (speechRequestId !== speechRequestIdRef.current) return;
         const utterance = new SpeechSynthesisUtterance(clean);
         utterance.lang = "en-IN";
         utterance.rate = NATURAL_SPEECH_RATE;
@@ -822,6 +855,40 @@ export const FloatingCopilot: React.FC = () => {
       voices,
     ],
   );
+
+  const clampWidgetToViewport = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const margin = 12;
+    const rect = panelRef.current?.getBoundingClientRect();
+    const width = rect?.width || (isOpen ? Math.min(360, window.innerWidth - 24) : 60);
+    const height = Math.min(
+      rect?.height || (isOpen ? window.innerHeight - 24 : 60),
+      window.innerHeight - 24,
+    );
+    const maxRight = Math.max(margin, window.innerWidth - width - margin);
+    const maxBottom = Math.max(margin, window.innerHeight - height - margin);
+
+    setPosition((current) => {
+      const next = {
+        right: Math.min(Math.max(current.right, margin), maxRight),
+        bottom: Math.min(Math.max(current.bottom, margin), maxBottom),
+      };
+      return next.right === current.right && next.bottom === current.bottom
+        ? current
+        : next;
+    });
+  }, [isOpen]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(clampWidgetToViewport);
+    window.addEventListener("resize", clampWidgetToViewport);
+    window.visualViewport?.addEventListener("resize", clampWidgetToViewport);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", clampWidgetToViewport);
+      window.visualViewport?.removeEventListener("resize", clampWidgetToViewport);
+    };
+  }, [clampWidgetToViewport]);
 
   const announceVoiceLanguage = useCallback(
     (nextLanguage: SpokenLang) => {
@@ -1155,7 +1222,8 @@ export const FloatingCopilot: React.FC = () => {
       {/* Expanded KSPP Voice Console */}
       {isOpen && (
         <div
-          className="kspp-voice-console w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-white/10 bg-[#061b3c] text-white shadow-[0_24px_70px_rgba(0,0,0,0.45)] ring-1 ring-[#2d8cff]/10 dark:text-white"
+          ref={panelRef}
+          className="kspp-voice-console max-h-[calc(100dvh-24px)] w-[min(360px,calc(100vw-24px))] max-w-[calc(100vw-24px)] overflow-x-hidden overflow-y-auto rounded-2xl border border-white/10 bg-[#061b3c] text-white shadow-[0_24px_70px_rgba(0,0,0,0.45)] ring-1 ring-[#2d8cff]/10 dark:text-white"
           role="dialog"
           aria-busy={isThinking || isPreparingSpeech}
           aria-modal="false"
