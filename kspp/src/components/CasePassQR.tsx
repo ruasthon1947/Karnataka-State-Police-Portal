@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { caseKey } from "../lib/cases";
+import { caseKey, displayIdentifier } from "../lib/cases";
 import type { CaseRecord } from "../lib/cases";
 
 /** Build the token used in the public URL — just base64 of the CaseMasterID */
@@ -67,7 +67,11 @@ const CasePassQR: React.FC<Props> = ({ record, onClose }) => {
   }, [url]);
 
   const id = caseKey(record);
-  const label = record.CrimeNo || (record.CaseNo ? `CR-${record.CaseNo}` : `Case ${id}`);
+  const label = record.CrimeNo
+    ? displayIdentifier(record.CrimeNo)
+    : record.CaseNo
+      ? `CR-${displayIdentifier(record.CaseNo)}`
+      : `Case ${displayIdentifier(id)}`;
 
   return (
     <div

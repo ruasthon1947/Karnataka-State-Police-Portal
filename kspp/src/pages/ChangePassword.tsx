@@ -6,6 +6,9 @@ import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
 import { auth } from "../firebase";
 
+const FIREBASE_PASSWORD_AUTH_ENABLED =
+  String(import.meta.env.VITE_FIREBASE_PASSWORD_AUTH_ENABLED || "false").toLowerCase() === "true";
+
 const ChangePassword: React.FC = () => {
   const { user, changePassword, logout, theme, toggleTheme } = useAuth();
   const { language, setLanguage, tr } = useLanguage();
@@ -66,15 +69,17 @@ const ChangePassword: React.FC = () => {
     setSubmitting(true);
     try {
       let firebaseIdToken = "";
-      try {
-        const credential = await signInWithEmailAndPassword(
-          auth,
-          `${user?.employeeId}@ksph.gov.in`.toLowerCase(),
-          current,
-        );
-        firebaseIdToken = await credential.user.getIdToken();
-      } catch {
-        // The server also verifies temporary and migrated application passwords.
+      if (FIREBASE_PASSWORD_AUTH_ENABLED) {
+        try {
+          const credential = await signInWithEmailAndPassword(
+            auth,
+            `${user?.employeeId}@ksph.gov.in`.toLowerCase(),
+            current,
+          );
+          firebaseIdToken = await credential.user.getIdToken();
+        } catch {
+          // The server also verifies temporary and migrated application passwords.
+        }
       }
 
       const result = await changePassword(current, next, firebaseIdToken);

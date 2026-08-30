@@ -75,6 +75,9 @@ const api = (path: string) => `/api${path}`;
 async function readJson<T>(response: Response): Promise<T> {
   const data = (await response.json()) as T & { error?: string };
   if (!response.ok) {
+    if (response.status === 401 && window.location.pathname !== "/session-expired") {
+      window.location.assign("/session-expired");
+    }
     throw new Error(data.error || `Request failed with status ${response.status}`);
   }
   return data;
@@ -174,9 +177,28 @@ export function caseRoute(record: CaseRecord): string {
 }
 
 export function caseLabel(record: CaseRecord): string {
-  if (record.CaseNo) return `CR-${record.CaseNo}`;
-  if (record.CaseMasterID) return `Case ${record.CaseMasterID}`;
-  return record.CrimeNo || "Unnumbered case";
+  if (record.CaseNo) return `CR-${displayIdentifier(record.CaseNo)}`;
+  if (record.CaseMasterID) return `Case ${displayIdentifier(record.CaseMasterID)}`;
+  return displayIdentifier(record.CrimeNo) || "Unnumbered case";
+}
+
+/** Expand spreadsheet scientific notation without converting through Number. */
+export function displayIdentifier(value: string | undefined): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const scientific = raw.match(/^([+-]?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)$/);
+  if (!scientific) return raw.replace(/\.0+$/, "");
+
+  const [, sign, integer, fraction = "", exponentText] = scientific;
+  const digits = `${integer}${fraction}`.replace(/^0+(?=\d)/, "");
+  const decimalIndex = integer.length + Number(exponentText);
+  let expanded: string;
+  if (decimalIndex <= 0) expanded = `0.${"0".repeat(-decimalIndex)}${digits}`;
+  else if (decimalIndex >= digits.length) expanded = `${digits}${"0".repeat(decimalIndex - digits.length)}`;
+  else expanded = `${digits.slice(0, decimalIndex)}.${digits.slice(decimalIndex)}`;
+
+  return `${sign === "-" ? "-" : ""}${expanded.replace(/\.0+$/, "")}`;
 }
 
 export function splitNames(value: string | undefined): string[] {
@@ -272,8 +294,8 @@ export function toFirRecord(record: CaseRecord): FirRecord {
   return {
     id: caseKey(record),
     label: caseLabel(record),
-    fir: record.CrimeNo || record.CaseNo || "",
-    caseNo: record.CaseNo || "",
+    fir: displayIdentifier(record.CrimeNo || record.CaseNo),
+    caseNo: displayIdentifier(record.CaseNo),
     category: record.CrimeSubHead || record.CrimeHead || record.CaseCategory || "Case",
     station: record.PoliceStation || "",
     io: record.Officer || "",

@@ -55,6 +55,7 @@ const AppShell: React.FC = () => {
   const [showSessionWarning, setShowSessionWarning] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [portalSearch, setPortalSearch] = useState("");
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
 
   // ── Morning Digest (once per officer per day) ───────────────────────────
   const [showDigest, setShowDigest] = useState(false);
@@ -106,6 +107,17 @@ const AppShell: React.FC = () => {
   }, [location.pathname]);
 
   useEffect(() => {
+    const markOnline = () => setIsOnline(true);
+    const markOffline = () => setIsOnline(false);
+    window.addEventListener("online", markOnline);
+    window.addEventListener("offline", markOffline);
+    return () => {
+      window.removeEventListener("online", markOnline);
+      window.removeEventListener("offline", markOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     const intervalId = window.setInterval(() => {
       if (!sessionExpiresAt) return;
       const remaining = Math.max(
@@ -116,7 +128,7 @@ const AppShell: React.FC = () => {
       setShowSessionWarning(remaining > 0 && remaining <= 300);
       if (remaining === 0) {
         logout();
-        navigate("/login", { replace: true });
+        navigate("/session-expired", { replace: true });
       }
     }, 1000);
 
@@ -424,6 +436,15 @@ const AppShell: React.FC = () => {
           </button>
         </header>
 
+        {!isOnline && (
+          <div className="border-b border-amber/30 bg-amber/10 px-4 py-2 text-center text-xs font-medium text-amber" role="status" aria-live="polite">
+            {tr(
+              "You are offline. Browser drafts remain available; sync, uploads and messages will resume after reconnecting.",
+              "ನೀವು ಆಫ್‌ಲೈನ್‌ನಲ್ಲಿದ್ದೀರಿ. ಬ್ರೌಸರ್ ಕರಡುಗಳು ಲಭ್ಯವಿವೆ; ಮರುಸಂಪರ್ಕದ ನಂತರ ಸಿಂಕ್, ಅಪ್‌ಲೋಡ್ ಮತ್ತು ಸಂದೇಶಗಳು ಮುಂದುವರಿಯುತ್ತವೆ.",
+            )}
+          </div>
+        )}
+
         <main id="main-content" className="min-h-0 flex-1 overflow-auto bg-ink">
           <Outlet />
         </main>
@@ -493,7 +514,7 @@ const AppShell: React.FC = () => {
                   if (result.ok) {
                     setShowSessionWarning(false);
                   } else {
-                    navigate("/login", { replace: true });
+                    navigate("/session-expired", { replace: true });
                   }
                 }}
                 className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white"

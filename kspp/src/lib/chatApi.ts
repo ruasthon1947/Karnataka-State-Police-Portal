@@ -167,7 +167,6 @@ export async function askCopilot(params: {
 
   if (!res.ok || !data?.ok) {
     const serverMessage = data?.error || `HTTP ${res.status}`;
-    console.error("Chat API error:", serverMessage);
     throw new Error(serverMessage);
   }
 
@@ -237,8 +236,7 @@ export async function fetchUserChatsFromFirebase(userId: string): Promise<Firest
     });
 
     return chats;
-  } catch (error) {
-    console.warn("[chatApi] Firestore chat history is unavailable; using the officer's local cache.", error);
+  } catch {
     return [];
   }
 }
@@ -262,12 +260,8 @@ export async function saveChatToFirebase(userId: string, session: FirestoreChatS
       },
       { merge: true }
     );
-  } catch (error) {
-    console.error("[chatApi] Error saving chat to Firestore:", {
-      userId: safeUserId,
-      sessionId,
-      error,
-    });
+  } catch {
+    // Local chat history remains the fallback when Firestore is unavailable.
   }
 }
 
@@ -279,7 +273,7 @@ export async function deleteChatFromFirebase(userId: string, sessionId: string):
   try {
     const sessionRef = doc(db, "users", userId, "chats", sessionId);
     await deleteDoc(sessionRef);
-  } catch (error) {
-    console.error("Error deleting chat from Firestore:", error);
+  } catch {
+    // Local chat history remains authoritative for the current browser session.
   }
 }

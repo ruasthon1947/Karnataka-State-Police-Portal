@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { displayIdentifier } from "../lib/cases";
 
 type PassData = {
   CaseMasterID: string;
@@ -35,6 +36,9 @@ const CasePass: React.FC = () => {
   const [data, setData] = useState<PassData | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -42,19 +46,37 @@ const CasePass: React.FC = () => {
       setLoading(false);
       return;
     }
-    fetch(`/api/case-pass/${encodeURIComponent(token)}`)
-      .then((res) => res.json())
+    const controller = new AbortController();
+    setLoading(true);
+    setError("");
+    fetch(`/api/case-pass/${encodeURIComponent(token)}`, { cache: "no-store", signal: controller.signal })
+      .then(async (res) => {
+        const json = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(json?.error || "Case information is unavailable.");
+        return json;
+      })
       .then((json) => {
         if (json.ok) setData(json.pass);
-        else setError(json.error || "Case not found.");
+        else setError("This case pass could not be verified.");
+        setCheckedAt(new Date());
       })
-      .catch(() => setError("Could not load case information. Please try again."))
+      .catch((requestError) => {
+        if (requestError?.name !== "AbortError") {
+          setData(null);
+          setError(navigator.onLine ? "This case pass could not be verified. Check the link or try again." : "You are offline. Reconnect and try again.");
+        }
+      })
       .finally(() => setLoading(false));
-  }, [token]);
+    return () => controller.abort();
+  }, [token, refreshKey]);
 
   const step = data ? resolveStep(data.Status, data.ChargesheetStatus) : 0;
   const caseLabel = data
-    ? data.CrimeNo || (data.CaseNo ? `CR-${data.CaseNo}` : `Case ${data.CaseMasterID}`)
+    ? data.CrimeNo
+      ? displayIdentifier(data.CrimeNo)
+      : data.CaseNo
+        ? `CR-${displayIdentifier(data.CaseNo)}`
+        : `Case ${displayIdentifier(data.CaseMasterID)}`
     : "";
 
   return (
@@ -77,15 +99,19 @@ const CasePass: React.FC = () => {
         {!loading && error && (
           <div className="p-8 text-center">
             <div className="text-3xl mb-3">⚠️</div>
-            <div className="text-[#ffffff] font-semibold mb-1">Case Not Found</div>
+            <div className="text-[#ffffff] font-semibold mb-1">Unable to verify case pass</div>
             <div className="text-[#6b7280] text-sm">{error}</div>
+            <button type="button" onClick={() => setRefreshKey((value) => value + 1)} className="mt-5 rounded-lg border border-[#4f8ef7]/40 px-4 py-2 text-xs font-semibold text-[#4f8ef7]">Try again</button>
           </div>
         )}
 
         {!loading && data && (
           <>
             <div className="bg-[#1a4fcf]/15 border-b border-[#ffffff]/10 p-5">
-              <div className="text-[#4f8ef7] text-xs font-mono uppercase tracking-wider mb-1">{caseLabel}</div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="min-w-0 break-all text-[#4f8ef7] text-xs font-mono uppercase tracking-wider">{caseLabel}</div>
+                <span className="shrink-0 rounded-full border border-[#22c55e]/30 bg-[#22c55e]/10 px-2 py-1 text-[10px] font-semibold text-[#4ade80]">✓ Verified</span>
+              </div>
               <div className="text-[#ffffff] font-semibold text-lg">{data.PoliceStation || "Karnataka Police"}</div>
               <div className="text-[#6b7280] text-xs mt-1">Registered: {data.CrimeRegisteredDate || "Date on record"}</div>
             </div>
@@ -115,6 +141,25 @@ const CasePass: React.FC = () => {
                 <span className="text-[#ffffff] text-xs font-medium">{data.Officer.split(" ")[0]}</span>
               </div>
             )}
+
+            <div className="border-t border-[#ffffff]/10 px-5 py-4">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(caseLabel);
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1800);
+                  } catch {
+                    setCopied(false);
+                  }
+                }}
+                className="w-full rounded-lg border border-[#ffffff]/10 px-3 py-2 text-xs font-semibold text-[#d1d5db] hover:border-[#4f8ef7]/50"
+              >
+                {copied ? "Reference copied" : "Copy case reference"}
+              </button>
+              <p className="mt-2 text-center text-[10px] text-[#6b7280]">{checkedAt ? `Last checked ${checkedAt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}` : "Live case status"}</p>
+            </div>
 
             <div className="border-t border-[#ffffff]/10 bg-[#ffffff]/[0.02] p-4">
               <p className="text-[#6b7280] text-[11px] text-center leading-relaxed">

@@ -1363,7 +1363,7 @@ export const FloatingCopilot: React.FC = () => {
 
           {/* User query bubble (bilingual with KN/EN toggle) */}
           {askedQuestion && (
-            <div className="mx-3 mb-2 flex items-center gap-2 rounded-full border border-white/10 bg-[#092653] px-3 py-2 text-[11px] text-white/85 !important shadow-inner">
+            <div className="mx-3 mb-2 flex items-center gap-2 rounded-full border border-white/10 bg-[#092653] px-3 py-2 text-[11px] text-white/85 shadow-inner">
               <div className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#12386e] text-[#8fc2ff]">
                 <UserRound size={13} />
               </div>
@@ -1412,7 +1412,7 @@ export const FloatingCopilot: React.FC = () => {
 
           {/* Processing state */}
           {isThinking && (
-            <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-[#092653] px-3 py-2.5 text-[11px] text-white/65 !important">
+            <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-[#092653] px-3 py-2.5 text-[11px] text-white/65">
               <span className="flex gap-1">
                 <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#56a3ff]" />
                 <span
@@ -1667,11 +1667,11 @@ export const FloatingCopilot: React.FC = () => {
               </button>
             </div>
 
-            <div className="mt-2 flex items-center justify-center gap-1.5 text-[10px] text-white/50 !important">
+            <div className="mt-2 flex items-center justify-center gap-1.5 text-[10px] text-white/50">
               <span>
                 {spokenLang === "kn" ? "ಕನ್ನಡ" : "English (India)"}
               </span>
-              <span className="text-emerald-400 !important">•</span>
+              <span className="text-emerald-400">•</span>
               <span>{statusText}</span>
             </div>
           </div>

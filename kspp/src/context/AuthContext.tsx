@@ -9,6 +9,8 @@ import React, {
 // Integrated friend's additions:
 import { clearDigestPending, markDigestPending } from "../lib/digestSession";
 import type { ChatMapContext } from "../lib/chatApi";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { auth } from "../firebase";
 
 export type AuthUser = {
   employeeId: string;
@@ -55,6 +57,8 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 const LS_THEME = "kpfir.theme";
 const LS_LAST_LOGIN = "kpfir.lastLogin";
+const FIREBASE_PASSWORD_AUTH_ENABLED =
+  String(import.meta.env.VITE_FIREBASE_PASSWORD_AUTH_ENABLED || "false").toLowerCase() === "true";
 
 async function responseData(response: Response) {
   return response.json().catch(() => null);
@@ -126,19 +130,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       if (!password) return { ok: false, error: "Password is required." };
 
       let firebaseIdToken = "";
-      try {
-        const [{ auth }, { signInWithEmailAndPassword }] = await Promise.all([
-          import("../firebase"),
-          import("firebase/auth"),
-        ]);
-
-        if (auth && auth.app.options.apiKey) {
-          const email = `${id}@ksph.gov.in`.toLowerCase();
-          const credential = await signInWithEmailAndPassword(auth, email, password);
-          firebaseIdToken = await credential.user.getIdToken();
+      if (FIREBASE_PASSWORD_AUTH_ENABLED) {
+        try {
+          if (auth && auth.app.options.apiKey) {
+            const email = `${id}@ksph.gov.in`.toLowerCase();
+            const credential = await signInWithEmailAndPassword(auth, email, password);
+            firebaseIdToken = await credential.user.getIdToken();
+          }
+        } catch {
+          // The application password endpoint remains the visible sign-in path.
         }
-      } catch (err) {
-        console.error("[AuthContext] Firebase Auth authentication failed:", err);
       }
 
       try {
@@ -225,8 +226,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     try {
-      const { auth } = await import("../firebase");
-      const { signOut } = await import("firebase/auth");
       if (auth) await signOut(auth);
     } catch {
       // Firebase signout fallback

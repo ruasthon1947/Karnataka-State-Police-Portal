@@ -55,6 +55,7 @@ export const MorningDigestModal: React.FC<MorningDigestModalProps> = ({
     () => [...tasks].sort((left, right) => taskRank(left, today) - taskRank(right, today)),
     [tasks, today],
   );
+  const briefingTasks = orderedTasks.slice(0, 5);
   const firstName = (officerName || tr("Officer", "ಅಧಿಕಾರಿ")).split(/\s+/)[0];
   const dateLabel = today.toLocaleDateString(language === "kn" ? "kn-IN" : "en-IN", {
     weekday: "long",
@@ -106,7 +107,7 @@ export const MorningDigestModal: React.FC<MorningDigestModalProps> = ({
                   <div className="rounded-lg border border-line bg-panel p-4 text-center text-sm text-muted"><CheckCircle2 className="mx-auto mb-2 text-brand" size={20} />{tr("No tasks require attention today.", "ಇಂದು ಗಮನ ಅಗತ್ಯವಿರುವ ಕಾರ್ಯಗಳಿಲ್ಲ.")}</div>
                 ) : (
                   <div className="space-y-2">
-                    {orderedTasks.map((task) => (
+                    {briefingTasks.map((task) => (
                       <div key={task.id} className={`flex items-start gap-3 rounded-lg border p-3 ${priorityStyles[task.priority]}`}>
                         <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
                         <div className="min-w-0 flex-1">
@@ -117,6 +118,14 @@ export const MorningDigestModal: React.FC<MorningDigestModalProps> = ({
                         <button type="button" onClick={() => togglePinned(task.id)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-line text-muted hover:bg-panel hover:text-brand" aria-label={isPinned(task.id) ? tr(`Unpin ${task.title}`, `${task.title} ಪಿನ್ ತೆಗೆದುಹಾಕಿ`) : tr(`Pin ${task.title}`, `${task.title} ಪಿನ್ ಮಾಡಿ`)} title={isPinned(task.id) ? tr("Unpin task", "ಕಾರ್ಯದ ಪಿನ್ ತೆಗೆದುಹಾಕಿ") : tr("Pin task", "ಕಾರ್ಯ ಪಿನ್ ಮಾಡಿ")}>{isPinned(task.id) ? <PinOff size={15} /> : <Pin size={15} />}</button>
                       </div>
                     ))}
+                    {orderedTasks.length > briefingTasks.length && (
+                      <p className="pt-1 text-center text-xs text-muted">
+                        {tr(
+                          `${orderedTasks.length - briefingTasks.length} more tasks are available in the full list.`,
+                          `ಪೂರ್ಣ ಪಟ್ಟಿಯಲ್ಲಿ ಇನ್ನೂ ${orderedTasks.length - briefingTasks.length} ಕಾರ್ಯಗಳಿವೆ.`,
+                        )}
+                      </p>
+                    )}
                   </div>
                 )}
               </section>

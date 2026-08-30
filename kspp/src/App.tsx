@@ -48,6 +48,12 @@ const Settings = React.lazy(() =>
   import("./pages/pages").then((module) => ({ default: module.Settings })),
 );
 const TodoList = React.lazy(() => import("./pages/TodoList"));
+const NotFound = React.lazy(() =>
+  import("./pages/Stub").then((module) => ({ default: module.NotFound })),
+);
+const SessionExpired = React.lazy(() =>
+  import("./pages/Stub").then((module) => ({ default: module.SessionExpired })),
+);
 
 const App: React.FC = () => {
   const { tr } = useLanguage();
@@ -55,6 +61,7 @@ const App: React.FC = () => {
 
   const isAuthScreen =
     location.pathname === "/login" ||
+    location.pathname === "/session-expired" ||
     location.pathname.startsWith("/change-password") ||
     location.pathname.startsWith("/case-pass");
 
@@ -73,6 +80,7 @@ const App: React.FC = () => {
 
           {/* Auth screens (standalone layout) */}
           <Route path="/login" element={<Login />} />
+          <Route path="/session-expired" element={<SessionExpired />} />
           <Route
             path="/change-password"
             element={
@@ -115,10 +123,7 @@ const App: React.FC = () => {
             <Route path="/_preview/crime-intelligence" element={<Navigate to="/crime-intelligence" replace />} />
           )}
 
-          <Route
-            path="*"
-            element={<Navigate to={isAuthScreen ? "/login" : "/"} replace />}
-          />
+          <Route path="*" element={isAuthScreen ? <Navigate to="/login" replace /> : <NotFound />} />
         </Routes>
       </React.Suspense>
     </ChatProvider>

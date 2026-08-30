@@ -753,7 +753,7 @@ export const Dashboard: React.FC = () => {
 export const FIRList: React.FC = () => {
   const { language, tr: t } = useLanguage();
   const nav = useNavigate();
-  const { records, loading, error } = useFirRecords();
+  const { records, loading, error, reload } = useFirRecords();
   const [searchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const pageSize = 50;
@@ -776,7 +776,7 @@ export const FIRList: React.FC = () => {
   return (
     <div className="p-5">
       <Card className="p-5">
-        <div className="flex justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-lg font-semibold">
               {t(
@@ -812,7 +812,8 @@ export const FIRList: React.FC = () => {
         )}
         {error && (
           <div className="mt-5 rounded-lg border border-rose/30 bg-rose/10 p-4 text-sm text-rose" role="alert">
-            {error}
+            <p>{navigator.onLine ? error : t("You are offline. Reconnect and try again.", "ನೀವು ಆಫ್‌ಲೈನ್‌ನಲ್ಲಿದ್ದೀರಿ. ಮರುಸಂಪರ್ಕಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.")}</p>
+            <button type="button" onClick={() => void reload()} className="mt-3 rounded-lg border border-rose/40 px-3 py-2 text-xs font-semibold">{t("Try again", "ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ")}</button>
           </div>
         )}
         {!loading && !error && visibleRecords.length === 0 && (
@@ -821,7 +822,35 @@ export const FIRList: React.FC = () => {
           </div>
         )}
 
-        <div className="overflow-x-auto mt-5">
+        <div className="mt-5 space-y-3 md:hidden">
+          {pageRecords.map((record) => (
+            <button
+              type="button"
+              key={record.id}
+              onClick={() => nav(`/fir/${caseRoute(record.raw)}`)}
+              className="w-full rounded-xl border border-line bg-panel/40 p-4 text-left transition hover:border-brand/40"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-brand">{record.label}</div>
+                  <div className="mt-1 break-all text-[11px] text-muted num">{record.fir || t("Number pending", "ಸಂಖ್ಯೆ ಬಾಕಿ")}</div>
+                </div>
+                <span className="shrink-0 rounded-full border border-line px-2 py-1 text-[10px]">
+                  {displayKnownValue(record.status, language)}
+                </span>
+              </div>
+              <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 text-xs">
+                <div><dt className="text-muted">{t("Category", "ವರ್ಗ")}</dt><dd className="mt-0.5 font-medium">{displayKnownValue(record.category, language)}</dd></div>
+                <div><dt className="text-muted">{t("Registered", "ನೋಂದಣಿ")}</dt><dd className="mt-0.5 font-medium">{record.date || "—"}</dd></div>
+                <div><dt className="text-muted">{t("Station", "ಠಾಣೆ")}</dt><dd className="mt-0.5 font-medium">{displayPlaceName(record.station, language) || "—"}</dd></div>
+                <div><dt className="text-muted">{t("IO", "ತನಿಖಾಧಿಕಾರಿ")}</dt><dd className="mt-0.5 font-medium">{record.io || "—"}</dd></div>
+              </dl>
+              <div className="mt-4 text-right text-xs font-semibold text-brand">{t("Open case", "ಪ್ರಕರಣ ತೆರೆಯಿರಿ")} ›</div>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-5 hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-[10px] uppercase text-muted">
@@ -1140,12 +1169,14 @@ export const FIRDetail: React.FC = () => {
 ========================================================= */
 
 export const AdvancedSearch: React.FC = () => {
-  const t = useT();
+  const { language, tr: t } = useLanguage();
   const [searchParams] = useSearchParams();
 
   const [q, setQ] = useState(() => searchParams.get("q") || "");
   const [station, setStation] = useState(() => searchParams.get("station") || "");
   const [status, setStatus] = useState(() => searchParams.get("status") || "");
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
 
   const [saved, setSaved] = useState<string[]>(() =>
     JSON.parse(
@@ -1162,7 +1193,7 @@ export const AdvancedSearch: React.FC = () => {
   );
 
   const nav = useNavigate();
-  const { records, options, loading, error } = useFirRecords();
+  const { records, options, loading, error, reload } = useFirRecords();
 
   const results = useMemo(
     () =>
@@ -1178,6 +1209,10 @@ export const AdvancedSearch: React.FC = () => {
       }),
     [q, records, station, status]
   );
+  const pageCount = Math.max(1, Math.ceil(results.length / pageSize));
+  const pageResults = results.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => setPage(1), [q, station, status]);
 
   const run = () => {
     if (!q) return;
@@ -1351,8 +1386,15 @@ export const AdvancedSearch: React.FC = () => {
         </div>
 
         <Card className="p-4">
-          <div className="space-y-2">
-            {results.map((r) => (
+          {loading && <div className="py-12 text-center text-sm text-muted" role="status">{t("Searching FIR records…", "ಎಫ್‌ಐಆರ್ ದಾಖಲೆಗಳನ್ನು ಹುಡುಕಲಾಗುತ್ತಿದೆ…")}</div>}
+          {error && (
+            <div className="rounded-lg border border-rose/30 bg-rose/10 p-4 text-sm text-rose" role="alert">
+              <p>{navigator.onLine ? error : t("You are offline. Reconnect and try again.", "ನೀವು ಆಫ್‌ಲೈನ್‌ನಲ್ಲಿದ್ದೀರಿ. ಮರುಸಂಪರ್ಕಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.")}</p>
+              <button type="button" onClick={() => void reload()} className="mt-3 rounded-lg border border-rose/40 px-3 py-2 text-xs font-semibold">{t("Try again", "ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ")}</button>
+            </div>
+          )}
+          {!loading && !error && <div className="space-y-2">
+            {pageResults.map((r) => (
               <button
                 onClick={() =>
                   nav(`/fir/${caseRoute(r.raw)}`)
@@ -1366,13 +1408,13 @@ export const AdvancedSearch: React.FC = () => {
                   </div>
 
                   <div className="text-xs text-muted mt-1">
-                    {r.category} · {r.complainant} ·{" "}
-                    {r.station}
+                    {displayKnownValue(r.category, language)} · {r.complainant} ·{" "}
+                    {displayPlaceName(r.station, language)}
                   </div>
                 </div>
 
                 <div className="text-xs text-muted">
-                  {r.status}
+                  {displayKnownValue(r.status, language)}
                 </div>
               </button>
             ))}
@@ -1385,7 +1427,17 @@ export const AdvancedSearch: React.FC = () => {
                 )}
               </div>
             )}
-          </div>
+            {results.length > pageSize && (
+              <div className="mt-4 flex flex-col gap-3 border-t border-line pt-4 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
+                <span>{t("Showing", "ತೋರಿಸಲಾಗುತ್ತಿದೆ")} {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, results.length)} {t("of", "ರಲ್ಲಿ")} {results.length}</span>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} className="rounded-lg border border-line px-3 py-2 disabled:opacity-40">{t("Previous", "ಹಿಂದಿನದು")}</button>
+                  <span className="grid min-w-16 place-items-center">{page} / {pageCount}</span>
+                  <button type="button" onClick={() => setPage((current) => Math.min(pageCount, current + 1))} disabled={page === pageCount} className="rounded-lg border border-line px-3 py-2 disabled:opacity-40">{t("Next", "ಮುಂದಿನದು")}</button>
+                </div>
+              </div>
+            )}
+          </div>}
         </Card>
       </div>
     </div>
@@ -2215,6 +2267,7 @@ export const Settings: React.FC = () => {
     status: "idle" | "pulling" | "success" | "error";
     message: string;
   }>({ status: "idle", message: "" });
+  const [pullConfirmOpen, setPullConfirmOpen] = useState(false);
 
   const [phoneNumber, setPhoneNumber] = useState("");
   const [phoneVerified, setPhoneVerified] = useState(false);
@@ -2458,6 +2511,7 @@ export const Settings: React.FC = () => {
   };
 
   const pullFromMaster = async () => {
+    setPullConfirmOpen(false);
     setPullState({
       status: "pulling",
       message: t("Pulling latest cases from Google Master Sheet...", "Google ಮಾಸ್ಟರ್ ಶೀಟ್‌ನಿಂದ ಇತ್ತೀಚಿನ ಪ್ರಕರಣಗಳನ್ನು ಪಡೆಯಲಾಗುತ್ತಿದೆ..."),
@@ -2740,11 +2794,17 @@ export const Settings: React.FC = () => {
               <h2 className="font-semibold">
                 {t("Sync Sheet", "ಶೀಟ್ ಸಿಂಕ್ ಮಾಡಿ")}
               </h2>
+              <p className="mt-1 text-xs text-muted">
+                {t(
+                  "Fetch the latest master-sheet records and refresh the portal data.",
+                  "ಇತ್ತೀಚಿನ ಮಾಸ್ಟರ್-ಶೀಟ್ ದಾಖಲೆಗಳನ್ನು ಪಡೆದು ಪೋರ್ಟಲ್ ದತ್ತಾಂಶವನ್ನು ನವೀಕರಿಸಿ.",
+                )}
+              </p>
             </div>
 
             <button
               type="button"
-              onClick={pullFromMaster}
+              onClick={() => setPullConfirmOpen(true)}
               disabled={pullState.status === "pulling"}
               className="h-10 px-4 rounded-lg bg-brand text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
             >
@@ -2753,6 +2813,17 @@ export const Settings: React.FC = () => {
                 : t("Pull Latest", "ಇತ್ತೀಚಿನದನ್ನು ಪಡೆಯಿರಿ")}
             </button>
           </div>
+
+          {pullConfirmOpen && pullState.status !== "pulling" && (
+            <div className="mt-4 rounded-xl border border-amber/30 bg-amber/10 p-4" role="alertdialog" aria-labelledby="sync-confirm-title">
+              <h3 id="sync-confirm-title" className="text-sm font-semibold text-white">{t("Confirm data sync", "ದತ್ತಾಂಶ ಸಿಂಕ್ ದೃಢೀಕರಿಸಿ")}</h3>
+              <p className="mt-1 text-xs leading-5 text-muted">{t("This pulls the current Google Master Sheet into the portal. Any unsent New FIR browser drafts are not affected.", "ಇದು ಪ್ರಸ್ತುತ Google ಮಾಸ್ಟರ್ ಶೀಟ್ ಅನ್ನು ಪೋರ್ಟಲ್‌ಗೆ ಪಡೆಯುತ್ತದೆ. ಕಳುಹಿಸದ ಹೊಸ ಎಫ್‌ಐಆರ್ ಬ್ರೌಸರ್ ಕರಡುಗಳಿಗೆ ಪರಿಣಾಮ ಬೀರುವುದಿಲ್ಲ.")}</p>
+              <div className="mt-3 flex justify-end gap-2">
+                <button type="button" onClick={() => setPullConfirmOpen(false)} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold text-muted">{t("Cancel", "ರದ್ದು")}</button>
+                <button type="button" onClick={() => void pullFromMaster()} className="rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white">{t("Sync latest records", "ಇತ್ತೀಚಿನ ದಾಖಲೆಗಳನ್ನು ಸಿಂಕ್ ಮಾಡಿ")}</button>
+              </div>
+            </div>
+          )}
 
           {pullState.message && (
             <div

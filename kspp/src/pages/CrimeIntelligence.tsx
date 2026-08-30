@@ -52,6 +52,7 @@ const CrimeIntelligence: React.FC = () => {
   const [tilted, setTilted] = useState(true);
   const [selectedId, setSelectedId] = useState("");
   const [patrol, setPatrol] = useState<PatrolState>({ status: "idle", message: "" });
+  const [patrolConfirmOpen, setPatrolConfirmOpen] = useState(false);
   const [training, setTraining] = useState<HotspotTrainingResult>(EMPTY_TRAINING);
   const [trainingPending, setTrainingPending] = useState(false);
 
@@ -123,6 +124,7 @@ const CrimeIntelligence: React.FC = () => {
 
   const sendSelectedPatrolAlert = async () => {
     if (!selected || patrol.status === "sending") return;
+    setPatrolConfirmOpen(false);
     setPatrol({ status: "sending", message: tr("Sending Twilio alert…", "Twilio ಎಚ್ಚರಿಕೆ ಕಳುಹಿಸಲಾಗುತ್ತಿದೆ…") });
     try {
       const result = await sendPatrolAlert({
@@ -206,7 +208,7 @@ const CrimeIntelligence: React.FC = () => {
           <div className="map-status-row"><div><i className={activeMode === "forecast" ? "forecast-dot" : "live-dot"} /> {modeLabel}</div><div className="map-legend"><span className="legend-low" /> {tr("Low", "ಕಡಿಮೆ")} <span className="legend-medium" /> {tr("Medium", "ಮಧ್ಯಮ")} <span className="legend-high" /> {tr("High", "ಹೆಚ್ಚು")}</div></div>
           <div className="crime-map-viewport real-map-viewport">
             <React.Suspense fallback={<div className="real-map-state">{tr("Preparing interactive 3D map…", "ಸಂವಾದಾತ್ಮಕ 3D ನಕ್ಷೆ ಸಿದ್ಧಪಡಿಸಲಾಗುತ್ತಿದೆ…")}</div>}>
-              <RealCrimeMap key={language} points={mapPoints} tilted={tilted} language={language} modeLabel={modeLabel} onSelect={(id) => { setSelectedId(id); setPatrol({ status: "idle", message: "" }); }} />
+              <RealCrimeMap key={language} points={mapPoints} tilted={tilted} language={language} modeLabel={modeLabel} onSelect={(id) => { setSelectedId(id); setPatrol({ status: "idle", message: "" }); setPatrolConfirmOpen(false); }} />
             </React.Suspense>
             {loading ? <div className="map-data-loading">{tr("Connecting to Google Sheets FIR data…", "Google Sheets ಎಫ್‌ಐಆರ್ ದತ್ತಾಂಶಕ್ಕೆ ಸಂಪರ್ಕಿಸಲಾಗುತ್ತಿದೆ…")}</div> : null}
             {!loading && !mapPoints.length ? <div className="map-data-empty">{tr("Map ready · waiting for valid FIR coordinates", "ನಕ್ಷೆ ಸಿದ್ಧವಾಗಿದೆ · ಮಾನ್ಯ ಎಫ್‌ಐಆರ್ ನಿರ್ದೇಶಾಂಕಗಳಿಗಾಗಿ ಕಾಯಲಾಗುತ್ತಿದೆ")}</div> : null}
@@ -225,10 +227,26 @@ const CrimeIntelligence: React.FC = () => {
             <div className="prediction-primary"><span>{tr("Dominant recorded pattern", "ಪ್ರಮುಖ ದಾಖಲಾದ ಮಾದರಿ")}</span><strong>{displayKnownValue(selected.category, language)}</strong><div><span>{tr("Peak recorded window", "ಗರಿಷ್ಠ ದಾಖಲಾದ ಅವಧಿ")}</span><b>{selected.peakWindow}</b></div></div>
             <div className="prediction-metrics"><div><span>{tr("Nearby FIRs", "ಹತ್ತಿರದ ಎಫ್‌ಐಆರ್‌ಗಳು")}</span><strong>{selected.nearbyCases}</strong></div><div><span>{tr("7-day trend", "7 ದಿನಗಳ ಪ್ರವೃತ್ತಿ")}</span><strong className={selected.trend > 0 ? "trend-up" : ""}>{selected.trend > 0 ? "↗" : "↘"} {Math.abs(selected.trend)}%</strong></div></div>
             <div className="prediction-drivers"><h3>{tr("How this score was calculated", "ಈ ಅಂಕವನ್ನು ಹೇಗೆ ಲೆಕ್ಕ ಹಾಕಲಾಗಿದೆ")}</h3>{selectedDrivers(selected).map((driver, index) => <div key={driver}><span>{index + 1}</span><p>{driver}</p></div>)}</div>
-            
+            <button type="button" onClick={() => setPatrolConfirmOpen(true)} disabled={patrol.status === "sending"} className="mt-4 w-full rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+              {patrol.status === "sending" ? tr("Sending SMS…", "SMS ಕಳುಹಿಸಲಾಗುತ್ತಿದೆ…") : tr("Notify verified patrol officers by SMS", "ದೃಢೀಕೃತ ಗಸ್ತು ಅಧಿಕಾರಿಗಳಿಗೆ SMS ತಿಳಿಸಿ")}
+            </button>
+            {patrol.message && <p className={`mt-3 rounded-lg border px-3 py-2 text-xs ${patrol.status === "sent" ? "border-sage/30 bg-sage/10 text-sage" : patrol.status === "error" ? "border-rose/30 bg-rose/10 text-rose" : "border-line bg-panel text-muted"}`} role={patrol.status === "error" ? "alert" : "status"}>{patrol.message}</p>}
           </> : <div className="empty-intelligence-panel"><div className="panel-eyebrow">{tr("NO LOCATION SELECTED", "ಯಾವುದೇ ಸ್ಥಳ ಆಯ್ಕೆ ಮಾಡಿಲ್ಲ")}</div><h2>{tr("Waiting for geocoded FIR data", "ಜಿಯೋ-ಕೋಡ್ ಎಫ್‌ಐಆರ್ ದತ್ತಾಂಶಕ್ಕಾಗಿ ಕಾಯಲಾಗುತ್ತಿದೆ")}</h2><p>{tr("Add valid Bengaluru latitude and longitude values to the Google Sheet, then refresh this page.", "Google Sheet ಗೆ ಮಾನ್ಯ ಬೆಂಗಳೂರು ಅಕ್ಷಾಂಶ ಮತ್ತು ರೇಖಾಂಶ ಮೌಲ್ಯಗಳನ್ನು ಸೇರಿಸಿ, ನಂತರ ಈ ಪುಟವನ್ನು ರಿಫ್ರೆಶ್ ಮಾಡಿ.")}</p></div>}
         </aside>
       </section>
+
+      {patrolConfirmOpen && selected && (
+        <div className="modal-backdrop fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="patrol-sms-title">
+          <div className="w-full max-w-md rounded-2xl border border-line bg-shell p-5 text-white shadow-soft">
+            <h2 id="patrol-sms-title" className="text-lg font-semibold">{tr("Confirm patrol SMS", "ಗಸ್ತು SMS ದೃಢೀಕರಿಸಿ")}</h2>
+            <p className="mt-2 text-sm text-muted">{tr(`Send the ${selectedRisk}% risk alert for ${displayPlaceName(selected.name, language)} to verified, opted-in officers at ${displayPlaceName(selected.station, language)}?`, `${displayPlaceName(selected.name, language)} ನ ${selectedRisk}% ಅಪಾಯ ಎಚ್ಚರಿಕೆಯನ್ನು ${displayPlaceName(selected.station, language)} ನ ದೃಢೀಕೃತ, ಒಪ್ಪಿಗೆ ನೀಡಿದ ಅಧಿಕಾರಿಗಳಿಗೆ ಕಳುಹಿಸುವುದೇ?`)}</p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setPatrolConfirmOpen(false)} className="rounded-lg border border-line px-4 py-2.5 text-sm font-semibold text-muted">{tr("Cancel", "ರದ್ದು")}</button>
+              <button type="button" onClick={() => void sendSelectedPatrolAlert()} className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white">{tr("Send SMS alert", "SMS ಎಚ್ಚರಿಕೆ ಕಳುಹಿಸಿ")}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <section className="intelligence-summary">
         <div><span>{tr("High-score locations", "ಹೆಚ್ಚಿನ ಅಂಕದ ಸ್ಥಳಗಳು")}</span><strong>{highRiskCount}</strong><small>{tr("exact coordinates requiring attention", "ಗಮನ ಅಗತ್ಯವಿರುವ ನಿಖರ ನಿರ್ದೇಶಾಂಕಗಳು")}</small></div>

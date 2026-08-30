@@ -15,7 +15,6 @@ import {
   type ChatMessage,
 } from "../../lib/chatApi";
 import { VoiceButton } from "./VoiceButton";
-import { jsPDF } from "jspdf";
 import { KSPP_AVATAR_SRC } from "../../assets/kspp-avatar";
 import { resolveChatMapContext } from "../../lib/chatMaps";
 import ChatRouteCard from "./ChatRouteCard";
@@ -66,6 +65,8 @@ export const Chat: React.FC = () => {
   const [liveCaption, setLiveCaption] = useState("");
   const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
   const [attachmentError, setAttachmentError] = useState("");
+  const [attachmentLoading, setAttachmentLoading] = useState(false);
+  const [pdfStatus, setPdfStatus] = useState<"idle" | "exporting" | "error">("idle");
 
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -153,134 +154,69 @@ export const Chat: React.FC = () => {
   };
 
   const exportChatToPDF = async () => {
-    if (chatHistory.length === 0) return;
+    if (chatHistory.length === 0 || pdfStatus === "exporting") return;
+    setPdfStatus("exporting");
 
-    const doc = new jsPDF({ unit: "pt", format: "a4" });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const MARGIN = 48;
-    const LINE_HEIGHT = 16;
-    const contentWidth = pageWidth - MARGIN * 2;
-    let y = MARGIN;
+    const report = document.createElement("article");
+    report.lang = language === "kn" ? "kn" : "en";
+    Object.assign(report.style, {
+      width: "740px",
+      padding: "40px",
+      background: "#ffffff",
+      color: "#111827",
+      fontFamily: '"Noto Sans Kannada", "Nirmala UI", Tunga, Arial, sans-serif',
+      fontSize: "14px",
+      lineHeight: "1.6",
+    });
 
-    const ensureSpace = (needed: number) => {
-      if (y + needed > pageHeight - MARGIN) {
-        doc.addPage();
-        y = MARGIN;
-      }
-    };
+    const heading = document.createElement("h1");
+    heading.textContent = tr("KSPP Assistant report", "KSPP ಸಹಾಯಕ ವರದಿ");
+    heading.style.cssText = "margin:0;color:#123b70;font-size:22px";
+    const generated = document.createElement("p");
+    generated.textContent = `${tr("Generated on:", "ರಚಿಸಿದ ದಿನಾಂಕ:")} ${new Date().toLocaleString(language === "kn" ? "kn-IN" : "en-IN")}`;
+    generated.style.cssText = "margin:4px 0 24px;color:#64748b;font-size:11px;border-bottom:1px solid #dbe3ee;padding-bottom:16px";
+    report.append(heading, generated);
+
+    for (const message of chatHistory) {
+      const section = document.createElement("section");
+      section.style.cssText = "break-inside:avoid;margin:0 0 18px;padding:14px 16px;border:1px solid #dbe3ee;border-radius:10px";
+      const label = document.createElement("strong");
+      label.textContent = message.role === "user" ? tr("Question", "ಪ್ರಶ್ನೆ") : tr("Answer", "ಉತ್ತರ");
+      label.style.cssText = `display:block;margin-bottom:6px;color:${message.role === "user" ? "#1d4ed8" : "#166534"}`;
+      const content = document.createElement("div");
+      content.textContent = message.content.replace(/\*\*/g, "");
+      content.style.whiteSpace = "pre-wrap";
+      content.style.overflowWrap = "anywhere";
+      section.append(label, content);
+      report.append(section);
+    }
+
+    const footer = document.createElement("p");
+    footer.textContent = tr("Official use only · Verify against source records", "ಅಧಿಕೃತ ಬಳಕೆಗೆ ಮಾತ್ರ · ಮೂಲ ದಾಖಲೆಗಳೊಂದಿಗೆ ಪರಿಶೀಲಿಸಿ");
+    footer.style.cssText = "margin:24px 0 0;text-align:center;color:#64748b;font-size:10px";
+    report.append(footer);
+    document.body.append(report);
 
     try {
-      doc.addImage(KSPP_AVATAR_SRC, "PNG", MARGIN, y - 8, 28, 28);
-    } catch {}
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text(tr("KSPP Assistant", "KSPP ಸಹಾಯಕ"), MARGIN + 36, y + 8);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(110);
-    doc.text(
-      `${tr("Generated on:", "ರಚಿಸಿದ ದಿನಾಂಕ:")} ${new Date().toLocaleString()}`,
-      pageWidth - MARGIN,
-      y + 8,
-      { align: "right" }
-    );
-    doc.setTextColor(20);
-    y += 40;
-    doc.setDrawColor(200);
-    doc.line(MARGIN, y, pageWidth - MARGIN, y);
-    y += 24;
-
-    const sanitizeForPdfFont = (text: string): string =>
-      text
-        .replace(/[\u200B-\u200D\uFEFF]/g, "")
-        .replace(/[\u2010-\u2015\u2212]/g, "-")
-        .replace(/[\u00A0\u2000-\u200A\u202F\u205F]/g, " ")
-        .replace(/[\u2018\u2019]/g, "'")
-        .replace(/[\u201C\u201D]/g, '"')
-        .replace(/\u2026/g, "...");
-
-    const writeFormattedParagraph = (rawInput: string) => {
-      const raw = sanitizeForPdfFont(rawInput);
-      const segments = raw
-        .split(/(\*\*[^*]+\*\*)/g)
-        .filter(Boolean)
-        .map((seg) => {
-          const bold = /^\*\*[^*]+\*\*$/.test(seg);
-          return { text: bold ? seg.slice(2, -2) : seg, bold };
-        });
-
-      let cursorX = MARGIN;
-      doc.setFontSize(11);
-
-      for (const seg of segments) {
-        const words = seg.text.split(/(\s+)/);
-        for (const word of words) {
-          if (word === "") continue;
-          doc.setFont("helvetica", seg.bold ? "bold" : "normal");
-
-          if (word === "\n") {
-            cursorX = MARGIN;
-            if (y + LINE_HEIGHT > pageHeight - MARGIN) {
-              doc.addPage();
-              y = MARGIN;
-            } else {
-              y += LINE_HEIGHT;
-            }
-            continue;
-          }
-
-          const wordWidth = doc.getTextWidth(word);
-          const needsWrap = cursorX + wordWidth > MARGIN + contentWidth;
-
-          if (needsWrap) {
-            cursorX = MARGIN;
-          }
-          if (y + LINE_HEIGHT > pageHeight - MARGIN) {
-            doc.addPage();
-            y = MARGIN;
-            cursorX = MARGIN;
-          } else if (needsWrap) {
-            y += LINE_HEIGHT;
-          }
-
-          doc.text(word, cursorX, y);
-          cursorX += wordWidth;
-        }
-      }
-      y += LINE_HEIGHT + 10;
-    };
-
-    for (const msg of chatHistory) {
-      const isUser = msg.role === "user";
-      ensureSpace(LINE_HEIGHT);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.setTextColor(isUser ? 15 : 15, isUser ? 61 : 110, isUser ? 145 : 60);
-      doc.text(isUser ? tr("Question:", "ಪ್ರಶ್ನೆ:") : tr("Answer:", "ಉತ್ತರ:"), MARGIN, y);
-      y += LINE_HEIGHT;
-      doc.setTextColor(20);
-
-      msg.content.split(/\n+/).forEach((line: string) => {
-        if (line.trim()) writeFormattedParagraph(line);
-      });
+      await document.fonts.ready;
+      const { default: html2pdf } = await import("html2pdf.js");
+      await html2pdf()
+        .set({
+          margin: 8,
+          filename: `Karnataka_Police_Chat_Report_${new Date().toISOString().slice(0, 10)}.pdf`,
+          image: { type: "jpeg", quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        })
+        .from(report)
+        .save();
+      setPdfStatus("idle");
+    } catch {
+      setPdfStatus("error");
+      window.setTimeout(() => setPdfStatus("idle"), 3500);
+    } finally {
+      report.remove();
     }
-
-    const pageCount = doc.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(140);
-      doc.text(
-        `${tr("Official use only", "ಅಧಿಕೃತ ಬಳಕೆಗೆ ಮಾತ್ರ")} · ${tr("Page", "ಪುಟ")} ${i} ${tr("of", "ರಲ್ಲಿ")} ${pageCount}`,
-        pageWidth / 2,
-        pageHeight - 20,
-        { align: "center" }
-      );
-    }
-
-    doc.save(`Karnataka_Police_Chat_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   const send = async (text?: string) => {
@@ -398,10 +334,13 @@ export const Chat: React.FC = () => {
         }
       })();
     } catch (err) {
-      console.error(err);
       const errorMsg = tr(
-        "Sorry, I couldn't process that request. Please try again.",
-        "ಕ್ಷಮಿಸಿ, ಆ ವಿನಂತಿಯನ್ನು ಪ್ರಕ್ರಿಯೆಗೊಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
+        navigator.onLine
+          ? "Sorry, I couldn't process that request. Please try again."
+          : "You are offline. Reconnect, then send the message again.",
+        navigator.onLine
+          ? "ಕ್ಷಮಿಸಿ, ಆ ವಿನಂತಿಯನ್ನು ಪ್ರಕ್ರಿಯೆಗೊಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
+          : "ನೀವು ಆಫ್‌ಲೈನ್‌ನಲ್ಲಿದ್ದೀರಿ. ಮರುಸಂಪರ್ಕಿಸಿದ ನಂತರ ಸಂದೇಶವನ್ನು ಮತ್ತೆ ಕಳುಹಿಸಿ."
       );
       addMessage({ id: crypto.randomUUID(), role: "assistant", content: errorMsg, ts: Date.now() });
     } finally {
@@ -411,55 +350,43 @@ export const Chat: React.FC = () => {
 
   const selectAttachment = async (file: File) => {
     setAttachmentError("");
+    setAttachment(null);
+    setAttachmentLoading(true);
     const extension = file.name.toLowerCase().split(".").pop() || "";
     const inferredTypes: Record<string, string> = {
       csv: "text/csv",
       json: "application/json",
       md: "text/markdown",
-      pdf: "application/pdf",
-      jpg: "image/jpeg",
-      jpeg: "image/jpeg",
-      png: "image/png",
       txt: "text/plain",
-      webp: "image/webp",
+      log: "text/plain",
     };
     const mimeType = file.type || inferredTypes[extension] || "application/octet-stream";
     const textTypes = new Set(["text/plain", "text/csv", "text/markdown", "application/json"]);
-    const binaryTypes = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 
-    if (!textTypes.has(mimeType) && !binaryTypes.has(mimeType)) {
+    if (!textTypes.has(mimeType)) {
       setAttachmentError(
-        tr("Upload TXT, CSV, JSON, Markdown, PDF, JPG, PNG, or WebP.", "TXT, CSV, JSON, Markdown, PDF, JPG, PNG ಅಥವಾ WebP ಕಡತವನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡಿ.")
+        tr("This assistant currently supports TXT, CSV, JSON, Markdown and LOG files.", "ಈ ಸಹಾಯಕ ಪ್ರಸ್ತುತ TXT, CSV, JSON, Markdown ಮತ್ತು LOG ಕಡತಗಳನ್ನು ಬೆಂಬಲಿಸುತ್ತದೆ.")
       );
+      setAttachmentLoading(false);
       return;
     }
     if (file.size > 2_000_000) {
       setAttachmentError(tr("The attachment must be 2 MB or smaller.", "ಲಗತ್ತು 2 MB ಅಥವಾ ಅದಕ್ಕಿಂತ ಚಿಕ್ಕದಾಗಿರಬೇಕು."));
+      setAttachmentLoading(false);
       return;
     }
 
     try {
-      if (textTypes.has(mimeType)) {
-        const content = (await file.text()).slice(0, 12_000);
-        if (!content.trim()) throw new Error(tr("The selected file is empty.", "ಆಯ್ಕೆ ಮಾಡಿದ ಕಡತ ಖಾಲಿಯಾಗಿದೆ."));
-        setAttachment({ name: file.name, mimeType, content });
-        return;
-      }
-
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () =>
-          reject(new Error(tr("The selected file could not be read.", "ಆಯ್ಕೆ ಮಾಡಿದ ಕಡತವನ್ನು ಓದಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.")));
-        reader.readAsDataURL(file);
-      });
-      const data = dataUrl.slice(dataUrl.indexOf(",") + 1);
-      setAttachment({ name: file.name, mimeType, data });
+      const content = (await file.text()).slice(0, 12_000);
+      if (!content.trim()) throw new Error(tr("The selected file is empty.", "ಆಯ್ಕೆ ಮಾಡಿದ ಕಡತ ಖಾಲಿಯಾಗಿದೆ."));
+      setAttachment({ name: file.name, mimeType, content });
     } catch (fileError) {
       setAttachment(null);
       setAttachmentError(
         fileError instanceof Error ? fileError.message : "The selected file could not be read."
       );
+    } finally {
+      setAttachmentLoading(false);
     }
   };
 
@@ -499,10 +426,11 @@ export const Chat: React.FC = () => {
         <button
           type="button"
           onClick={exportChatToPDF}
-          disabled={chatHistory.length === 0}
+          disabled={chatHistory.length === 0 || pdfStatus === "exporting"}
+          title={pdfStatus === "error" ? tr("PDF export failed. Try again.", "PDF ರಫ್ತು ವಿಫಲವಾಗಿದೆ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.") : undefined}
           className="min-h-9 rounded-md border border-line bg-panel px-3 py-1.5 text-xs font-medium text-white transition hover:bg-shell disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {tr("Export PDF", "PDF ರಫ್ತು")}
+          {pdfStatus === "exporting" ? tr("Exporting…", "ರಫ್ತು ಮಾಡಲಾಗುತ್ತಿದೆ…") : pdfStatus === "error" ? tr("Try PDF again", "PDF ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ") : tr("Export PDF", "PDF ರಫ್ತು")}
         </button>
         <button
           onClick={handleStartNewSession}
@@ -556,6 +484,7 @@ export const Chat: React.FC = () => {
                 onLiveTranscript={setLiveCaption}
                 attachment={attachment}
                 attachmentError={attachmentError}
+                attachmentLoading={attachmentLoading}
                 onAttachmentSelected={selectAttachment}
                 onRemoveAttachment={() => {
                   setAttachment(null);
@@ -808,6 +737,7 @@ const Composer: React.FC<{
   onLiveTranscript: (text: string) => void;
   attachment: ChatAttachment | null;
   attachmentError: string;
+  attachmentLoading: boolean;
   onAttachmentSelected: (file: File) => void;
   onRemoveAttachment: () => void;
   busy: boolean;
@@ -822,6 +752,7 @@ const Composer: React.FC<{
   onLiveTranscript,
   attachment,
   attachmentError,
+  attachmentLoading,
   onAttachmentSelected,
   onRemoveAttachment,
   busy,
@@ -856,6 +787,7 @@ const Composer: React.FC<{
         <div className="mb-2 flex items-center gap-2 rounded-lg border border-brand/30 bg-brand/10 px-3 py-2 text-xs text-slate-800 dark:text-white">
           <span aria-hidden="true">📎</span>
           <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+          <span className="shrink-0 text-[10px] text-sage">{tr("Ready", "ಸಿದ್ಧ")}</span>
           <button
             type="button"
             onClick={onRemoveAttachment}
@@ -868,6 +800,11 @@ const Composer: React.FC<{
       {attachmentError && (
         <p className="mb-2 text-xs text-red-300" role="alert">
           {attachmentError}
+        </p>
+      )}
+      {attachmentLoading && (
+        <p className="mb-2 text-xs text-brand" role="status" aria-live="polite">
+          {tr("Reading file…", "ಕಡತ ಓದಲಾಗುತ್ತಿದೆ…")}
         </p>
       )}
       <textarea
@@ -892,7 +829,7 @@ const Composer: React.FC<{
           ref={fileRef}
           type="file"
           className="hidden"
-          accept=".txt,.csv,.json,.md,.pdf,.jpg,.jpeg,.png,.webp,text/plain,text/csv,text/markdown,application/json,application/pdf,image/jpeg,image/png,image/webp"
+          accept=".txt,.csv,.json,.md,.log,text/plain,text/csv,text/markdown,application/json"
           onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) void onAttachmentSelected(file);
@@ -902,7 +839,9 @@ const Composer: React.FC<{
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
-          disabled={busy}
+          disabled={busy || attachmentLoading}
+          aria-label={tr("Attach a supported text file", "ಬೆಂಬಲಿತ ಪಠ್ಯ ಕಡತ ಲಗತ್ತಿಸಿ")}
+          title={tr("Attach TXT, CSV, JSON, Markdown or LOG (maximum 2 MB)", "TXT, CSV, JSON, Markdown ಅಥವಾ LOG ಲಗತ್ತಿಸಿ (ಗರಿಷ್ಠ 2 MB)")}
           className="h-8 w-8 grid place-items-center rounded-md text-muted hover:text-white hover:bg-panel transition"
         >
           ＋
@@ -918,7 +857,8 @@ const Composer: React.FC<{
         <div className="flex-1" />
         <button
           onClick={onSend}
-          disabled={busy || (!value.trim() && !attachment)}
+          disabled={busy || attachmentLoading || (!value.trim() && !attachment)}
+          aria-label={tr("Send message", "ಸಂದೇಶ ಕಳುಹಿಸಿ")}
           className="h-8 w-8 grid place-items-center rounded-full bg-brand text-white disabled:opacity-40 hover:bg-brand/90 transition"
         >
           ↗

@@ -7,6 +7,7 @@ import {
   caseKey,
   caseRoute,
   dedupeOptionValues,
+  displayIdentifier,
   findCase,
   joinNames,
   optionList,
@@ -263,10 +264,13 @@ const Field: React.FC<{
   label: string;
   children: React.ReactNode;
   hint?: string;
-}> = ({ label, children, hint }) => {
+  required?: boolean;
+}> = ({ label, children, hint, required = false }) => {
   const { tr } = useLanguage();
   return <label className="block">
-    <span className="block text-xs text-muted mb-1.5">{tr(label, newFirCopy(label))}</span>
+    <span className="block text-xs text-muted mb-1.5">
+      {tr(label, newFirCopy(label))}{required && <span className="ml-1 text-rose" aria-label={tr("required", "ಅಗತ್ಯ")}>*</span>}
+    </span>
     {children}
     {hint && <span className="block text-[11px] text-muted mt-1">{tr(hint, newFirCopy(hint))}</span>}
   </label>;
@@ -280,14 +284,15 @@ const OptionInput: React.FC<{
   field: string;
   placeholder?: string;
   disabled?: boolean;
+  required?: boolean;
   onOptionsOpen?: () => void;
-}> = ({ label, value, onChange, options, field, placeholder, disabled, onOptionsOpen }) => {
+}> = ({ label, value, onChange, options, field, placeholder, disabled, required, onOptionsOpen }) => {
   const { tr } = useLanguage();
   const listId = `fir-${field}-${React.useId().replace(/:/g, "")}`;
   const suggestions = useMemo(() => dedupeOptionValues(options), [options]);
 
   return (
-    <Field label={label}>
+    <Field label={label} required={required}>
       <div className="relative">
         <input
           type="text"
@@ -297,6 +302,7 @@ const OptionInput: React.FC<{
           onChange={(event) => onChange(event.target.value)}
           onFocus={onOptionsOpen}
           disabled={disabled}
+          required={required}
           autoComplete="off"
           placeholder={tr(placeholder || "Select or type", newFirCopy(placeholder || "Select or type"))}
           className={`${inputClass} new-fir-option-input pr-9`}
@@ -490,6 +496,8 @@ const NewFIR: React.FC = () => {
   const [successRoute, setSuccessRoute] = useState("");
   const [successNotice, setSuccessNotice] = useState("");
   const [showQR, setShowQR] = useState(false);
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  const [hasPendingChanges, setHasPendingChanges] = useState(false);
 
   useEffect(() => {
     if (!editing || !existingCase) return;
@@ -512,6 +520,16 @@ const NewFIR: React.FC = () => {
       // The explicit Save locally action reports storage failures to the user.
     }
   }, [draftKey, form, complaint, aiReady, step, highestUnlocked]);
+
+  useEffect(() => {
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (!hasPendingChanges || successRoute) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [hasPendingChanges, successRoute]);
 
   const persisted = editing || highestUnlocked > 1;
   const meta = STEPS[step - 1];
@@ -563,6 +581,7 @@ const NewFIR: React.FC = () => {
 
   const update = (field: string, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
+    setHasPendingChanges(true);
     setSaveState((current) =>
       current.status === "saved" ? { status: "idle", message: "" } : current,
     );
@@ -593,6 +612,7 @@ const NewFIR: React.FC = () => {
           status: "saved",
           message: tr("Draft saved in this browser tab. Submit FIR to update Google Sheets.", "ಕರಡನ್ನು ಈ ಬ್ರೌಸರ್ ಟ್ಯಾಬ್‌ನಲ್ಲಿ ಉಳಿಸಲಾಗಿದೆ. Google Sheets ನವೀಕರಿಸಲು ಎಫ್‌ಐಆರ್ ಸಲ್ಲಿಸಿ."),
         });
+        setHasPendingChanges(false);
         return {
           ok: true,
           created: !editing,
@@ -632,6 +652,7 @@ const NewFIR: React.FC = () => {
         status: result.sync.ok ? "saved" : "error",
         message: syncMessage(result.sync, result.notifications, language),
       });
+      setHasPendingChanges(false);
       await reload();
       return result;
     } catch (error) {
@@ -660,6 +681,21 @@ const NewFIR: React.FC = () => {
       setSuccessNotice(notificationMessage(result.notifications, language).trim());
       setSuccessRoute(`/fir/${caseRoute(result.case)}`);
     }
+  };
+
+  const requestSubmit = () => {
+    if (!form.CrimeRegisteredDate || !form.PoliceStation || !form.CrimeHead) {
+      setStep(1);
+      setSaveState({
+        status: "error",
+        message: tr(
+          "Complete the required fields marked with * before submitting.",
+          "ಸಲ್ಲಿಸುವ ಮೊದಲು * ಗುರುತು ಹಾಕಿರುವ ಅಗತ್ಯ ಕ್ಷೇತ್ರಗಳನ್ನು ಪೂರ್ಣಗೊಳಿಸಿ.",
+        ),
+      });
+      return;
+    }
+    setSubmitConfirmOpen(true);
   };
 
   const generateDraft = async () => {
@@ -756,6 +792,7 @@ const NewFIR: React.FC = () => {
         ChargesheetStatus: parsedData.ChargesheetStatus || current.ChargesheetStatus || "Pending",
         FiledBy: parsedData.FiledBy || current.FiledBy || user?.employeeId || "",
       }));
+      setHasPendingChanges(true);
 
       setAiReady(true);
       setSaveState({ 
@@ -763,7 +800,6 @@ const NewFIR: React.FC = () => {
         message: tr("AI Assistant extracted the available details. Review every field before saving or submitting.", "ಎಐ ಸಹಾಯಕ ಲಭ್ಯವಿರುವ ವಿವರಗಳನ್ನು ಹೊರತೆಗೆದಿದೆ. ಉಳಿಸುವ ಅಥವಾ ಸಲ್ಲಿಸುವ ಮೊದಲು ಪ್ರತಿ ಕ್ಷೇತ್ರವನ್ನು ಪರಿಶೀಲಿಸಿ.")
       });
     } catch (err: any) {
-      console.error("[Autonomous Auto-Fill Failure]:", err);
       setSaveState({ 
         status: "error", 
         message: tr(`AI Draft extraction error: ${err.message || "Failed to parse JSON format"}. Please review fields manually.`, "ಎಐ ಕರಡು ವಿವರ ಹೊರತೆಗೆಯುವಲ್ಲಿ ದೋಷವಾಗಿದೆ. ದಯವಿಟ್ಟು ಕ್ಷೇತ್ರಗಳನ್ನು ಕೈಯಾರೆ ಪರಿಶೀಲಿಸಿ.")
@@ -875,6 +911,7 @@ const NewFIR: React.FC = () => {
           return current;
       }
     });
+    setHasPendingChanges(true);
 
     setSaveState({
       status: "idle",
@@ -929,8 +966,8 @@ const NewFIR: React.FC = () => {
                 {duplicateCases.map((dc) => (
                   <div key={dc.CaseMasterID} className="px-6 py-4">
                     <div className="flex flex-wrap items-center gap-2 mb-3">
-                      <span className="text-white font-semibold text-sm">{tr("FIR No", "ಎಫ್‌ಐಆರ್ ಸಂಖ್ಯೆ")}: {dc.CrimeNo || '—'}</span>
-                      <span className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted">{tr("ID", "ಐಡಿ")}: {dc.CaseMasterID}</span>
+                      <span className="text-white font-semibold text-sm">{tr("FIR No", "ಎಫ್‌ಐಆರ್ ಸಂಖ್ಯೆ")}: {displayIdentifier(dc.CrimeNo) || '—'}</span>
+                      <span className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted">{tr("ID", "ಐಡಿ")}: {displayIdentifier(dc.CaseMasterID)}</span>
                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                         (dc.Status || '').toLowerCase().includes('solved') || (dc.Status || '').toLowerCase().includes('closed')
                           ? 'bg-sage/15 text-sage' : 'bg-amber/15 text-amber'
@@ -981,7 +1018,7 @@ const NewFIR: React.FC = () => {
             onClick={() => setDuplicateModalOpen(true)}
             className="mx-auto max-w-6xl mb-4 w-full text-left rounded-xl border border-rose/30 bg-rose/10 px-4 py-3 text-sm text-rose hover:bg-rose/15 transition"
           >
-            <strong>{tr(`${duplicateCases.length} similar case${duplicateCases.length > 1 ? "s" : ""} found`, `${duplicateCases.length} ಹೋಲುವ ${duplicateCases.length > 1 ? "ಪ್ರಕರಣಗಳು" : "ಪ್ರಕರಣ"} ಕಂಡುಬಂದಿದೆ`)}</strong> — {tr("FIR", "ಎಫ್‌ಐಆರ್")} {duplicateCases.map(d => d.CrimeNo).join(', ')}. {tr("Click to review.", "ಪರಿಶೀಲಿಸಲು ಕ್ಲಿಕ್ ಮಾಡಿ.")}
+            <strong>{tr(`${duplicateCases.length} similar case${duplicateCases.length > 1 ? "s" : ""} found`, `${duplicateCases.length} ಹೋಲುವ ${duplicateCases.length > 1 ? "ಪ್ರಕರಣಗಳು" : "ಪ್ರಕರಣ"} ಕಂಡುಬಂದಿದೆ`)}</strong> — {tr("FIR", "ಎಫ್‌ಐಆರ್")} {duplicateCases.map((record) => displayIdentifier(record.CrimeNo)).join(', ')}. {tr("Click to review.", "ಪರಿಶೀಲಿಸಲು ಕ್ಲಿಕ್ ಮಾಡಿ.")}
           </button>
         )}
 
@@ -997,7 +1034,7 @@ const NewFIR: React.FC = () => {
             </div>
             <span className="max-w-full self-start break-all rounded-full border border-line px-2.5 py-1 text-[10px] text-muted">
               {editing
-                ? tr(`Editing case: ${form.CaseMasterID || persistedCaseId}`, `ಪ್ರಕರಣ ಸಂಪಾದಿಸಲಾಗುತ್ತಿದೆ: ${form.CaseMasterID || persistedCaseId}`)
+                ? tr(`Editing case: ${displayIdentifier(form.CaseMasterID || persistedCaseId)}`, `ಪ್ರಕರಣ ಸಂಪಾದಿಸಲಾಗುತ್ತಿದೆ: ${displayIdentifier(form.CaseMasterID || persistedCaseId)}`)
                 : persisted
                   ? tr("Local draft saved", "ಸ್ಥಳೀಯ ಕರಡು ಉಳಿಸಲಾಗಿದೆ")
                   : tr("New local draft", "ಹೊಸ ಸ್ಥಳೀಯ ಕರಡು")}
@@ -1007,7 +1044,7 @@ const NewFIR: React.FC = () => {
           <div className="grid lg:grid-cols-[1fr_auto] gap-3 mt-4 items-stretch">
             <textarea
               value={complaint}
-              onChange={(event) => setComplaint(event.target.value)}
+              onChange={(event) => { setComplaint(event.target.value); setHasPendingChanges(true); }}
               rows={3}
               placeholder={tr("Describe what happened, who reported it, where and when...", "ಏನಾಯಿತು, ಯಾರು ವರದಿ ಮಾಡಿದರು, ಎಲ್ಲಿ ಮತ್ತು ಯಾವಾಗ ಎಂದು ವಿವರಿಸಿ...")}
               className="w-full resize-none bg-panel border border-line rounded-xl p-3 text-sm text-white placeholder-muted outline-none focus:border-brand/50"
@@ -1140,13 +1177,13 @@ const NewFIR: React.FC = () => {
                </button>
 
                 <div className="new-fir-actions grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-3">
-                 <button
+                 {import.meta.env.DEV && <button
                    onClick={fillDemoForStep}
                    disabled={saveState.status === "saving"}
                     className="h-10 rounded-lg border border-brand/40 px-3 text-sm text-brand hover:bg-brand/10 disabled:opacity-40 sm:px-4"
                  >
                    {tr("Fill demo", "ಮಾದರಿ ತುಂಬಿಸಿ")}
-                 </button>
+                 </button>}
 
                  <button
                    onClick={() => saveCurrentStep(false)}
@@ -1166,7 +1203,7 @@ const NewFIR: React.FC = () => {
                    </button>
                  ) : (
                    <button
-                     onClick={submit}
+                     onClick={requestSubmit}
                      disabled={saveState.status === "saving"}
                       className="col-span-2 min-h-10 rounded-lg bg-sage px-4 py-2 text-sm font-medium text-white hover:bg-sage/90 disabled:opacity-40 sm:px-5"
                    >
@@ -1178,6 +1215,31 @@ const NewFIR: React.FC = () => {
            </div>
          </section>
        </div>
+
+      {submitConfirmOpen && (
+        <div className="modal-backdrop fixed inset-0 z-50 grid place-items-center overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby="fir-submit-confirm-title">
+          <div className="w-full max-w-lg rounded-2xl border border-line bg-shell p-5 shadow-soft sm:p-6">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 shrink-0 text-amber" size={22} aria-hidden="true" />
+              <div>
+                <h2 id="fir-submit-confirm-title" className="text-lg font-semibold text-white">{tr("Confirm FIR submission", "ಎಫ್‌ಐಆರ್ ಸಲ್ಲಿಕೆಯನ್ನು ದೃಢೀಕರಿಸಿ")}</h2>
+                <p className="mt-1 text-sm text-muted">{tr("This writes the FIR to Google Sheets once and may notify verified officers by SMS.", "ಇದು ಎಫ್‌ಐಆರ್ ಅನ್ನು Google Sheets ಗೆ ಒಮ್ಮೆ ಬರೆಯುತ್ತದೆ ಮತ್ತು ದೃಢೀಕೃತ ಅಧಿಕಾರಿಗಳಿಗೆ SMS ಮೂಲಕ ತಿಳಿಸಬಹುದು.")}</p>
+              </div>
+            </div>
+            <dl className="mt-5 grid grid-cols-2 gap-3 rounded-xl border border-line bg-panel/50 p-4 text-xs">
+              <div><dt className="text-muted">{tr("Crime number", "ಅಪರಾಧ ಸಂಖ್ಯೆ")}</dt><dd className="mt-1 break-all font-semibold text-white">{displayIdentifier(form.CrimeNo) || tr("Auto-assigned", "ಸ್ವಯಂ ನಿಯೋಜಿತ")}</dd></div>
+              <div><dt className="text-muted">{tr("Registered date", "ನೋಂದಣಿ ದಿನಾಂಕ")}</dt><dd className="mt-1 font-semibold text-white">{form.CrimeRegisteredDate}</dd></div>
+              <div><dt className="text-muted">{tr("Police station", "ಪೊಲೀಸ್ ಠಾಣೆ")}</dt><dd className="mt-1 font-semibold text-white">{form.PoliceStation}</dd></div>
+              <div><dt className="text-muted">{tr("Crime head", "ಅಪರಾಧ ಶೀರ್ಷಿಕೆ")}</dt><dd className="mt-1 font-semibold text-white">{form.CrimeHead}</dd></div>
+            </dl>
+            {duplicateCases.length > 0 && <p className="mt-3 rounded-lg border border-rose/30 bg-rose/10 px-3 py-2 text-xs text-rose">{tr(`${duplicateCases.length} similar FIR record(s) were detected.`, `${duplicateCases.length} ಹೋಲುವ ಎಫ್‌ಐಆರ್ ದಾಖಲೆಗಳು ಕಂಡುಬಂದಿವೆ.`)}</p>}
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setSubmitConfirmOpen(false)} disabled={saveState.status === "saving"} className="rounded-lg border border-line px-4 py-2.5 text-sm font-semibold text-muted hover:text-white">{tr("Review again", "ಮತ್ತೆ ಪರಿಶೀಲಿಸಿ")}</button>
+              <button type="button" onClick={() => { setSubmitConfirmOpen(false); void submit(); }} disabled={saveState.status === "saving"} className="rounded-lg bg-sage px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{tr("Confirm and submit", "ದೃಢೀಕರಿಸಿ ಸಲ್ಲಿಸಿ")}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {successRoute && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">
@@ -1271,7 +1333,7 @@ const Step1: React.FC<{
         {tr("Suggestions refresh from Google Sheets when a field is opened. Select a suggestion or type a new value.", "ಕ್ಷೇತ್ರವನ್ನು ತೆರೆದಾಗ Google Sheets ನಿಂದ ಸಲಹೆಗಳು ನವೀಕರಿಸುತ್ತವೆ. ಸಲಹೆಯನ್ನು ಆಯ್ಕೆ ಮಾಡಿ ಅಥವಾ ಹೊಸ ಮೌಲ್ಯವನ್ನು ಟೈಪ್ ಮಾಡಿ.")}
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Field label="CrimeRegisteredDate">
+        <Field label="CrimeRegisteredDate" required>
           <input
             type="date"
             value={form.CrimeRegisteredDate}
@@ -1280,7 +1342,7 @@ const Step1: React.FC<{
           />
         </Field>
 
-        <Field label="PoliceStation">
+        <Field label="PoliceStation" required>
           <select
             value={form.PoliceStation}
             onChange={(e) => update("PoliceStation", e.target.value)}
@@ -1295,6 +1357,7 @@ const Step1: React.FC<{
         </Field>
         <OptionInput
           label="CrimeHead"
+          required
           field="CrimeHead"
           value={form.CrimeHead}
           onChange={(value) => {
@@ -1596,9 +1659,9 @@ const Step6: React.FC<{
 const Step7: React.FC<{ form: FormState; persisted: boolean }> = ({ form, persisted }) => {
   const { tr } = useLanguage();
   const summary = [
-    ["CaseMasterID", form.CaseMasterID || "Assigned on save"],
-    ["CaseNo", form.CaseNo || "Assigned on save"],
-    ["CrimeNo", form.CrimeNo || "Assigned on save"],
+    ["CaseMasterID", displayIdentifier(form.CaseMasterID) || "Assigned on save"],
+    ["CaseNo", displayIdentifier(form.CaseNo) || "Assigned on save"],
+    ["CrimeNo", displayIdentifier(form.CrimeNo) || "Assigned on save"],
     ["PoliceStation", form.PoliceStation],
     ["CrimeHead", form.CrimeHead],
     ["CrimeSubHead", form.CrimeSubHead],
