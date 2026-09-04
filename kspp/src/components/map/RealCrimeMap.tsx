@@ -29,7 +29,7 @@ type RealCrimeMapProps = {
   onSelect: (id: string) => void;
 };
 
-const BENGALURU_CENTER: [number, number] = [77.5946, 12.9716];
+const KARNATAKA_CENTER: [number, number] = [76.1, 15.3];
 const MAP_STYLE = "/map-tiles/styles/liberty?kspp=3d-v1";
 const BUILDING_SOURCE = "openfreemap-buildings";
 const CRIME_SOURCE = "crime-intelligence-points";
@@ -74,6 +74,37 @@ const featureCollection = (points: CrimeMapPoint[]) => ({
     },
   })),
 });
+
+const pointExtentKey = (points: CrimeMapPoint[]) => {
+  if (!points.length) return "empty";
+  let minLatitude = 90;
+  let maxLatitude = -90;
+  let minLongitude = 180;
+  let maxLongitude = -180;
+  for (const point of points) {
+    minLatitude = Math.min(minLatitude, point.latitude);
+    maxLatitude = Math.max(maxLatitude, point.latitude);
+    minLongitude = Math.min(minLongitude, point.longitude);
+    maxLongitude = Math.max(maxLongitude, point.longitude);
+  }
+  return [minLatitude, maxLatitude, minLongitude, maxLongitude]
+    .map((value) => value.toFixed(3))
+    .join(":");
+};
+
+const fitMapToPoints = (map: MapLibreMap, points: CrimeMapPoint[], duration = 0) => {
+  if (!points.length) {
+    map.jumpTo({ center: KARNATAKA_CENTER, zoom: 6.25 });
+    return;
+  }
+  if (points.length === 1) {
+    map.easeTo({ center: [points[0].longitude, points[0].latitude], zoom: 12.5, duration });
+    return;
+  }
+  const bounds = new maplibregl.LngLatBounds();
+  for (const point of points) bounds.extend([point.longitude, point.latitude]);
+  map.fitBounds(bounds, { padding: 64, maxZoom: 12.5, duration });
+};
 
 const addBuildingLayer = (map: MapLibreMap) => {
   if (map.getLayer("kspp-3d-buildings")) return;
@@ -278,6 +309,7 @@ const RealCrimeMap: React.FC<RealCrimeMapProps> = ({
   const initialTiltRef = useRef(tilted);
   const initialLanguageRef = useRef(language);
   const tiltedRef = useRef(tilted);
+  const lastExtentRef = useRef("");
   const [mapState, setMapState] = useState<"loading" | "ready" | "error">("loading");
   initialPointsRef.current = points;
 
@@ -291,13 +323,13 @@ const RealCrimeMap: React.FC<RealCrimeMapProps> = ({
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: MAP_STYLE,
-      center: BENGALURU_CENTER,
-      zoom: 11.35,
+      center: KARNATAKA_CENTER,
+      zoom: 6.25,
       pitch: initialTiltRef.current ? 52 : 0,
       bearing: initialTiltRef.current ? -18 : 0,
       maxPitch: 75,
       maxZoom: 19,
-      minZoom: 9.5,
+      minZoom: 5,
       rollEnabled: true,
       canvasContextAttributes: { antialias: true },
       attributionControl: false,
@@ -339,6 +371,8 @@ const RealCrimeMap: React.FC<RealCrimeMapProps> = ({
       localizeBaseLabels(map, initialLanguageRef.current);
       addBuildingLayer(map);
       addCrimeLayers(map, initialPointsRef.current);
+      fitMapToPoints(map, initialPointsRef.current);
+      lastExtentRef.current = pointExtentKey(initialPointsRef.current);
       translateControls();
       setMapState("ready");
     };
@@ -350,7 +384,7 @@ const RealCrimeMap: React.FC<RealCrimeMapProps> = ({
     const handleMouseEnter = () => { map.getCanvas().style.cursor = "pointer"; };
     const handleMouseLeave = () => { map.getCanvas().style.cursor = ""; };
     const handleError = (event: { error?: unknown }) => {
-      console.error("Bengaluru map resource error", event.error || "Unknown map error");
+      console.error("Karnataka map resource error", event.error || "Unknown map error");
       if (!map.isStyleLoaded()) setMapState("error");
     };
 
@@ -421,6 +455,11 @@ const RealCrimeMap: React.FC<RealCrimeMapProps> = ({
     if (!map || !map.isStyleLoaded()) return;
     const source = map.getSource(CRIME_SOURCE) as GeoJSONSource | undefined;
     source?.setData(featureCollection(points));
+    const nextExtent = pointExtentKey(points);
+    if (nextExtent !== lastExtentRef.current) {
+      fitMapToPoints(map, points, 650);
+      lastExtentRef.current = nextExtent;
+    }
   }, [points]);
 
   useEffect(() => {
@@ -445,11 +484,11 @@ const RealCrimeMap: React.FC<RealCrimeMapProps> = ({
     <div className="real-crime-map-shell" ref={shellRef}>
       <div className="real-map-mode-badge"><i /> {modeLabel}</div>
       <div className="real-map-city-badge">
-        <span>{language === "kn" ? "ಬೆಂಗಳೂರು" : "BENGALURU"}</span>
-        <small>12.9716° N · 77.5946° E</small>
+        <span>{language === "kn" ? "ಕರ್ನಾಟಕ" : "KARNATAKA"}</span>
+        <small>{language === "kn" ? "ರಾಜ್ಯವ್ಯಾಪಿ ಎಫ್‌ಐಆರ್ ವ್ಯಾಪ್ತಿ" : "STATEWIDE FIR COVERAGE"}</small>
       </div>
-      <div ref={containerRef} className="real-crime-map" aria-label={language === "kn" ? "ಬೆಂಗಳೂರಿನ ಸಂವಾದಾತ್ಮಕ 3D ಅಪರಾಧ ಗುಪ್ತಚರ ನಕ್ಷೆ" : "Interactive 3D crime intelligence map of Bengaluru"} />
-      {mapState === "loading" ? <div className="real-map-state">{language === "kn" ? "ಬೆಂಗಳೂರು 3D ನಕ್ಷೆ ಲೋಡ್ ಆಗುತ್ತಿದೆ…" : "Loading Bengaluru 3D map…"}</div> : null}
+      <div ref={containerRef} className="real-crime-map" aria-label={language === "kn" ? "ಕರ್ನಾಟಕದ ಸಂವಾದಾತ್ಮಕ 3D ಅಪರಾಧ ಗುಪ್ತಚರ ನಕ್ಷೆ" : "Interactive 3D crime intelligence map of Karnataka"} />
+      {mapState === "loading" ? <div className="real-map-state">{language === "kn" ? "ಕರ್ನಾಟಕ 3D ನಕ್ಷೆ ಲೋಡ್ ಆಗುತ್ತಿದೆ…" : "Loading Karnataka 3D map…"}</div> : null}
       {mapState === "error" ? (
         <div className="real-map-state is-error">
           <strong>{language === "kn" ? "ನಕ್ಷೆ ಟೈಲ್‌ಗಳು ಲಭ್ಯವಿಲ್ಲ" : "Map tiles are unavailable"}</strong>

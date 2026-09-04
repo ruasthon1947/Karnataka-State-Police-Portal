@@ -62,8 +62,15 @@ const KNOWN_PLACES: Record<string, string> = {
 };
 
 const KNOWN_TERMS: Record<string, string> = {
+  "cen ps": "ಸಿಇಎನ್ ಪೊಲೀಸ್ ಠಾಣೆ",
+  "cyber crime": "ಸೈಬರ್ ಅಪರಾಧ",
+  "cyber, economic and narcotics": "ಸೈಬರ್, ಆರ್ಥಿಕ ಮತ್ತು ಮಾದಕ ವಸ್ತು ವಿಭಾಗ",
   "police station": "ಪೊಲೀಸ್ ಠಾಣೆ",
   "traffic police station": "ಸಂಚಾರ ಪೊಲೀಸ್ ಠಾಣೆ",
+  "women police station": "ಮಹಿಳಾ ಪೊಲೀಸ್ ಠಾಣೆ",
+  "woman police station": "ಮಹಿಳಾ ಪೊಲೀಸ್ ಠಾಣೆ",
+  ps: "ಪೊಲೀಸ್ ಠಾಣೆ",
+  cen: "ಸಿಇಎನ್",
   station: "ಠಾಣೆ",
   police: "ಪೊಲೀಸ್",
   road: "ರಸ್ತೆ",

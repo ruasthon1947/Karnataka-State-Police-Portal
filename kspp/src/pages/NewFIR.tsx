@@ -21,6 +21,8 @@ import { requestFirDraft } from "../lib/chatApi";
 import { AlertTriangle } from "lucide-react";
 import { KSPPBrandMark } from "../components/brand/KSPPBrand";
 import CasePassQR from "../components/CasePassQR";
+import { displayKnownValue } from "../lib/kannadaValues";
+import { displayPlaceName } from "../lib/kannadaPlaces";
 
 function safeJsonParse(rawText: string) {
   if (!rawText) throw new Error("Received empty response from AI engine.");
@@ -638,9 +640,11 @@ const NewFIR: React.FC = () => {
       setSaveState({
         status: "error",
         message:
-          error instanceof Error
-            ? error.message
-            : "The FIR could not be submitted. Your local draft is still available.",
+          language === "kn"
+            ? "ಎಫ್‌ಐಆರ್ ಸಲ್ಲಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ನಿಮ್ಮ ಸ್ಥಳೀಯ ಕರಡು ಇನ್ನೂ ಲಭ್ಯವಿದೆ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
+            : error instanceof Error
+              ? error.message
+              : "The FIR could not be submitted. Your local draft is still available.",
       });
       return null;
     }
@@ -934,7 +938,7 @@ const NewFIR: React.FC = () => {
                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                         (dc.Status || '').toLowerCase().includes('solved') || (dc.Status || '').toLowerCase().includes('closed')
                           ? 'bg-sage/15 text-sage' : 'bg-amber/15 text-amber'
-                      }`}>{dc.Status || 'Unknown'}</span>
+                      }`}>{displayKnownValue(dc.Status || "Unknown", language)}</span>
                       <button
                         onClick={() => {
                           setDuplicateModalOpen(false);
@@ -947,9 +951,9 @@ const NewFIR: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
                       {[
-                        [tr('Police Station', 'ಪೊಲೀಸ್ ಠಾಣೆ'), dc.PoliceStation],
-                        [tr('Crime Head', 'ಅಪರಾಧ ಶೀರ್ಷಿಕೆ'), dc.CrimeHead],
-                        [tr('Crime Sub-Head', 'ಅಪರಾಧ ಉಪಶೀರ್ಷಿಕೆ'), dc.CrimeSubHead],
+                        [tr('Police Station', 'ಪೊಲೀಸ್ ಠಾಣೆ'), displayPlaceName(dc.PoliceStation, language)],
+                        [tr('Crime Head', 'ಅಪರಾಧ ಶೀರ್ಷಿಕೆ'), displayKnownValue(dc.CrimeHead, language)],
+                        [tr('Crime Sub-Head', 'ಅಪರಾಧ ಉಪಶೀರ್ಷಿಕೆ'), displayKnownValue(dc.CrimeSubHead, language)],
                         [tr('Registered Date', 'ನೋಂದಣಿ ದಿನಾಂಕ'), dc.CrimeRegisteredDate],
                         [tr('Complainant', 'ದೂರುದಾರ'), dc.Complainant],
                         [tr('Officer', 'ಅಧಿಕಾರಿ'), dc.Officer],
@@ -1234,7 +1238,7 @@ const Step1: React.FC<{
   crimeSubHeadOptions,
   refreshOptions,
 }) => {
-  const { tr } = useLanguage();
+  const { language, tr } = useLanguage();
   return (
   <>
     <Section title="Case identity">
@@ -1289,7 +1293,7 @@ const Step1: React.FC<{
           >
             <option value="">— {tr("Select Police Station", "ಪೊಲೀಸ್ ಠಾಣೆ ಆಯ್ಕೆ ಮಾಡಿ")} —</option>
             {stationOptions.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{displayPlaceName(s, language)}</option>
             ))}
           </select>
         </Field>
@@ -1594,18 +1598,18 @@ const Step6: React.FC<{
 };
 
 const Step7: React.FC<{ form: FormState; persisted: boolean }> = ({ form, persisted }) => {
-  const { tr } = useLanguage();
+  const { language, tr } = useLanguage();
   const summary = [
-    ["CaseMasterID", form.CaseMasterID || "Assigned on save"],
-    ["CaseNo", form.CaseNo || "Assigned on save"],
-    ["CrimeNo", form.CrimeNo || "Assigned on save"],
-    ["PoliceStation", form.PoliceStation],
-    ["CrimeHead", form.CrimeHead],
-    ["CrimeSubHead", form.CrimeSubHead],
+    ["CaseMasterID", form.CaseMasterID || tr("Assigned on save", "ಉಳಿಸುವಾಗ ನಿಯೋಜಿಸಲಾಗುತ್ತದೆ")],
+    ["CaseNo", form.CaseNo || tr("Assigned on save", "ಉಳಿಸುವಾಗ ನಿಯೋಜಿಸಲಾಗುತ್ತದೆ")],
+    ["CrimeNo", form.CrimeNo || tr("Assigned on save", "ಉಳಿಸುವಾಗ ನಿಯೋಜಿಸಲಾಗುತ್ತದೆ")],
+    ["PoliceStation", displayPlaceName(form.PoliceStation, language)],
+    ["CrimeHead", displayKnownValue(form.CrimeHead, language)],
+    ["CrimeSubHead", displayKnownValue(form.CrimeSubHead, language)],
     ["Complainant", form.Complainant],
     ["VictimCount", String(splitNames(form.VictimNames).length)],
     ["AccusedCount", String(splitNames(form.AccusedNames).length)],
-    ["Status", form.Status],
+    ["Status", displayKnownValue(form.Status, language)],
   ];
 
   return (

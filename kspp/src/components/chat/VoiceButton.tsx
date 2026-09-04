@@ -55,8 +55,8 @@ export const VoiceButton: React.FC<Props> = ({
         onClick={active ? stop : start}
         disabled={disabled}
         aria-pressed={active}
-        aria-label={active ? "Stop listening" : "Start voice input"}
-        title={active ? "Stop listening" : "Speak your question"}
+        aria-label={active ? (language === "kn" ? "ಆಲಿಸುವುದನ್ನು ನಿಲ್ಲಿಸಿ" : "Stop listening") : (language === "kn" ? "ಧ್ವನಿ ಇನ್‌ಪುಟ್ ಪ್ರಾರಂಭಿಸಿ" : "Start voice input")}
+        title={active ? (language === "kn" ? "ಆಲಿಸುವುದನ್ನು ನಿಲ್ಲಿಸಿ" : "Stop listening") : (language === "kn" ? "ನಿಮ್ಮ ಪ್ರಶ್ನೆಯನ್ನು ಹೇಳಿ" : "Speak your question")}
         className={`h-8 w-8 shrink-0 grid place-items-center rounded-md transition disabled:opacity-40 ${active
             ? "bg-red-500 text-white animate-pulse ring-2 ring-red-400/40"
             : "text-muted hover:text-white hover:bg-panel"
@@ -67,12 +67,12 @@ export const VoiceButton: React.FC<Props> = ({
       {active && (
         <span className="max-w-56 truncate text-xs font-semibold text-slate-900 dark:text-slate-100" role="status">
           {starting
-            ? "Starting microphone…"
-            : captionText || "Listening…"}
+            ? (language === "kn" ? "ಮೈಕ್ರೊಫೋನ್ ಪ್ರಾರಂಭವಾಗುತ್ತಿದೆ…" : "Starting microphone…")
+            : captionText || (language === "kn" ? "ಆಲಿಸಲಾಗುತ್ತಿದೆ…" : "Listening…")}
         </span>
       )}
       {!active && error && (
-        <span className="max-w-56 text-xs text-red-600 dark:text-red-400" role="alert">{error}</span>
+        <span className="max-w-56 text-xs text-red-600 dark:text-red-400" role="alert">{language === "kn" ? "ಧ್ವನಿ ಇನ್‌ಪುಟ್ ಲಭ್ಯವಿಲ್ಲ. ಮೈಕ್ರೊಫೋನ್ ಅನುಮತಿಯನ್ನು ಪರಿಶೀಲಿಸಿ." : error}</span>
       )}
     </div>
   );

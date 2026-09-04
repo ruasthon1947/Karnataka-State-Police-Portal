@@ -1,5 +1,7 @@
-import { FirRecord } from "./cases";
-import { predictHotspotRisk, TrainedHotspotModel } from "./hotspotModel";
+import type { FirRecord } from "./cases";
+import { predictHotspotRisk } from "./hotspotModel.ts";
+import type { TrainedHotspotModel } from "./hotspotModel.ts";
+import { isKarnatakaCoordinate } from "./geoScope.ts";
 
 export type MapMode = "live" | "forecast";
 
@@ -19,16 +21,10 @@ export type Hotspot = {
   sourceRecordIds: string[];
 };
 
-const CITY_BOUNDS = {
-  minLat: 12.78,
-  maxLat: 13.17,
-  minLng: 77.42,
-  maxLng: 77.82,
-};
-
 const DAY_MS = 86_400_000;
 const DENSITY_RADIUS_KM = 1.5;
 const SPATIAL_CELL_DEGREES = 0.02;
+const MAX_RENDERED_AREAS = 2500;
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -127,6 +123,19 @@ export type IntelligenceDataset = {
   totalRecords: number;
   coveragePercentage: number;
   latestRecordDate: number | null;
+  totalHotspotAreas: number;
+};
+
+const dominantText = (records: FirRecord[], valueOf: (record: FirRecord) => string) => {
+  const counts = new Map<string, { value: string; count: number }>();
+  for (const record of records) {
+    const value = String(valueOf(record) || "").trim();
+    if (!value) continue;
+    const key = value.toLocaleLowerCase();
+    const existing = counts.get(key);
+    counts.set(key, { value: existing?.value || value, count: (existing?.count || 0) + 1 });
+  }
+  return Array.from(counts.values()).sort((left, right) => right.count - left.count)[0]?.value || "";
 };
 
 export const buildIntelligenceDataset = (records: FirRecord[], now = Date.now()): IntelligenceDataset => {
@@ -135,8 +144,7 @@ export const buildIntelligenceDataset = (records: FirRecord[], now = Date.now())
     const latitude = coordinate(record.raw.Latitude);
     const longitude = coordinate(record.raw.Longitude);
     if (latitude === null || longitude === null) continue;
-    if (latitude < CITY_BOUNDS.minLat || latitude > CITY_BOUNDS.maxLat ||
-      longitude < CITY_BOUNDS.minLng || longitude > CITY_BOUNDS.maxLng) continue;
+    if (!isKarnatakaCoordinate(latitude, longitude)) continue;
     geocoded.push({ record, latitude, longitude, occurredAt: timestamp(record) });
   }
 
@@ -150,19 +158,22 @@ export const buildIntelligenceDataset = (records: FirRecord[], now = Date.now())
     ? now
     : latestRecordDate || now;
 
-  const groups = new Map<string, GeocodedRecord[]>();
+  // Aggregate FIRs into small geographic cells before calculating density.
+  // This keeps the number of map/model areas bounded even when the source
+  // register grows to hundreds of thousands of rows.
   const spatialIndex = new Map<string, GeocodedRecord[]>();
   for (const item of geocoded) {
-    const key = `${item.latitude.toFixed(6)},${item.longitude.toFixed(6)}`;
-    groups.set(key, [...(groups.get(key) || []), item]);
     const cellKey = `${Math.floor(item.latitude / SPATIAL_CELL_DEGREES)},${Math.floor(item.longitude / SPATIAL_CELL_DEGREES)}`;
-    spatialIndex.set(cellKey, [...(spatialIndex.get(cellKey) || []), item]);
+    const cell = spatialIndex.get(cellKey);
+    if (cell) cell.push(item);
+    else spatialIndex.set(cellKey, [item]);
   }
 
-  const candidates = Array.from(groups.entries()).map(([key, exactRecords]) => {
-    const anchor = exactRecords[0];
-    const cellLatitude = Math.floor(anchor.latitude / SPATIAL_CELL_DEGREES);
-    const cellLongitude = Math.floor(anchor.longitude / SPATIAL_CELL_DEGREES);
+  const candidates = Array.from(spatialIndex.entries()).map(([key, cellRecords]) => {
+    const latitude = cellRecords.reduce((sum, item) => sum + item.latitude, 0) / cellRecords.length;
+    const longitude = cellRecords.reduce((sum, item) => sum + item.longitude, 0) / cellRecords.length;
+    const anchor = { latitude, longitude };
+    const [cellLatitude, cellLongitude] = key.split(",").map(Number);
     const nearbyCandidates: GeocodedRecord[] = [];
     for (let latitudeOffset = -1; latitudeOffset <= 1; latitudeOffset += 1) {
       for (let longitudeOffset = -1; longitudeOffset <= 1; longitudeOffset += 1) {
@@ -189,7 +200,7 @@ export const buildIntelligenceDataset = (records: FirRecord[], now = Date.now())
     const trend = previousWeek === 0
       ? (currentWeek > 0 ? 100 : 0)
       : clamp(Math.round(((currentWeek - previousWeek) / previousWeek) * 100), -100, 200);
-    const sourceRecords = exactRecords.map((item) => item.record);
+    const sourceRecords = cellRecords.map((item) => item.record);
     return {
       key,
       anchor,
@@ -203,12 +214,15 @@ export const buildIntelligenceDataset = (records: FirRecord[], now = Date.now())
   });
 
   const maximumDensity = candidates.reduce((maximum, item) => Math.max(maximum, item.weightedDensity), 0);
-  const hotspots = candidates.map((item): Hotspot => {
+  const renderedCandidates = candidates
+    .sort((left, right) => right.weightedDensity - left.weightedDensity)
+    .slice(0, MAX_RENDERED_AREAS);
+  const hotspots = renderedCandidates.map((item): Hotspot => {
     const firstRecord = item.sourceRecords[0];
     return {
-      id: `fir-location-${item.key}`,
-      name: locationName(firstRecord),
-      station: firstRecord.station || "Unassigned station",
+      id: `fir-area-${item.key}`,
+      name: dominantText(item.sourceRecords, locationName) || locationName(firstRecord),
+      station: dominantText(item.sourceRecords, (record) => record.station) || firstRecord.station || "Unassigned station",
       latitude: item.anchor.latitude,
       longitude: item.anchor.longitude,
       liveRisk: maximumDensity > 0 ? Math.round((item.weightedDensity / maximumDensity) * 100) : 0,
@@ -218,7 +232,9 @@ export const buildIntelligenceDataset = (records: FirRecord[], now = Date.now())
       recentCases: item.recentCases,
       heinousCases: item.heinousCases,
       trend: item.trend,
-      sourceRecordIds: item.sourceRecords.map((record) => record.id),
+      // Retain a bounded drill-down sample; aggregate counts above still use
+      // every authorized FIR in the area.
+      sourceRecordIds: item.sourceRecords.slice(0, 250).map((record) => record.id),
     };
   });
 
@@ -228,6 +244,7 @@ export const buildIntelligenceDataset = (records: FirRecord[], now = Date.now())
     totalRecords: records.length,
     coveragePercentage: records.length ? Math.round((geocoded.length / records.length) * 100) : 0,
     latestRecordDate,
+    totalHotspotAreas: candidates.length,
   };
 };
 

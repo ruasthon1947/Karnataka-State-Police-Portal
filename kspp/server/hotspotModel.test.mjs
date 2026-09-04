@@ -48,9 +48,11 @@ test("trains versioned weights and validates against later chronological windows
   assert.equal(result.status, "validated");
   assert.ok(result.model);
   assert.equal(result.evaluation, result.model.metrics);
-  assert.equal(result.model.version, "1.3");
+  assert.equal(result.model.version, "1.4");
   assert.ok(result.model.metrics.trainingSamples > result.model.metrics.validationSamples);
   assert.ok(result.model.metrics.validationPositives > 0);
+  assert.ok(result.model.metrics.alertThreshold > 0);
+  assert.ok(result.model.metrics.precisionLift >= 0);
   assert.ok(result.model.metrics.trainingThrough < result.model.metrics.validationFrom);
   assert.ok(result.model.metrics.validationThrough <= result.model.dataThrough);
   assert.ok(result.model.metrics.balancedAccuracy >= 55);

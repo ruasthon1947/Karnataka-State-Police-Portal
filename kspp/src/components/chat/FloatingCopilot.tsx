@@ -1372,7 +1372,7 @@ export const FloatingCopilot: React.FC = () => {
               </span>
               <div
                 role="tablist"
-                aria-label="Transcript language"
+                aria-label={tr("Transcript language", "ಪ್ರತಿಲಿಪಿ ಭಾಷೆ")}
                 className="flex shrink-0 items-center gap-0.5 rounded-full border border-white/10 bg-black/30 p-0.5"
                 onPointerDown={(e) => e.stopPropagation()}
               >
@@ -1444,7 +1444,7 @@ export const FloatingCopilot: React.FC = () => {
               </span>
               <div
                 role="tablist"
-                aria-label="Query language"
+                aria-label={tr("Query language", "ಪ್ರಶ್ನೆಯ ಭಾಷೆ")}
                 className="flex shrink-0 items-center gap-0.5 rounded-full border border-white/10 bg-black/30 p-0.5"
                 onPointerDown={(e) => e.stopPropagation()}
               >

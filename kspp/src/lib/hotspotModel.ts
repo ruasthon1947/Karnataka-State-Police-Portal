@@ -1,4 +1,5 @@
 import type { FirRecord } from "./cases";
+import { isKarnatakaCoordinate } from "./geoScope.ts";
 
 export type HotspotModelInput = {
   liveRisk: number;
@@ -16,8 +17,12 @@ export type HotspotModelMetrics = {
   baselineBalancedAccuracy: number;
   accuracyUplift: number;
   precision: number;
+  f1Score: number;
   recall: number;
   specificity: number;
+  validationEventRate: number;
+  precisionLift: number;
+  alertThreshold: number;
   brierScore: number;
   baselineBrierScore: number;
   uncertaintyMargin: number;
@@ -33,7 +38,7 @@ export type HotspotModelMetrics = {
 };
 
 export type TrainedHotspotModel = {
-  version: "1.3";
+  version: "1.4";
   dataFingerprint: string;
   dataThrough: number;
   trainedAt: number;
@@ -55,6 +60,7 @@ export type HotspotTrainingResult = {
   status: "validated" | "below_baseline" | "insufficient_data";
   reason: string;
   datedGeocodedRecords: number;
+  modelRecordsUsed: number;
   historyDays: number;
 };
 
@@ -77,6 +83,8 @@ const DAY_MS = 86_400_000;
 const CELL_DEGREES = 0.02;
 const HIDDEN_UNITS = 6;
 const MAX_SAMPLES = 6000;
+const MAX_MODEL_EVENTS = 100_000;
+const MAX_MODEL_CELLS = 256;
 const EPOCHS = 140;
 const LEARNING_RATE = 0.025;
 const L2 = 0.0004;
@@ -112,7 +120,7 @@ const modelEvents = (records: FirRecord[]) => {
     const longitude = Number.parseFloat(String(record.raw.Longitude || ""));
     const occurredAt = recordTimestamp(record);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || occurredAt === null) continue;
-    if (latitude < 12.78 || latitude > 13.17 || longitude < 77.42 || longitude > 77.82) continue;
+    if (!isKarnatakaCoordinate(latitude, longitude)) continue;
     const category = record.raw.CrimeSubHead || record.raw.CrimeHead || record.category;
     events.push({
       cell: `${Math.floor(latitude / CELL_DEGREES)},${Math.floor(longitude / CELL_DEGREES)}`,
@@ -121,7 +129,17 @@ const modelEvents = (records: FirRecord[]) => {
       severity: Math.max(categorySeverity(category), /heinous|high/i.test(record.gravity) ? 1 : 0),
     });
   }
-  return events.sort((left, right) => left.occurredAt - right.occurredAt);
+  events.sort((left, right) => left.occurredAt - right.occurredAt);
+  if (events.length <= MAX_MODEL_EVENTS) return { events, total: events.length };
+  // Keep chronological coverage while bounding neural-training work. Every FIR
+  // still contributes to the live spatial aggregation; this cap applies only
+  // to the repeatable model-training sample.
+  const step = events.length / MAX_MODEL_EVENTS;
+  const sampled = Array.from(
+    { length: MAX_MODEL_EVENTS },
+    (_, index) => events[Math.min(events.length - 1, Math.floor(index * step))],
+  );
+  return { events: sampled, total: events.length };
 };
 
 const rawFeatureVector = (input: HotspotModelInput) => {
@@ -138,8 +156,23 @@ const rawFeatureVector = (input: HotspotModelInput) => {
 };
 
 const createSamples = (events: ModelEvent[]) => {
-  const byCell = new Map<string, ModelEvent[]>();
-  for (const event of events) byCell.set(event.cell, [...(byCell.get(event.cell) || []), event]);
+  let byCell = new Map<string, ModelEvent[]>();
+  for (const event of events) {
+    const cell = byCell.get(event.cell);
+    if (cell) cell.push(event);
+    else byCell.set(event.cell, [event]);
+  }
+  if (byCell.size > MAX_MODEL_CELLS) {
+    const ranked = Array.from(byCell.entries()).sort((left, right) => right[1].length - left[1].length);
+    const busiest = ranked.slice(0, MAX_MODEL_CELLS / 2);
+    const remaining = ranked.slice(MAX_MODEL_CELLS / 2).sort(([left], [right]) => left.localeCompare(right));
+    const geographicStep = remaining.length / (MAX_MODEL_CELLS / 2);
+    const distributed = Array.from(
+      { length: MAX_MODEL_CELLS / 2 },
+      (_, index) => remaining[Math.min(remaining.length - 1, Math.floor(index * geographicStep))],
+    );
+    byCell = new Map([...busiest, ...distributed]);
+  }
   const cells = Array.from(byCell.keys());
   const firstDate = events[0].occurredAt;
   const lastDate = events[events.length - 1].occurredAt;
@@ -258,13 +291,33 @@ const scoreOutcomes = (outcomes: ScoredOutcome[], threshold = 0.5) => {
   const recall = truePositive / Math.max(truePositive + falseNegative, 1);
   const specificity = trueNegative / Math.max(trueNegative + falsePositive, 1);
   const precision = truePositive / Math.max(truePositive + falsePositive, 1);
+  const f1Score = (2 * precision * recall) / Math.max(precision + recall, Number.EPSILON);
   return {
     balancedAccuracy: ((recall + specificity) / 2) * 100,
     precision: precision * 100,
+    f1Score: f1Score * 100,
     recall: recall * 100,
     specificity: specificity * 100,
     brierScore: brierTotal / Math.max(outcomes.length, 1),
   };
+};
+
+const operationalThreshold = (outcomes: ScoredOutcome[]) => {
+  const scored = Array.from({ length: 99 }, (_, index) => {
+    const threshold = (index + 1) / 100;
+    return { threshold, metrics: scoreOutcomes(outcomes, threshold) };
+  });
+  const bestBalancedAccuracy = Math.max(...scored.map(({ metrics }) => metrics.balancedAccuracy));
+  const eligible = scored.filter(({ metrics }) =>
+    metrics.recall >= 55 && metrics.balancedAccuracy >= bestBalancedAccuracy - 4,
+  );
+  if (!eligible.length) return balancedThreshold(outcomes);
+  eligible.sort((left, right) =>
+    right.metrics.precision - left.metrics.precision
+    || right.metrics.f1Score - left.metrics.f1Score
+    || right.metrics.balancedAccuracy - left.metrics.balancedAccuracy,
+  );
+  return eligible[0].threshold;
 };
 
 const balancedThreshold = (outcomes: ScoredOutcome[]) => {
@@ -303,7 +356,9 @@ const validationMetrics = (
     probability: outputProbability(model, sample.features),
     target: sample.target,
   }));
-  model.decisionThreshold = balancedThreshold(trainingModelOutcomes);
+  // Freeze a training-only operational threshold that reduces false patrol
+  // alerts while retaining at least 55% recall and near-best balanced accuracy.
+  model.decisionThreshold = operationalThreshold(trainingModelOutcomes);
   const overallHistoricalRate = trainingSamples.reduce((sum, sample) => sum + sample.target, 0) / trainingSamples.length;
   const baselineKey = (sample: TrainingSample) => `${sample.horizonDays}:${Math.min(3, Math.floor(sample.features[0] * 4))}`;
   const baselineGroups = new Map<string, { positives: number; total: number }>();
@@ -354,6 +409,7 @@ const validationMetrics = (
   // negatives cannot make the officer-facing uncertainty band look too tight.
   const uncertaintyMargin = Math.round(((percentile(positiveErrors, 0.8) + percentile(negativeErrors, 0.8)) / 2) * 100);
   const accuracyUplift = Math.round(scoredModel.balancedAccuracy - scoredBaseline.balancedAccuracy);
+  const validationEventRate = (samples.reduce((sum, sample) => sum + sample.target, 0) / samples.length) * 100;
   const backtestWindows = new Set(samples.map((sample) => sample.cutoff)).size;
   const intervalWidth = balancedAccuracyHigh - balancedAccuracyLow;
   const confidenceLevel: HotspotModelMetrics["confidenceLevel"] =
@@ -370,8 +426,12 @@ const validationMetrics = (
     baselineBalancedAccuracy: Math.round(scoredBaseline.balancedAccuracy),
     accuracyUplift,
     precision: Math.round(scoredModel.precision),
+    f1Score: Math.round(scoredModel.f1Score),
     recall: Math.round(scoredModel.recall),
     specificity: Math.round(scoredModel.specificity),
+    validationEventRate: Math.round(validationEventRate),
+    precisionLift: Number((scoredModel.precision / Math.max(validationEventRate, Number.EPSILON)).toFixed(1)),
+    alertThreshold: Math.round(model.decisionThreshold * 100),
     brierScore: Number(scoredModel.brierScore.toFixed(3)),
     baselineBrierScore: Number(scoredBaseline.brierScore.toFixed(3)),
     uncertaintyMargin,
@@ -387,28 +447,35 @@ const validationMetrics = (
   };
 };
 
-const insufficientResult = (reason: string, datedGeocodedRecords: number, historyDays: number): HotspotTrainingResult => ({
+const insufficientResult = (
+  reason: string,
+  datedGeocodedRecords: number,
+  historyDays: number,
+  modelRecordsUsed = datedGeocodedRecords,
+): HotspotTrainingResult => ({
   model: null,
   evaluation: null,
   status: "insufficient_data",
   reason,
   datedGeocodedRecords,
+  modelRecordsUsed,
   historyDays,
 });
 
 export const trainHotspotModel = (records: FirRecord[]): HotspotTrainingResult => {
-  const events = modelEvents(records);
-  if (events.length < 60) {
-    return insufficientResult("At least 60 dated, geocoded FIRs are required for training.", events.length, 0);
+  const modelEventResult = modelEvents(records);
+  const events = modelEventResult.events;
+  if (modelEventResult.total < 60) {
+    return insufficientResult("At least 60 dated, geocoded FIRs are required for training.", modelEventResult.total, 0, events.length);
   }
   const historyDays = Math.floor((events[events.length - 1].occurredAt - events[0].occurredAt) / DAY_MS);
   if (historyDays < 45) {
-    return insufficientResult("At least 45 days of FIR history are required for chronological validation.", events.length, historyDays);
+    return insufficientResult("At least 45 days of FIR history are required for chronological validation.", modelEventResult.total, historyDays, events.length);
   }
 
   const samples = createSamples(events).sort((left, right) => left.cutoff - right.cutoff);
   if (samples.length < 100) {
-    return insufficientResult("The available history did not produce enough training windows.", events.length, historyDays);
+    return insufficientResult("The available history did not produce enough training windows.", modelEventResult.total, historyDays, events.length);
   }
   const cutoffs = Array.from(new Set(samples.map((sample) => sample.cutoff))).sort((left, right) => left - right);
   const validationStart = cutoffs[Math.min(cutoffs.length - 1, Math.max(1, Math.floor(cutoffs.length * 0.8)))];
@@ -417,12 +484,12 @@ export const trainHotspotModel = (records: FirRecord[]): HotspotTrainingResult =
   const trainingSamples = samples.filter((sample) => sample.outcomeThrough < validationStart);
   const validationSamples = samples.filter((sample) => sample.cutoff >= validationStart);
   if (trainingSamples.length < 80 || validationSamples.length < 20) {
-    return insufficientResult("The available history did not leave enough non-overlapping chronological validation windows.", events.length, historyDays);
+    return insufficientResult("The available history did not leave enough non-overlapping chronological validation windows.", modelEventResult.total, historyDays, events.length);
   }
   const trainPositives = trainingSamples.reduce((sum, sample) => sum + sample.target, 0);
   const validationPositives = validationSamples.reduce((sum, sample) => sum + sample.target, 0);
   if (trainPositives < 10 || trainingSamples.length - trainPositives < 10 || validationPositives < 3 || validationSamples.length - validationPositives < 3) {
-    return insufficientResult("Training and validation require both incident and no-incident historical windows.", events.length, historyDays);
+    return insufficientResult("Training and validation require both incident and no-incident historical windows.", modelEventResult.total, historyDays, events.length);
   }
 
   const featureCount = trainingSamples[0].features.length;
@@ -477,7 +544,7 @@ export const trainHotspotModel = (records: FirRecord[]): HotspotTrainingResult =
   }
 
   const model: TrainedHotspotModel = {
-    version: "1.3",
+    version: "1.4",
     dataFingerprint: modelFingerprint,
     dataThrough: events[events.length - 1].occurredAt,
     trainedAt: Date.now(),
@@ -497,8 +564,12 @@ export const trainHotspotModel = (records: FirRecord[]): HotspotTrainingResult =
       baselineBalancedAccuracy: 0,
       accuracyUplift: 0,
       precision: 0,
+      f1Score: 0,
       recall: 0,
       specificity: 0,
+      validationEventRate: 0,
+      precisionLift: 0,
+      alertThreshold: 0,
       brierScore: 0,
       baselineBrierScore: 0,
       uncertaintyMargin: 0,
@@ -525,11 +596,12 @@ export const trainHotspotModel = (records: FirRecord[]): HotspotTrainingResult =
       evaluation: model.metrics,
       status: "below_baseline",
       reason: `Forecast hidden: balanced accuracy was ${model.metrics.balancedAccuracy}% versus ${model.metrics.baselineBalancedAccuracy}%, and probability error was ${model.metrics.brierScore} versus ${model.metrics.baselineBrierScore} (lower is better).`,
-      datedGeocodedRecords: events.length,
+      datedGeocodedRecords: modelEventResult.total,
+      modelRecordsUsed: events.length,
       historyDays,
     };
   }
-  return { model, evaluation: model.metrics, status: "validated", reason: "", datedGeocodedRecords: events.length, historyDays };
+  return { model, evaluation: model.metrics, status: "validated", reason: "", datedGeocodedRecords: modelEventResult.total, modelRecordsUsed: events.length, historyDays };
 };
 
 export type HotspotForecastFactor = {

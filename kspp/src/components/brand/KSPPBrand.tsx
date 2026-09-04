@@ -4,6 +4,7 @@ import logoUrl from "../../KSPP_LOGO.jpeg";
 export const KSPP_NAME = "Karnataka State Police Portal";
 export const KSPP_SHORT_NAME = "KSPP";
 export const KSPP_TAGLINE = "Secure Policing • Trusted Governance";
+export const KSPP_TAGLINE_KANNADA = "ಸುರಕ್ಷಿತ ಪೊಲೀಸ್ ಸೇವೆ • ವಿಶ್ವಾಸಾರ್ಹ ಆಡಳಿತ";
 export const KSPP_KANNADA_NAME = "ಕರ್ನಾಟಕ ರಾಜ್ಯ ಪೊಲೀಸ್ ಪೋರ್ಟಲ್";
 export const KARNATAKA_GOVERNMENT = "Government of Karnataka";
 export const KARNATAKA_GOVERNMENT_KANNADA = "ಕರ್ನಾಟಕ ಸರ್ಕಾರ";

@@ -773,7 +773,7 @@ const Composer: React.FC<{
           <div className="mb-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 shadow-[0_0_12px_rgba(239,68,68,0.15)]">
             <div className="flex items-center gap-2 mb-1.5">
               <span className="inline-block h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-red-400">Live Caption</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-red-400">{tr("Live Caption", "ನೇರ ಉಪಶೀರ್ಷಿಕೆ")}</span>
             </div>
             <p className="text-sm leading-relaxed text-blue/90 break-words">
               {liveCaption}

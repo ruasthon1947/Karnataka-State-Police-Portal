@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test server/*.test.mjs",
     "verify": "npm run typecheck && npm test && npm run build",
+    "benchmark:intelligence": "node --max-old-space-size=4096 scripts/benchmark-intelligence.mjs",
     "appsail:prepare": "npm run build && node scripts/prepare-appsail.mjs"
   },
   "dependencies": {

@@ -9,6 +9,7 @@ import {
   KSPP_NAME,
   KSPP_SHORT_NAME,
   KSPP_TAGLINE,
+  KSPP_TAGLINE_KANNADA,
 } from "../components/brand/KSPPBrand";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
@@ -127,7 +128,7 @@ const Login: React.FC = () => {
                 {KSPP_NAME}
               </h1>
               <p className="mt-2 text-lg font-semibold text-white/90">{KSPP_KANNADA_NAME}</p>
-              <p className="mt-3 text-sm font-medium text-white/70">{KSPP_TAGLINE}</p>
+              <p className="mt-3 text-sm font-medium text-white/70">{tr(KSPP_TAGLINE, KSPP_TAGLINE_KANNADA)}</p>
             </div>
 
             <div className="relative rounded-xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
@@ -164,7 +165,7 @@ const Login: React.FC = () => {
                 <div className="mt-1 text-[10px] font-medium leading-tight text-brand sm:text-[11px]">
                   {KSPP_KANNADA_NAME}
                 </div>
-                <div className="mt-0.5 text-[9px] text-muted">{KSPP_TAGLINE}</div>
+                <div className="mt-0.5 text-[9px] text-muted">{tr(KSPP_TAGLINE, KSPP_TAGLINE_KANNADA)}</div>
               </div>
             </div>
 

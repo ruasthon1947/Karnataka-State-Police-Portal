@@ -23,6 +23,7 @@ import {
   KSPP_KANNADA_NAME,
   KSPP_NAME,
   KSPP_TAGLINE,
+  KSPP_TAGLINE_KANNADA,
 } from "../brand/KSPPBrand";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
@@ -204,7 +205,7 @@ const AppShell: React.FC = () => {
           <div className="mt-0.5 truncate text-[10px] font-medium text-brand">
             {KSPP_KANNADA_NAME}
           </div>
-          <div className="mt-0.5 truncate text-[8px] text-muted">{KSPP_TAGLINE}</div>
+          <div className="mt-0.5 truncate text-[8px] text-muted">{tr(KSPP_TAGLINE, KSPP_TAGLINE_KANNADA)}</div>
         </div>
         <button
           type="button"
@@ -450,7 +451,7 @@ const AppShell: React.FC = () => {
         </main>
 
         <footer className="hidden h-7 shrink-0 items-center justify-between border-t border-line bg-shell px-5 text-[9px] font-medium text-muted md:flex">
-          <span>{KSPP_TAGLINE}</span>
+          <span>{tr(KSPP_TAGLINE, KSPP_TAGLINE_KANNADA)}</span>
           <span>
             {tr(
               "Official use only · Activity may be monitored",

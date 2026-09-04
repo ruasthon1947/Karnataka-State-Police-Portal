@@ -8,6 +8,7 @@ import {
   KSPP_KANNADA_NAME,
   KSPP_NAME,
   KSPP_TAGLINE,
+  KSPP_TAGLINE_KANNADA,
 } from "../components/brand/KSPPBrand";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
@@ -112,7 +113,7 @@ export const SessionExpired: React.FC = () => {
               </div>
               <h2 className="mt-3 text-2xl font-semibold tracking-tight">{KSPP_NAME}</h2>
               <p className="mt-2 text-sm font-semibold text-white/85">{KSPP_KANNADA_NAME}</p>
-              <p className="mt-3 text-xs font-medium text-white/60">{KSPP_TAGLINE}</p>
+              <p className="mt-3 text-xs font-medium text-white/60">{tr(KSPP_TAGLINE, KSPP_TAGLINE_KANNADA)}</p>
             </div>
 
             <div className="relative mt-10 rounded-xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
@@ -139,7 +140,7 @@ export const SessionExpired: React.FC = () => {
               <div className="min-w-0">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand">KSPP</div>
                 <div className="truncate text-sm font-semibold">{KSPP_NAME}</div>
-                <div className="mt-0.5 truncate text-[10px] text-muted">{KSPP_TAGLINE}</div>
+                <div className="mt-0.5 truncate text-[10px] text-muted">{tr(KSPP_TAGLINE, KSPP_TAGLINE_KANNADA)}</div>
               </div>
             </div>
 

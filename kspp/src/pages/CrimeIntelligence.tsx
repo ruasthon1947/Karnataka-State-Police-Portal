@@ -17,6 +17,7 @@ const EMPTY_TRAINING: HotspotTrainingResult = {
   status: "insufficient_data",
   reason: "Neural training has not completed.",
   datedGeocodedRecords: 0,
+  modelRecordsUsed: 0,
   historyDays: 0,
 };
 
@@ -118,6 +119,14 @@ const CrimeIntelligence: React.FC = () => {
     : evaluation?.confidenceLevel === "medium"
       ? tr("Medium", "ಮಧ್ಯಮ")
       : tr("Low", "ಕಡಿಮೆ");
+  const forecastUnavailableReason = trainingPending
+    ? tr("Forecast validation is running.", "ಮುನ್ಸೂಚನೆ ಮೌಲ್ಯೀಕರಣ ನಡೆಯುತ್ತಿದೆ.")
+    : training.status === "below_baseline"
+      ? tr("Forecast withheld because it did not reliably beat the historical benchmark.", "ಐತಿಹಾಸಿಕ ಮಾನದಂಡವನ್ನು ವಿಶ್ವಾಸಾರ್ಹವಾಗಿ ಮೀರದ ಕಾರಣ ಮುನ್ಸೂಚನೆಯನ್ನು ತಡೆಹಿಡಿಯಲಾಗಿದೆ.")
+      : tr(
+        `${training.datedGeocodedRecords} usable FIRs covering ${training.historyDays} days are available; more dated history is required.`,
+        `${training.historyDays} ದಿನಗಳನ್ನು ಒಳಗೊಂಡ ${training.datedGeocodedRecords} ಬಳಸಬಹುದಾದ ಎಫ್‌ಐಆರ್‌ಗಳು ಲಭ್ಯವಿವೆ; ಹೆಚ್ಚಿನ ದಿನಾಂಕದ ಇತಿಹಾಸ ಅಗತ್ಯವಿದೆ.`,
+      );
 
   const mapPoints = useMemo(() => filteredHotspots.map((hotspot) => ({
     id: hotspot.id,
@@ -150,7 +159,9 @@ const CrimeIntelligence: React.FC = () => {
         station: selected.station,
         zone: selected.name,
         risk: selectedRisk,
-        mode: activeMode === "live" ? "Live FIR density" : `${horizonDays}-day AI forecast`,
+        mode: activeMode === "live"
+          ? tr("Live FIR density", "ಲೈವ್ ಎಫ್‌ಐಆರ್ ಸಾಂದ್ರತೆ")
+          : tr(`${horizonDays}-day AI forecast`, `${horizonDays} ದಿನಗಳ ಎಐ ಮುನ್ಸೂಚನೆ`),
         peakWindow: selected.peakWindow,
       });
       const { sent, failed, eligible } = result.notifications;
@@ -173,7 +184,9 @@ const CrimeIntelligence: React.FC = () => {
     } catch (alertError) {
       setPatrol({
         status: "error",
-        message: alertError instanceof Error ? alertError.message : tr("Patrol alert failed.", "ಗಸ್ತು ಎಚ್ಚರಿಕೆ ವಿಫಲವಾಗಿದೆ."),
+        message: language === "kn"
+          ? tr("Patrol alert failed.", "ಗಸ್ತು ಎಚ್ಚರಿಕೆ ವಿಫಲವಾಗಿದೆ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.")
+          : alertError instanceof Error ? alertError.message : "Patrol alert failed.",
       });
     }
   };
@@ -195,7 +208,7 @@ const CrimeIntelligence: React.FC = () => {
         `${factorName(factor)} ಈ ಪ್ರದೇಶ ಮತ್ತು ಸಮಯದ ಅಂಕವನ್ನು ಸುಮಾರು ${factor.impactPoints} ಅಂಕ ${factor.direction === "raises" ? "ಹೆಚ್ಚಿಸಿದೆ" : "ಕಡಿಮೆ ಮಾಡಿದೆ"}.`,
       ))
     : [
-    tr(`${hotspot.nearbyCases} geocoded FIRs within 1.5 km of this exact coordinate`, `ಈ ನಿಖರ ನಿರ್ದೇಶಾಂಕದ 1.5 ಕಿ.ಮೀ ಒಳಗೆ ${hotspot.nearbyCases} ಜಿಯೋ-ಕೋಡ್ ಮಾಡಿದ ಎಫ್‌ಐಆರ್‌ಗಳು`),
+    tr(`${hotspot.nearbyCases} geocoded FIRs within 1.5 km of this area centre`, `ಈ ಪ್ರದೇಶದ ಕೇಂದ್ರದ 1.5 ಕಿ.ಮೀ ಒಳಗೆ ${hotspot.nearbyCases} ಜಿಯೋ-ಕೋಡ್ ಮಾಡಿದ ಎಫ್‌ಐಆರ್‌ಗಳು`),
     tr(`${hotspot.recentCases} nearby FIRs recorded in the latest 30-day data window`, `ಇತ್ತೀಚಿನ 30 ದಿನಗಳ ದತ್ತಾಂಶ ಅವಧಿಯಲ್ಲಿ ${hotspot.recentCases} ಹತ್ತಿರದ ಎಫ್‌ಐಆರ್‌ಗಳು ದಾಖಲಾಗಿವೆ`),
     hotspot.trend > 0
       ? tr(`Seven-day incident trend increased ${hotspot.trend}%`, `ಏಳು ದಿನಗಳ ಘಟನೆ ಪ್ರವೃತ್ತಿ ${hotspot.trend}% ಹೆಚ್ಚಾಗಿದೆ`)
@@ -218,7 +231,7 @@ const CrimeIntelligence: React.FC = () => {
       <section className="intelligence-toolbar" aria-label={tr("Crime intelligence filters", "ಅಪರಾಧ ಗುಪ್ತಚರ ಫಿಲ್ಟರ್‌ಗಳು")}>
         <div className="mode-switch" role="group" aria-label={tr("Map mode", "ನಕ್ಷೆ ವಿಧಾನ")}>
           <button type="button" aria-pressed={activeMode === "live"} onClick={() => setMode("live")}>● {tr("Live crime", "ಲೈವ್ ಅಪರಾಧ")}</button>
-          <button type="button" disabled={!forecastReady || trainingPending} title={forecastReady ? undefined : training.reason} aria-pressed={activeMode === "forecast"} onClick={() => setMode("forecast")}>✦ {trainingPending ? tr("Checking…", "ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ…") : tr("Validated forecast", "ಮೌಲ್ಯೀಕರಿಸಿದ ಮುನ್ಸೂಚನೆ")}</button>
+          <button type="button" disabled={!forecastReady || trainingPending} title={forecastReady ? undefined : forecastUnavailableReason} aria-pressed={activeMode === "forecast"} onClick={() => setMode("forecast")}>✦ {trainingPending ? tr("Checking…", "ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ…") : tr("Validated forecast", "ಮೌಲ್ಯೀಕರಿಸಿದ ಮುನ್ಸೂಚನೆ")}</button>
         </div>
         <label><span>{tr("Crime type", "ಅಪರಾಧ ಪ್ರಕಾರ")}</span><select value={crimeFilter} onChange={(event) => setCrimeFilter(event.target.value)}>
           <option value={ALL_CRIMES}>{tr("All crime types", "ಎಲ್ಲಾ ಅಪರಾಧ ಪ್ರಕಾರಗಳು")}</option>
@@ -248,7 +261,11 @@ const CrimeIntelligence: React.FC = () => {
 
       {!loading && (error || dataset.geocodedRecords === 0) ? <div className="intelligence-notice data-warning" role="alert">
         <span>{tr("NO LIVE MAP DATA", "ಲೈವ್ ನಕ್ಷೆ ದತ್ತಾಂಶವಿಲ್ಲ")}</span>
-        {error ? tr(`Google Sheets data could not be loaded: ${error}`, `Google Sheets ದತ್ತಾಂಶವನ್ನು ಲೋಡ್ ಮಾಡಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ: ${error}`) : tr("No Bengaluru FIR row currently contains a valid latitude and longitude.", "ಯಾವುದೇ ಬೆಂಗಳೂರು ಎಫ್‌ಐಆರ್ ಸಾಲಿನಲ್ಲಿ ಪ್ರಸ್ತುತ ಮಾನ್ಯ ಅಕ್ಷಾಂಶ ಮತ್ತು ರೇಖಾಂಶ ಇಲ್ಲ.")}
+        {error
+          ? language === "kn"
+            ? tr("FIR data could not be loaded.", "ಎಫ್‌ಐಆರ್ ದತ್ತಾಂಶವನ್ನು ಲೋಡ್ ಮಾಡಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.")
+            : `FIR data could not be loaded: ${error}`
+          : tr("No Karnataka FIR row currently contains a valid latitude and longitude.", "ಯಾವುದೇ ಕರ್ನಾಟಕ ಎಫ್‌ಐಆರ್ ಸಾಲಿನಲ್ಲಿ ಪ್ರಸ್ತುತ ಮಾನ್ಯ ಅಕ್ಷಾಂಶ ಮತ್ತು ರೇಖಾಂಶ ಇಲ್ಲ.")}
       </div> : null}
 
       <section className="intelligence-layout">
@@ -269,7 +286,7 @@ const CrimeIntelligence: React.FC = () => {
 
         <aside className="hotspot-intelligence-panel" aria-live="polite">
           {selected ? <>
-            <div className="panel-eyebrow">{activeMode === "forecast" ? tr("SELECTED FORECAST AREA", "ಆಯ್ದ ಮುನ್ಸೂಚನೆ ಪ್ರದೇಶ") : tr("SELECTED EXACT FIR LOCATION", "ಆಯ್ದ ನಿಖರ ಎಫ್‌ಐಆರ್ ಸ್ಥಳ")}</div>
+            <div className="panel-eyebrow">{activeMode === "forecast" ? tr("SELECTED FORECAST AREA", "ಆಯ್ದ ಮುನ್ಸೂಚನೆ ಪ್ರದೇಶ") : tr("SELECTED FIR AREA", "ಆಯ್ದ ಎಫ್‌ಐಆರ್ ಪ್ರದೇಶ")}</div>
             <h2>{displayPlaceName(selected.name, language)}</h2><p>{displayPlaceName(selected.station, language)} · {selected.latitude.toFixed(6)}, {selected.longitude.toFixed(6)}</p>
             <RiskRing risk={selectedRisk} label={scoreLabel(selectedRisk)} />
             {selectedForecast ? <div className="forecast-confidence" role="status">
@@ -277,14 +294,14 @@ const CrimeIntelligence: React.FC = () => {
               <div><span>{tr("CONFIDENCE", "ವಿಶ್ವಾಸ")}</span><strong>{confidenceLabel}</strong></div>
               <p>{tr("Range comes from errors in newer back-test periods. For this area and selected time only—never a prediction about a person.", "ಹೊಸ ಹಿಂದಿನ-ಪರೀಕ್ಷಾ ಅವಧಿಗಳ ದೋಷಗಳಿಂದ ಈ ವ್ಯಾಪ್ತಿ ಬರುತ್ತದೆ. ಈ ಪ್ರದೇಶ ಮತ್ತು ಆಯ್ದ ಸಮಯಕ್ಕೆ ಮಾತ್ರ—ಎಂದಿಗೂ ವ್ಯಕ್ತಿಯ ಕುರಿತ ಮುನ್ಸೂಚನೆಯಲ್ಲ.")}</p>
             </div> : null}
-            <div className="prediction-primary"><span>{tr("Dominant recorded pattern", "ಪ್ರಮುಖ ದಾಖಲಾದ ಮಾದರಿ")}</span><strong>{displayKnownValue(selected.category, language)}</strong><div><span>{tr("Peak recorded window", "ಗರಿಷ್ಠ ದಾಖಲಾದ ಅವಧಿ")}</span><b>{selected.peakWindow}</b></div></div>
+            <div className="prediction-primary"><span>{tr("Dominant recorded pattern", "ಪ್ರಮುಖ ದಾಖಲಾದ ಮಾದರಿ")}</span><strong>{displayKnownValue(selected.category, language)}</strong><div><span>{tr("Peak recorded window", "ಗರಿಷ್ಠ ದಾಖಲಾದ ಅವಧಿ")}</span><b>{displayKnownValue(selected.peakWindow, language)}</b></div></div>
             <div className="prediction-metrics"><div><span>{tr("Nearby FIRs", "ಹತ್ತಿರದ ಎಫ್‌ಐಆರ್‌ಗಳು")}</span><strong>{selected.nearbyCases}</strong></div><div><span>{tr("7-day trend", "7 ದಿನಗಳ ಪ್ರವೃತ್ತಿ")}</span><strong className={selected.trend > 0 ? "trend-up" : ""}>{selected.trend > 0 ? "↗" : "↘"} {Math.abs(selected.trend)}%</strong></div></div>
             <div className="prediction-drivers"><h3>{tr("How this score was calculated", "ಈ ಅಂಕವನ್ನು ಹೇಗೆ ಲೆಕ್ಕ ಹಾಕಲಾಗಿದೆ")}</h3>{selectedDrivers(selected).map((driver, index) => <div key={driver}><span>{index + 1}</span><p>{driver}</p></div>)}</div>
             <button type="button" onClick={() => setPatrolConfirmOpen(true)} disabled={patrol.status === "sending"} className="mt-4 w-full rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
               {patrol.status === "sending" ? tr("Sending SMS…", "SMS ಕಳುಹಿಸಲಾಗುತ್ತಿದೆ…") : tr("Notify verified patrol officers by SMS", "ದೃಢೀಕೃತ ಗಸ್ತು ಅಧಿಕಾರಿಗಳಿಗೆ SMS ತಿಳಿಸಿ")}
             </button>
             {patrol.message && <p className={`mt-3 rounded-lg border px-3 py-2 text-xs ${patrol.status === "sent" ? "border-sage/30 bg-sage/10 text-sage" : patrol.status === "error" ? "border-rose/30 bg-rose/10 text-rose" : "border-line bg-panel text-muted"}`} role={patrol.status === "error" ? "alert" : "status"}>{patrol.message}</p>}
-          </> : <div className="empty-intelligence-panel"><div className="panel-eyebrow">{tr("NO LOCATION SELECTED", "ಯಾವುದೇ ಸ್ಥಳ ಆಯ್ಕೆ ಮಾಡಿಲ್ಲ")}</div><h2>{tr("Waiting for geocoded FIR data", "ಜಿಯೋ-ಕೋಡ್ ಎಫ್‌ಐಆರ್ ದತ್ತಾಂಶಕ್ಕಾಗಿ ಕಾಯಲಾಗುತ್ತಿದೆ")}</h2><p>{tr("Add valid Bengaluru latitude and longitude values to the Google Sheet, then refresh this page.", "Google Sheet ಗೆ ಮಾನ್ಯ ಬೆಂಗಳೂರು ಅಕ್ಷಾಂಶ ಮತ್ತು ರೇಖಾಂಶ ಮೌಲ್ಯಗಳನ್ನು ಸೇರಿಸಿ, ನಂತರ ಈ ಪುಟವನ್ನು ರಿಫ್ರೆಶ್ ಮಾಡಿ.")}</p></div>}
+          </> : <div className="empty-intelligence-panel"><div className="panel-eyebrow">{tr("NO LOCATION SELECTED", "ಯಾವುದೇ ಸ್ಥಳ ಆಯ್ಕೆ ಮಾಡಿಲ್ಲ")}</div><h2>{tr("Waiting for geocoded FIR data", "ಜಿಯೋ-ಕೋಡ್ ಎಫ್‌ಐಆರ್ ದತ್ತಾಂಶಕ್ಕಾಗಿ ಕಾಯಲಾಗುತ್ತಿದೆ")}</h2><p>{tr("Add valid Karnataka latitude and longitude values to the connected FIR register, then refresh this page.", "ಸಂಪರ್ಕಿತ ಎಫ್‌ಐಆರ್ ದಾಖಲೆಗೆ ಮಾನ್ಯ ಕರ್ನಾಟಕ ಅಕ್ಷಾಂಶ ಮತ್ತು ರೇಖಾಂಶ ಮೌಲ್ಯಗಳನ್ನು ಸೇರಿಸಿ, ನಂತರ ಈ ಪುಟವನ್ನು ನವೀಕರಿಸಿ.")}</p></div>}
         </aside>
       </section>
 
@@ -313,11 +330,15 @@ const CrimeIntelligence: React.FC = () => {
                 <div><dt>{tr("Held-out weekly windows", "ಪ್ರತ್ಯೇಕಿಸಿದ ವಾರದ ಅವಧಿಗಳು")}</dt><dd>{evaluation.backtestWindows}</dd></div>
                 <div><dt>{tr("Newer test period", "ಹೊಸ ಪರೀಕ್ಷಾ ಅವಧಿ")}</dt><dd>{validationRange}</dd></div>
                 <div><dt>{tr("Precision", "ನಿಖರತೆ (ಪ್ರಿಸಿಷನ್)")}</dt><dd>{evaluation.precision}%</dd></div>
+                <div><dt>{tr("Precision lift", "ಪ್ರಿಸಿಷನ್ ಏರಿಕೆ")}</dt><dd>{evaluation.precisionLift}× {tr("vs test event rate", "ಪರೀಕ್ಷಾ ಘಟನೆ ದರಕ್ಕೆ ಹೋಲಿಕೆ")}</dd></div>
+                <div><dt>{tr("F1 score", "ಎಫ್‌1 ಅಂಕ")}</dt><dd>{evaluation.f1Score}%</dd></div>
                 <div><dt>{tr("Recall", "ರಿಕಾಲ್")}</dt><dd>{evaluation.recall}%</dd></div>
                 <div><dt>{tr("Specificity", "ಸ್ಪೆಸಿಫಿಸಿಟಿ")}</dt><dd>{evaluation.specificity}%</dd></div>
+                <div><dt>{tr("Operational alert threshold", "ಕಾರ್ಯಾಚರಣೆಯ ಎಚ್ಚರಿಕೆ ಮಿತಿ")}</dt><dd>{evaluation.alertThreshold}%</dd></div>
+                <div><dt>{tr("Newer-period event rate", "ಹೊಸ ಅವಧಿಯ ಘಟನೆ ದರ")}</dt><dd>{evaluation.validationEventRate}%</dd></div>
                 <div><dt>{tr("Probability error (lower is better)", "ಸಂಭವನೀಯತೆ ದೋಷ (ಕಡಿಮೆ ಉತ್ತಮ)")}</dt><dd>{evaluation.brierScore} · {tr("baseline", "ಮೂಲಮಟ್ಟ")} {evaluation.baselineBrierScore}</dd></div>
               </dl>
-              <p>{tr(`These are area × time × forecast-window samples generated from authorized FIR history—not additional FIR records. There is no time leakage: every training outcome ended before testing began. The accuracy range resamples the ${evaluation.backtestWindows} held-out weekly periods, keeping related samples together. The map's error band gives incident and no-incident errors equal weight so common quiet periods cannot make uncertainty look artificially small.`, `ಇವು ಅಧಿಕೃತ ಎಫ್‌ಐಆರ್ ಇತಿಹಾಸದಿಂದ ರಚಿಸಲಾದ ಪ್ರದೇಶ × ಸಮಯ × ಮುನ್ಸೂಚನೆ-ಅವಧಿಯ ಮಾದರಿಗಳು—ಹೆಚ್ಚುವರಿ ಎಫ್‌ಐಆರ್ ದಾಖಲೆಗಳಲ್ಲ. ಸಮಯ ಸೋರಿಕೆ ಇಲ್ಲ: ಪರೀಕ್ಷೆ ಆರಂಭವಾಗುವ ಮೊದಲು ಪ್ರತಿಯೊಂದು ತರಬೇತಿ ಫಲಿತಾಂಶವೂ ಅಂತ್ಯಗೊಂಡಿದೆ. ನಿಖರತೆಯ ವ್ಯಾಪ್ತಿಯು ಸಂಬಂಧಿತ ಮಾದರಿಗಳನ್ನು ಒಟ್ಟಿಗೆ ಇಟ್ಟು ${evaluation.backtestWindows} ಪ್ರತ್ಯೇಕಿಸಿದ ವಾರದ ಅವಧಿಗಳನ್ನು ಮರುಮಾದರಿಗೊಳಿಸುತ್ತದೆ. ಸಾಮಾನ್ಯ ಶಾಂತ ಅವಧಿಗಳು ಅನಿಶ್ಚಿತತೆಯನ್ನು ಕೃತಕವಾಗಿ ಕಡಿಮೆ ತೋರಿಸದಂತೆ ನಕ್ಷೆಯ ದೋಷದ ವ್ಯಾಪ್ತಿಯು ಘಟನೆ ಮತ್ತು ಘಟನೆ-ಇಲ್ಲದ ದೋಷಗಳಿಗೆ ಸಮಾನ ತೂಕ ನೀಡುತ್ತದೆ.`)}</p>
+              <p>{tr(`These are area × time × forecast-window samples generated from authorized FIR history—not additional FIR records. There is no time leakage: every training outcome ended before testing began. The alert threshold is selected only on older training periods to reduce false alerts while retaining useful recall. The accuracy range resamples the ${evaluation.backtestWindows} held-out weekly periods, keeping related samples together. The map's error band gives incident and no-incident errors equal weight so common quiet periods cannot make uncertainty look artificially small.`, `ಇವು ಅಧಿಕೃತ ಎಫ್‌ಐಆರ್ ಇತಿಹಾಸದಿಂದ ರಚಿಸಲಾದ ಪ್ರದೇಶ × ಸಮಯ × ಮುನ್ಸೂಚನೆ-ಅವಧಿಯ ಮಾದರಿಗಳು—ಹೆಚ್ಚುವರಿ ಎಫ್‌ಐಆರ್ ದಾಖಲೆಗಳಲ್ಲ. ಸಮಯ ಸೋರಿಕೆ ಇಲ್ಲ: ಪರೀಕ್ಷೆ ಆರಂಭವಾಗುವ ಮೊದಲು ಪ್ರತಿಯೊಂದು ತರಬೇತಿ ಫಲಿತಾಂಶವೂ ಅಂತ್ಯಗೊಂಡಿದೆ. ತಪ್ಪು ಎಚ್ಚರಿಕೆಗಳನ್ನು ಕಡಿಮೆ ಮಾಡಿ ಉಪಯುಕ್ತ ರಿಕಾಲ್ ಉಳಿಸಲು ಎಚ್ಚರಿಕೆ ಮಿತಿಯನ್ನು ಹಳೆಯ ತರಬೇತಿ ಅವಧಿಗಳಲ್ಲಿ ಮಾತ್ರ ಆಯ್ಕೆ ಮಾಡಲಾಗಿದೆ. ನಿಖರತೆಯ ವ್ಯಾಪ್ತಿಯು ಸಂಬಂಧಿತ ಮಾದರಿಗಳನ್ನು ಒಟ್ಟಿಗೆ ಇಟ್ಟು ${evaluation.backtestWindows} ಪ್ರತ್ಯೇಕಿಸಿದ ವಾರದ ಅವಧಿಗಳನ್ನು ಮರುಮಾದರಿಗೊಳಿಸುತ್ತದೆ. ಸಾಮಾನ್ಯ ಶಾಂತ ಅವಧಿಗಳು ಅನಿಶ್ಚಿತತೆಯನ್ನು ಕೃತಕವಾಗಿ ಕಡಿಮೆ ತೋರಿಸದಂತೆ ನಕ್ಷೆಯ ದೋಷದ ವ್ಯಾಪ್ತಿಯು ಘಟನೆ ಮತ್ತು ಘಟನೆ-ಇಲ್ಲದ ದೋಷಗಳಿಗೆ ಸಮಾನ ತೂಕ ನೀಡುತ್ತದೆ.`)}</p>
             </div>
           </details>
       </section> : null}
@@ -336,9 +357,9 @@ const CrimeIntelligence: React.FC = () => {
       )}
 
       <section className="intelligence-summary">
-        <div><span>{tr("High-score locations", "ಹೆಚ್ಚಿನ ಅಂಕದ ಸ್ಥಳಗಳು")}</span><strong>{highRiskCount}</strong><small>{tr("exact coordinates requiring attention", "ಗಮನ ಅಗತ್ಯವಿರುವ ನಿಖರ ನಿರ್ದೇಶಾಂಕಗಳು")}</small></div>
+        <div><span>{tr("High-score areas", "ಹೆಚ್ಚಿನ ಅಂಕದ ಪ್ರದೇಶಗಳು")}</span><strong>{highRiskCount}</strong><small>{tr("aggregated patrol areas requiring attention", "ಗಮನ ಅಗತ್ಯವಿರುವ ಒಟ್ಟುಗೂಡಿಸಿದ ಗಸ್ತು ಪ್ರದೇಶಗಳು")}</small></div>
         <div><span>{tr("Average score", "ಸರಾಸರಿ ಅಂಕ")}</span><strong>{averageRisk}%</strong><small>{activeMode === "forecast" ? tr(`${horizonDays}-day neural forecast`, `${horizonDays} ದಿನಗಳ ನ್ಯೂರಲ್ ಮುನ್ಸೂಚನೆ`) : tr("recorded relative density", "ದಾಖಲಾದ ಸಂಬಂಧಿತ ಸಾಂದ್ರತೆ")}</small></div>
-        <div><span>{tr("FIR rows analysed", "ವಿಶ್ಲೇಷಿಸಿದ ಎಫ್‌ಐಆರ್ ಸಾಲುಗಳು")}</span><strong>{records.length.toLocaleString(language === "kn" ? "kn-IN" : "en-IN")}</strong><small>{dataset.geocodedRecords.toLocaleString(language === "kn" ? "kn-IN" : "en-IN")} {tr("valid Bengaluru coordinates", "ಮಾನ್ಯ ಬೆಂಗಳೂರು ನಿರ್ದೇಶಾಂಕಗಳು")}</small></div>
+        <div><span>{tr("FIR rows analysed", "ವಿಶ್ಲೇಷಿಸಿದ ಎಫ್‌ಐಆರ್ ಸಾಲುಗಳು")}</span><strong>{records.length.toLocaleString(locale)}</strong><small>{tr(`${dataset.geocodedRecords.toLocaleString(locale)} valid Karnataka coordinates · ${dataset.totalHotspotAreas.toLocaleString(locale)} aggregated areas`, `${dataset.geocodedRecords.toLocaleString(locale)} ಮಾನ್ಯ ಕರ್ನಾಟಕ ನಿರ್ದೇಶಾಂಕಗಳು · ${dataset.totalHotspotAreas.toLocaleString(locale)} ಒಟ್ಟುಗೂಡಿಸಿದ ಪ್ರದೇಶಗಳು`)}</small></div>
         <div><span>{activeMode === "forecast" && evaluation ? tr("Newer-period back-test", "ಹೊಸ ಅವಧಿಯ ಹಿಂದಿನ ಪರೀಕ್ಷೆ") : tr("Latest FIR date", "ಇತ್ತೀಚಿನ ಎಫ್‌ಐಆರ್ ದಿನಾಂಕ")}</span><strong className={activeMode === "forecast" ? "model-ready" : ""}>{activeMode === "forecast" && evaluation ? `${evaluation.balancedAccuracy}%` : latestDate}</strong><small>{activeMode === "forecast" && evaluation ? tr(`${evaluation.accuracyUplift > 0 ? "+" : ""}${evaluation.accuracyUplift} points vs historical baseline · ${evaluation.backtestWindows} weekly windows`, `ಐತಿಹಾಸಿಕ ಮೂಲಮಟ್ಟಕ್ಕಿಂತ ${evaluation.accuracyUplift > 0 ? "+" : ""}${evaluation.accuracyUplift} ಅಂಕಗಳು · ${evaluation.backtestWindows} ವಾರದ ಅವಧಿಗಳು`) : tr(`Case register synced at ${lastSyncLabel}`, `ಪ್ರಕರಣ ದಾಖಲೆ ${lastSyncLabel}ಕ್ಕೆ ಸಿಂಕ್ ಆಗಿದೆ`)}</small></div>
       </section>
       <p className="intelligence-disclaimer">{tr("Area-and-time forecasts use only authorized, dated and geocoded FIR history. They do not predict individual behaviour, do not identify a person, and never replace officer judgment.", "ಪ್ರದೇಶ ಮತ್ತು ಸಮಯದ ಮುನ್ಸೂಚನೆಗಳು ಅಧಿಕೃತ, ದಿನಾಂಕ ಮತ್ತು ಜಿಯೋ-ಕೋಡ್ ಮಾಡಿದ ಎಫ್‌ಐಆರ್ ಇತಿಹಾಸವನ್ನು ಮಾತ್ರ ಬಳಸುತ್ತವೆ. ಅವು ವ್ಯಕ್ತಿಯ ನಡವಳಿಕೆಯನ್ನು ಊಹಿಸುವುದಿಲ್ಲ, ವ್ಯಕ್ತಿಯನ್ನು ಗುರುತಿಸುವುದಿಲ್ಲ ಮತ್ತು ಅಧಿಕಾರಿಯ ನಿರ್ಣಯವನ್ನು ಎಂದಿಗೂ ಬದಲಿಸುವುದಿಲ್ಲ.")}</p>

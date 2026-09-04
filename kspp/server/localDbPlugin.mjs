@@ -37,6 +37,7 @@ import {
 } from "./todoService.mjs";
 import { readExplicitTabRecords } from "./sheetsStore.mjs";
 import { auditService, recordAuditEventSafe } from "./auditService.mjs";
+import { createCasePassToken, verifyCasePassToken } from "./casePassToken.mjs";
 
 const execFileAsync = promisify(execFile);
 let unitLookupCache = { expiresAt: 0, rows: [] };
@@ -422,17 +423,12 @@ export async function handleApi(req, res, next) {
     // ── Public: Citizen Case Pass (no auth required) ──────────────────────────
     if (req.method === "GET" && url.pathname.startsWith("/api/case-pass/")) {
       const token = decodeURIComponent(url.pathname.replace("/api/case-pass/", ""));
-      let caseId = "";
-      try {
-        caseId = Buffer.from(token, "base64").toString("utf8").trim();
-      } catch {
+      const passToken = verifyCasePassToken(token);
+      if (!passToken) {
         sendError(res, 400, "Invalid case pass token.");
         return;
       }
-      if (!caseId) {
-        sendError(res, 400, "Invalid case pass token.");
-        return;
-      }
+      const caseId = passToken.caseId;
       try {
         const { rows: cases } = await casesFromGoogle();
         const found = cases.find((c) =>
@@ -471,6 +467,36 @@ export async function handleApi(req, res, next) {
     
     // Attach session to request for todo operations
     attachSessionToRequest(req, session);
+
+    if (req.method === "POST" && url.pathname === "/api/case-pass-token") {
+      const payload = await readBody(req);
+      const caseId = normalizeValue(payload.caseId);
+      if (!caseId) {
+        sendError(res, 400, "A valid case identifier is required.");
+        return;
+      }
+      const { rows } = await casesFromGoogle();
+      const record = rows.find((item) => caseMatches(item, caseId));
+      // Return the same response for missing and unauthorized cases so the
+      // token issuer cannot be used to enumerate the FIR register.
+      if (!record || !canAccessCase(session, record)) {
+        sendError(res, 404, "Case was not found.");
+        return;
+      }
+      const token = createCasePassToken(caseAuditId(record));
+      void recordAuditEventSafe({
+        session,
+        action: "RECORD_ACCESS",
+        targetType: "FIR",
+        targetId: caseAuditId(record),
+        result: "SUCCESS",
+        statusCode: 200,
+        details: { source: "Citizen Case Pass issued" },
+        requestId: auditRequestId(req),
+      });
+      sendJson(res, 200, { ok: true, token });
+      return;
+    }
 
     const todoFilter = todoFilterForSession(session);
 

@@ -889,7 +889,9 @@ export const FIRDetail: React.FC = () => {
       ? [
         t("Information received", "ಮಾಹಿತಿ ಸ್ವೀಕರಿಸಲಾಗಿದೆ"),
         r.raw.InfoReceivedPSDate,
-        r.station || t("Police station", "ಪೊಲೀಸ್ ಠಾಣೆ"),
+        r.station
+          ? displayPlaceName(r.station, language)
+          : t("Police station", "ಪೊಲೀಸ್ ಠಾಣೆ"),
       ]
       : null,
     r.raw.IncidentFromDate
@@ -910,7 +912,9 @@ export const FIRDetail: React.FC = () => {
       ? [
         t("Chargesheet status", "ಆರೋಪಪಟ್ಟಿ ಸ್ಥಿತಿ"),
         r.raw.LatestChargesheetDate || t("Date not recorded", "ದಿನಾಂಕ ದಾಖಲಾಗಿಲ್ಲ"),
-        r.raw.ChargesheetStatus || t("Status not recorded", "ಸ್ಥಿತಿ ದಾಖಲಾಗಿಲ್ಲ"),
+        r.raw.ChargesheetStatus
+          ? displayKnownValue(r.raw.ChargesheetStatus, language)
+          : t("Status not recorded", "ಸ್ಥಿತಿ ದಾಖಲಾಗಿಲ್ಲ"),
       ]
       : null,
   ].filter((item): item is string[] => Boolean(item));
@@ -1240,7 +1244,7 @@ export const AdvancedSearch: React.FC = () => {
             </option>
 
             {optionList(options, "PoliceStation").map((value) => (
-              <option key={value}>{value}</option>
+              <option key={value} value={value}>{displayPlaceName(value, language)}</option>
             ))}
           </select>
 
@@ -1256,7 +1260,7 @@ export const AdvancedSearch: React.FC = () => {
             </option>
 
             {optionList(options, "Status").map((value) => (
-              <option key={value}>{value}</option>
+              <option key={value} value={value}>{displayKnownValue(value, language)}</option>
             ))}
           </select>
 
@@ -2165,14 +2169,14 @@ export const Units: React.FC = () => {
       <Card className="p-3 sm:p-4">
         <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_180px_160px]">
           <label className="flex h-10 items-center gap-2 rounded-lg border border-line bg-panel px-3"><Search size={15} className="text-muted" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("Search station, court or type…", "ಠಾಣೆ, ನ್ಯಾಯಾಲಯ ಅಥವಾ ಪ್ರಕಾರ ಹುಡುಕಿ…")} className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></label>
-          <select aria-label={t("Filter by district", "ಜಿಲ್ಲೆಯ ಪ್ರಕಾರ ಫಿಲ್ಟರ್ ಮಾಡಿ")} value={district} onChange={(event) => setDistrict(event.target.value)} className="h-10 rounded-lg border border-line bg-panel px-3 text-sm"><option value="all">{t("All districts", "ಎಲ್ಲಾ ಜಿಲ್ಲೆಗಳು")}</option>{districtOptions.map((item) => <option key={item}>{item}</option>)}</select>
+          <select aria-label={t("Filter by district", "ಜಿಲ್ಲೆಯ ಪ್ರಕಾರ ಫಿಲ್ಟರ್ ಮಾಡಿ")} value={district} onChange={(event) => setDistrict(event.target.value)} className="h-10 rounded-lg border border-line bg-panel px-3 text-sm"><option value="all">{t("All districts", "ಎಲ್ಲಾ ಜಿಲ್ಲೆಗಳು")}</option>{districtOptions.map((item) => <option key={item} value={item}>{displayPlaceName(item, language)}</option>)}</select>
           <select aria-label={t("Sort stations", "ಠಾಣೆಗಳನ್ನು ವಿಂಗಡಿಸಿ")} value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="h-10 rounded-lg border border-line bg-panel px-3 text-sm"><option value="cases">{t("Most cases", "ಹೆಚ್ಚು ಪ್ರಕರಣಗಳು")}</option><option value="active">{t("Most active", "ಹೆಚ್ಚು ಸಕ್ರಿಯ")}</option><option value="name">{t("Name A–Z", "ಹೆಸರು A–Z")}</option></select>
         </div>
       </Card>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {visibleStations.map((station) => <Card key={station.name} className="p-4 transition hover:-translate-y-0.5 hover:border-brand/35 hover:shadow-lg">
-          <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate font-semibold text-brand">{station.displayName}</h3><p className="mt-1 flex items-center gap-1 text-[11px] text-muted"><MapPin size={11} />{displayPlaceName(station.district, language)} · {station.type}</p></div><span className="num rounded-lg bg-brand/10 px-2.5 py-1 text-sm font-bold text-brand">{station.cases}</span></div>
+          <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate font-semibold text-brand">{station.displayName}</h3><p className="mt-1 flex items-center gap-1 text-[11px] text-muted"><MapPin size={11} />{displayPlaceName(station.district, language)} · {displayKnownValue(station.type, language)}</p></div><span className="num rounded-lg bg-brand/10 px-2.5 py-1 text-sm font-bold text-brand">{station.cases}</span></div>
           <div className="mt-4"><div className="flex justify-between text-[11px]"><span className="text-muted">{t("Active workload", "ಸಕ್ರಿಯ ಕೆಲಸದ ಹೊರೆ")}</span><b>{station.active} · {station.activeShare}%</b></div><div className="mt-1.5 h-2 overflow-hidden rounded-full bg-panel"><div className="h-full rounded-full bg-brand" style={{ width: `${station.activeShare}%` }} /></div></div>
           <div className="mt-4 border-t border-line pt-3"><div className="mb-2 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted"><Scale size={12} />{t("Linked courts", "ಸಂಪರ್ಕಿತ ನ್ಯಾಯಾಲಯಗಳು")}</div><div className="flex flex-wrap gap-1.5">{station.courts.slice(0, 2).map((court) => <span key={court} title={court} className="max-w-full truncate rounded-full border border-line bg-panel px-2 py-1 text-[10px]">{court}</span>)}{station.courts.length > 2 && <span className="rounded-full bg-brand/10 px-2 py-1 text-[10px] text-brand">+{station.courts.length - 2}</span>}</div></div>
         </Card>)}
