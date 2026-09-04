@@ -1,9 +1,15 @@
 # Local credentials and runtime configuration
 .env
+.env.*
+.env.local
 service-account.json
+*.pem
+*.key
 
 # Generated logs, builds, and deployment workspaces
 catalyst-debug.log
+*.log
+.runtime/
 .catalyst-deployment-work/
 appsail-build/
 dist/
@@ -15,10 +21,19 @@ package-lock.json
 # Cache, temporary directories, and binaries
 .codex-temp/
 kspp/.codex-temp/
+scratch/
+reports/
+ppt-assets/
+tmp/
+.agents/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
 
 # Office temporary files
 ~$*
 
 # Nested environments / folders
-voice/vexyl-tts/
+voice/
 

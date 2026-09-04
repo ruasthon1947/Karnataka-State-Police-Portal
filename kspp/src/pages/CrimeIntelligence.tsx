@@ -4,7 +4,8 @@ import { sendPatrolAlert, useFirRecords } from "../lib/cases";
 import { buildIntelligenceDataset, hotspotScore, Hotspot, MapMode } from "../lib/crimeIntelligence";
 import { displayPlaceName } from "../lib/kannadaPlaces";
 import { displayKnownValue } from "../lib/kannadaValues";
-import type { HotspotTrainingResult } from "../lib/hotspotModel";
+import { predictHotspotForecast } from "../lib/hotspotModel";
+import type { HotspotForecastFactor, HotspotTrainingResult } from "../lib/hotspotModel";
 
 const RealCrimeMap = React.lazy(() => import("../components/map/RealCrimeMap"));
 const ALL_CRIMES = "__all_crimes__";
@@ -12,6 +13,8 @@ type RiskLevel = "low" | "medium" | "high";
 type PatrolState = { status: "idle" | "sending" | "sent" | "error"; message: string };
 const EMPTY_TRAINING: HotspotTrainingResult = {
   model: null,
+  evaluation: null,
+  status: "insufficient_data",
   reason: "Neural training has not completed.",
   datedGeocodedRecords: 0,
   historyDays: 0,
@@ -75,6 +78,7 @@ const CrimeIntelligence: React.FC = () => {
   }, [records]);
 
   const trainedModel = training.model;
+  const evaluation = training.evaluation;
   const forecastReady = Boolean(trainedModel);
   const activeMode: MapMode = mode === "forecast" && forecastReady ? "forecast" : "live";
   const categories = useMemo(() => Array.from(new Set(dataset.hotspots.map((item) => item.category))).sort(), [dataset.hotspots]);
@@ -83,7 +87,17 @@ const CrimeIntelligence: React.FC = () => {
     [crimeFilter, dataset.hotspots],
   );
   const selected = filteredHotspots.find((item) => item.id === selectedId) || filteredHotspots[0] || null;
-  const selectedRisk = selected ? hotspotScore(selected, activeMode, hour, horizonDays, trainedModel) : 0;
+  const selectedForecast = useMemo(() => selected && activeMode === "forecast" && trainedModel
+    ? predictHotspotForecast(trainedModel, {
+      liveRisk: selected.liveRisk,
+      recentCases: selected.recentCases,
+      trend: selected.trend,
+      category: selected.category,
+      hour,
+      horizonDays,
+    })
+    : null, [activeMode, horizonDays, hour, selected, trainedModel]);
+  const selectedRisk = selectedForecast?.risk ?? (selected ? hotspotScore(selected, activeMode, hour, horizonDays, trainedModel) : 0);
   const averageRisk = filteredHotspots.length
     ? Math.round(filteredHotspots.reduce((sum, item) => sum + hotspotScore(item, activeMode, hour, horizonDays, trainedModel), 0) / filteredHotspots.length)
     : 0;
@@ -96,9 +110,14 @@ const CrimeIntelligence: React.FC = () => {
   const lastSyncLabel = lastUpdatedAt
     ? new Date(lastUpdatedAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" })
     : tr("Not synced", "ಸಿಂಕ್ ಆಗಿಲ್ಲ");
-  const validationRange = trainedModel
-    ? `${new Date(trainedModel.metrics.validationFrom).toLocaleDateString(locale)} – ${new Date(trainedModel.metrics.validationThrough).toLocaleDateString(locale)}`
+  const validationRange = evaluation
+    ? `${new Date(evaluation.validationFrom).toLocaleDateString(locale)} – ${new Date(evaluation.validationThrough).toLocaleDateString(locale)}`
     : "";
+  const confidenceLabel = evaluation?.confidenceLevel === "high"
+    ? tr("High", "ಹೆಚ್ಚು")
+    : evaluation?.confidenceLevel === "medium"
+      ? tr("Medium", "ಮಧ್ಯಮ")
+      : tr("Low", "ಕಡಿಮೆ");
 
   const mapPoints = useMemo(() => filteredHotspots.map((hotspot) => ({
     id: hotspot.id,
@@ -113,7 +132,7 @@ const CrimeIntelligence: React.FC = () => {
 
   const modeLabel = activeMode === "live"
     ? tr("LIVE · Recorded FIR density", "ಲೈವ್ · ದಾಖಲಾದ ಎಫ್‌ಐಆರ್ ಸಾಂದ್ರತೆ")
-    : tr(`AI FORECAST · Next ${horizonDays} day${horizonDays === 1 ? "" : "s"}`, `ಎಐ ಮುನ್ಸೂಚನೆ · ಮುಂದಿನ ${horizonDays} ದಿನಗಳು`);
+    : tr(`VALIDATED FORECAST · Next ${horizonDays} day${horizonDays === 1 ? "" : "s"}`, `ಮೌಲ್ಯೀಕರಿಸಿದ ಮುನ್ಸೂಚನೆ · ಮುಂದಿನ ${horizonDays} ದಿನಗಳು`);
 
   const scoreLabel = (risk: number) => {
     const level = riskLevel(risk);
@@ -159,31 +178,47 @@ const CrimeIntelligence: React.FC = () => {
     }
   };
 
-  const selectedDrivers = (hotspot: Hotspot) => [
+  const factorName = (factor: HotspotForecastFactor) => ({
+    density: tr("Recorded crime density", "ದಾಖಲಾದ ಅಪರಾಧ ಸಾಂದ್ರತೆ"),
+    recentCases: tr("Recent nearby FIR count", "ಇತ್ತೀಚಿನ ಹತ್ತಿರದ ಎಫ್‌ಐಆರ್ ಸಂಖ್ಯೆ"),
+    trend: tr("Recent incident trend", "ಇತ್ತೀಚಿನ ಘಟನೆ ಪ್ರವೃತ್ತಿ"),
+    crimePattern: tr("Recorded crime pattern", "ದಾಖಲಾದ ಅಪರಾಧ ಮಾದರಿ"),
+    time: tr("Selected time of day", "ಆಯ್ದ ದಿನದ ಸಮಯ"),
+    window: tr("Selected forecast period", "ಆಯ್ದ ಮುನ್ಸೂಚನೆ ಅವಧಿ"),
+  }[factor.id]);
+
+  const selectedDrivers = (hotspot: Hotspot) => selectedForecast
+    ? selectedForecast.factors.map((factor) => factor.impactPoints === 0
+      ? tr(`${factorName(factor)} had little measurable effect on this result.`, `${factorName(factor)} ಈ ಫಲಿತಾಂಶದ ಮೇಲೆ ಅಲ್ಪ ಪರಿಣಾಮ ಬೀರಿದೆ.`)
+      : tr(
+        `${factorName(factor)} ${factor.direction === "raises" ? "raised" : "lowered"} this area-and-time score by about ${factor.impactPoints} point${factor.impactPoints === 1 ? "" : "s"}.`,
+        `${factorName(factor)} ಈ ಪ್ರದೇಶ ಮತ್ತು ಸಮಯದ ಅಂಕವನ್ನು ಸುಮಾರು ${factor.impactPoints} ಅಂಕ ${factor.direction === "raises" ? "ಹೆಚ್ಚಿಸಿದೆ" : "ಕಡಿಮೆ ಮಾಡಿದೆ"}.`,
+      ))
+    : [
     tr(`${hotspot.nearbyCases} geocoded FIRs within 1.5 km of this exact coordinate`, `ಈ ನಿಖರ ನಿರ್ದೇಶಾಂಕದ 1.5 ಕಿ.ಮೀ ಒಳಗೆ ${hotspot.nearbyCases} ಜಿಯೋ-ಕೋಡ್ ಮಾಡಿದ ಎಫ್‌ಐಆರ್‌ಗಳು`),
     tr(`${hotspot.recentCases} nearby FIRs recorded in the latest 30-day data window`, `ಇತ್ತೀಚಿನ 30 ದಿನಗಳ ದತ್ತಾಂಶ ಅವಧಿಯಲ್ಲಿ ${hotspot.recentCases} ಹತ್ತಿರದ ಎಫ್‌ಐಆರ್‌ಗಳು ದಾಖಲಾಗಿವೆ`),
     hotspot.trend > 0
       ? tr(`Seven-day incident trend increased ${hotspot.trend}%`, `ಏಳು ದಿನಗಳ ಘಟನೆ ಪ್ರವೃತ್ತಿ ${hotspot.trend}% ಹೆಚ್ಚಾಗಿದೆ`)
       : tr(`Seven-day incident trend is ${Math.abs(hotspot.trend)}% lower or unchanged`, `ಏಳು ದಿನಗಳ ಘಟನೆ ಪ್ರವೃತ್ತಿ ${Math.abs(hotspot.trend)}% ಕಡಿಮೆ ಅಥವಾ ಬದಲಾಗಿಲ್ಲ`),
-  ];
+    ];
 
   return (
     <div className="crime-intelligence-page mx-auto w-full max-w-[1700px] p-4 sm:p-5 lg:p-6">
       <section className="crime-intelligence-hero">
         <div>
           <h1>{tr("Crime Intelligence Map", "ಅಪರಾಧ ಗುಪ್ತಚರ ನಕ್ಷೆ")}</h1>
-          <p>{tr("Exact FIR coordinates, recorded crime density, and a clearly separated experimental forecast.", "ನಿಖರ ಎಫ್‌ಐಆರ್ ನಿರ್ದೇಶಾಂಕಗಳು, ದಾಖಲಾದ ಅಪರಾಧ ಸಾಂದ್ರತೆ ಮತ್ತು ಸ್ಪಷ್ಟವಾಗಿ ಪ್ರತ್ಯೇಕಿಸಿದ ಪ್ರಾಯೋಗಿಕ ಮುನ್ಸೂಚನೆ.")}</p>
+          <p>{tr("Recorded FIR activity and validated area-and-time forecasts in one simple operational view.", "ದಾಖಲಾದ ಎಫ್‌ಐಆರ್ ಚಟುವಟಿಕೆ ಮತ್ತು ಮೌಲ್ಯೀಕರಿಸಿದ ಪ್ರದೇಶ-ಸಮಯ ಮುನ್ಸೂಚನೆಗಳು ಒಂದೇ ಸರಳ ಕಾರ್ಯಾಚರಣೆಯ ನೋಟದಲ್ಲಿ.")}</p>
         </div>
-        <div className="model-signal" aria-label={forecastReady ? tr("Neural network validation result", "ನ್ಯೂರಲ್ ನೆಟ್‌ವರ್ಕ್ ಮೌಲ್ಯೀಕರಣ ಫಲಿತಾಂಶ") : tr("Seven-day FIR activity and geocoding coverage", "ಏಳು ದಿನಗಳ ಎಫ್‌ಐಆರ್ ಚಟುವಟಿಕೆ ಮತ್ತು ಜಿಯೋ-ಕೋಡಿಂಗ್ ವ್ಯಾಪ್ತಿ")}>
+        <div className="model-signal" aria-label={activeMode === "forecast" ? tr("Neural network validation result", "ನ್ಯೂರಲ್ ನೆಟ್‌ವರ್ಕ್ ಮೌಲ್ಯೀಕರಣ ಫಲಿತಾಂಶ") : tr("Seven-day FIR activity and geocoding coverage", "ಏಳು ದಿನಗಳ ಎಫ್‌ಐಆರ್ ಚಟುವಟಿಕೆ ಮತ್ತು ಜಿಯೋ-ಕೋಡಿಂಗ್ ವ್ಯಾಪ್ತಿ")}>
           {signalBars.map((signal, index) => <span key={index} title={`${signal.count}`} style={{ height: `${signal.height}%` }} />)}
-          <div><strong>{trainedModel ? trainedModel.metrics.balancedAccuracy : dataset.coveragePercentage}%</strong><small>{trainedModel ? tr("HOLDOUT BALANCED ACCURACY", "ಹೋಲ್ಡ್‌ಔಟ್ ಸಮತೋಲಿತ ನಿಖರತೆ") : tr("GEOCODED FIRs", "ಜಿಯೋ-ಕೋಡ್ ಎಫ್‌ಐಆರ್‌ಗಳು")}</small></div>
+          <div><strong>{activeMode === "forecast" && evaluation ? evaluation.balancedAccuracy : dataset.coveragePercentage}%</strong><small>{activeMode === "forecast" && evaluation ? tr("NEWER-PERIOD ACCURACY", "ಹೊಸ ಅವಧಿಯ ನಿಖರತೆ") : tr("GEOCODED FIRs", "ಜಿಯೋ-ಕೋಡ್ ಎಫ್‌ಐಆರ್‌ಗಳು")}</small></div>
         </div>
       </section>
 
       <section className="intelligence-toolbar" aria-label={tr("Crime intelligence filters", "ಅಪರಾಧ ಗುಪ್ತಚರ ಫಿಲ್ಟರ್‌ಗಳು")}>
         <div className="mode-switch" role="group" aria-label={tr("Map mode", "ನಕ್ಷೆ ವಿಧಾನ")}>
           <button type="button" aria-pressed={activeMode === "live"} onClick={() => setMode("live")}>● {tr("Live crime", "ಲೈವ್ ಅಪರಾಧ")}</button>
-          <button type="button" disabled={!forecastReady || trainingPending} title={forecastReady ? undefined : training.reason} aria-pressed={activeMode === "forecast"} onClick={() => setMode("forecast")}>✦ {trainingPending ? tr("Training…", "ತರಬೇತಿ…") : tr("AI forecast", "ಎಐ ಮುನ್ಸೂಚನೆ")}</button>
+          <button type="button" disabled={!forecastReady || trainingPending} title={forecastReady ? undefined : training.reason} aria-pressed={activeMode === "forecast"} onClick={() => setMode("forecast")}>✦ {trainingPending ? tr("Checking…", "ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ…") : tr("Validated forecast", "ಮೌಲ್ಯೀಕರಿಸಿದ ಮುನ್ಸೂಚನೆ")}</button>
         </div>
         <label><span>{tr("Crime type", "ಅಪರಾಧ ಪ್ರಕಾರ")}</span><select value={crimeFilter} onChange={(event) => setCrimeFilter(event.target.value)}>
           <option value={ALL_CRIMES}>{tr("All crime types", "ಎಲ್ಲಾ ಅಪರಾಧ ಪ್ರಕಾರಗಳು")}</option>
@@ -197,6 +232,19 @@ const CrimeIntelligence: React.FC = () => {
         <button type="button" className={`live-sync-control ${refreshing ? "is-syncing" : ""}`} disabled={loading || refreshing} onClick={() => void reload(true)} title={tr("Automatically checks the connected FIR register every 60 seconds", "ಸಂಪರ್ಕಿತ ಎಫ್‌ಐಆರ್ ದಾಖಲೆಯನ್ನು ಪ್ರತಿ 60 ಸೆಕೆಂಡಿಗೆ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪರಿಶೀಲಿಸುತ್ತದೆ")}><i /> <span>{refreshing ? tr("Syncing…", "ಸಿಂಕ್ ಆಗುತ್ತಿದೆ…") : tr(`Live sync · ${lastSyncLabel}`, `ಲೈವ್ ಸಿಂಕ್ · ${lastSyncLabel}`)}</span></button>
         <button type="button" className="tilt-toggle" aria-pressed={tilted} onClick={() => setTilted((value) => !value)}><span>◇</span> {tilted ? tr("3D explore", "3D ಅನ್ವೇಷಣೆ") : tr("2D overview", "2D ಅವಲೋಕನ")}</button>
       </section>
+
+      {activeMode === "live" && (trainingPending || !forecastReady) ? <div className={`forecast-availability-note ${training.status === "below_baseline" ? "is-warning" : ""}`} role="status">
+        <strong>{trainingPending
+          ? tr("Forecast quality check is running", "ಮುನ್ಸೂಚನೆ ಗುಣಮಟ್ಟ ಪರಿಶೀಲನೆ ನಡೆಯುತ್ತಿದೆ")
+          : training.status === "below_baseline"
+            ? tr("Forecast is not available yet", "ಮುನ್ಸೂಚನೆ ಇನ್ನೂ ಲಭ್ಯವಿಲ್ಲ")
+            : tr("More dated FIR history is needed for forecasting", "ಮುನ್ಸೂಚನೆಗೆ ಹೆಚ್ಚಿನ ದಿನಾಂಕದ ಎಫ್‌ಐಆರ್ ಇತಿಹಾಸ ಅಗತ್ಯ")}</strong>
+        <span>{trainingPending
+          ? tr("You can continue using Live Crime while it completes.", "ಇದು ಪೂರ್ಣಗೊಳ್ಳುವವರೆಗೆ ಲೈವ್ ಅಪರಾಧವನ್ನು ಬಳಸಬಹುದು.")
+          : training.status === "below_baseline" && evaluation
+            ? tr(`The model is hidden because it did not beat the historical baseline on both accuracy and probability reliability. Model error ${evaluation.brierScore}; baseline ${evaluation.baselineBrierScore} (lower is better).`, `ಮಾದರಿಯು ನಿಖರತೆ ಮತ್ತು ಸಂಭವನೀಯತೆಯ ವಿಶ್ವಾಸಾರ್ಹತೆ ಎರಡರಲ್ಲೂ ಐತಿಹಾಸಿಕ ಮೂಲಮಟ್ಟವನ್ನು ಮೀರದ ಕಾರಣ ಅದನ್ನು ಮರೆಮಾಡಲಾಗಿದೆ. ಮಾದರಿ ದೋಷ ${evaluation.brierScore}; ಮೂಲಮಟ್ಟ ${evaluation.baselineBrierScore} (ಕಡಿಮೆ ಉತ್ತಮ).`)
+            : tr(`${training.datedGeocodedRecords} usable FIRs covering ${training.historyDays} days are currently available. Live Crime is unaffected.`, `ಪ್ರಸ್ತುತ ${training.historyDays} ದಿನಗಳನ್ನು ಒಳಗೊಂಡ ${training.datedGeocodedRecords} ಬಳಸಬಹುದಾದ ಎಫ್‌ಐಆರ್‌ಗಳು ಲಭ್ಯವಿವೆ. ಲೈವ್ ಅಪರಾಧಕ್ಕೆ ಪರಿಣಾಮವಿಲ್ಲ.`)}</span>
+      </div> : null}
 
       {!loading && (error || dataset.geocodedRecords === 0) ? <div className="intelligence-notice data-warning" role="alert">
         <span>{tr("NO LIVE MAP DATA", "ಲೈವ್ ನಕ್ಷೆ ದತ್ತಾಂಶವಿಲ್ಲ")}</span>
@@ -221,9 +269,14 @@ const CrimeIntelligence: React.FC = () => {
 
         <aside className="hotspot-intelligence-panel" aria-live="polite">
           {selected ? <>
-            <div className="panel-eyebrow">{tr("SELECTED EXACT FIR LOCATION", "ಆಯ್ದ ನಿಖರ ಎಫ್‌ಐಆರ್ ಸ್ಥಳ")}</div>
+            <div className="panel-eyebrow">{activeMode === "forecast" ? tr("SELECTED FORECAST AREA", "ಆಯ್ದ ಮುನ್ಸೂಚನೆ ಪ್ರದೇಶ") : tr("SELECTED EXACT FIR LOCATION", "ಆಯ್ದ ನಿಖರ ಎಫ್‌ಐಆರ್ ಸ್ಥಳ")}</div>
             <h2>{displayPlaceName(selected.name, language)}</h2><p>{displayPlaceName(selected.station, language)} · {selected.latitude.toFixed(6)}, {selected.longitude.toFixed(6)}</p>
             <RiskRing risk={selectedRisk} label={scoreLabel(selectedRisk)} />
+            {selectedForecast ? <div className="forecast-confidence" role="status">
+              <div><span>{tr("BACK-TEST ERROR BAND", "ಹಿಂದಿನ-ಪರೀಕ್ಷಾ ದೋಷದ ವ್ಯಾಪ್ತಿ")}</span><strong>{selectedForecast.lowerBound}%–{selectedForecast.upperBound}%</strong></div>
+              <div><span>{tr("CONFIDENCE", "ವಿಶ್ವಾಸ")}</span><strong>{confidenceLabel}</strong></div>
+              <p>{tr("Range comes from errors in newer back-test periods. For this area and selected time only—never a prediction about a person.", "ಹೊಸ ಹಿಂದಿನ-ಪರೀಕ್ಷಾ ಅವಧಿಗಳ ದೋಷಗಳಿಂದ ಈ ವ್ಯಾಪ್ತಿ ಬರುತ್ತದೆ. ಈ ಪ್ರದೇಶ ಮತ್ತು ಆಯ್ದ ಸಮಯಕ್ಕೆ ಮಾತ್ರ—ಎಂದಿಗೂ ವ್ಯಕ್ತಿಯ ಕುರಿತ ಮುನ್ಸೂಚನೆಯಲ್ಲ.")}</p>
+            </div> : null}
             <div className="prediction-primary"><span>{tr("Dominant recorded pattern", "ಪ್ರಮುಖ ದಾಖಲಾದ ಮಾದರಿ")}</span><strong>{displayKnownValue(selected.category, language)}</strong><div><span>{tr("Peak recorded window", "ಗರಿಷ್ಠ ದಾಖಲಾದ ಅವಧಿ")}</span><b>{selected.peakWindow}</b></div></div>
             <div className="prediction-metrics"><div><span>{tr("Nearby FIRs", "ಹತ್ತಿರದ ಎಫ್‌ಐಆರ್‌ಗಳು")}</span><strong>{selected.nearbyCases}</strong></div><div><span>{tr("7-day trend", "7 ದಿನಗಳ ಪ್ರವೃತ್ತಿ")}</span><strong className={selected.trend > 0 ? "trend-up" : ""}>{selected.trend > 0 ? "↗" : "↘"} {Math.abs(selected.trend)}%</strong></div></div>
             <div className="prediction-drivers"><h3>{tr("How this score was calculated", "ಈ ಅಂಕವನ್ನು ಹೇಗೆ ಲೆಕ್ಕ ಹಾಕಲಾಗಿದೆ")}</h3>{selectedDrivers(selected).map((driver, index) => <div key={driver}><span>{index + 1}</span><p>{driver}</p></div>)}</div>
@@ -234,6 +287,40 @@ const CrimeIntelligence: React.FC = () => {
           </> : <div className="empty-intelligence-panel"><div className="panel-eyebrow">{tr("NO LOCATION SELECTED", "ಯಾವುದೇ ಸ್ಥಳ ಆಯ್ಕೆ ಮಾಡಿಲ್ಲ")}</div><h2>{tr("Waiting for geocoded FIR data", "ಜಿಯೋ-ಕೋಡ್ ಎಫ್‌ಐಆರ್ ದತ್ತಾಂಶಕ್ಕಾಗಿ ಕಾಯಲಾಗುತ್ತಿದೆ")}</h2><p>{tr("Add valid Bengaluru latitude and longitude values to the Google Sheet, then refresh this page.", "Google Sheet ಗೆ ಮಾನ್ಯ ಬೆಂಗಳೂರು ಅಕ್ಷಾಂಶ ಮತ್ತು ರೇಖಾಂಶ ಮೌಲ್ಯಗಳನ್ನು ಸೇರಿಸಿ, ನಂತರ ಈ ಪುಟವನ್ನು ರಿಫ್ರೆಶ್ ಮಾಡಿ.")}</p></div>}
         </aside>
       </section>
+
+      {activeMode === "forecast" && evaluation ? <section className="forecast-validation-panel validation-validated" aria-live="polite">
+        <header>
+          <div>
+            <span className="validation-eyebrow">{tr("FORECAST SAFETY CHECK", "ಮುನ್ಸೂಚನೆ ಸುರಕ್ಷತಾ ಪರಿಶೀಲನೆ")}</span>
+            <h2>{tr("Forecast quality verified on newer FIR periods", "ಹೊಸ ಎಫ್‌ಐಆರ್ ಅವಧಿಗಳಲ್ಲಿ ಮುನ್ಸೂಚನೆ ಗುಣಮಟ್ಟ ಪರಿಶೀಲಿಸಲಾಗಿದೆ")}</h2>
+          </div>
+          <strong className="validation-status">{tr("✓ Passed · ready to use", "✓ ಉತ್ತೀರ್ಣ · ಬಳಸಲು ಸಿದ್ಧ")}</strong>
+        </header>
+
+          <p className="validation-message">{tr(`On later, unseen FIR periods, this model scored ${evaluation.accuracyUplift} point${evaluation.accuracyUplift === 1 ? "" : "s"} above the historical benchmark and produced more reliable probabilities.`, `ನಂತರದ, ಕಾಣದ ಎಫ್‌ಐಆರ್ ಅವಧಿಗಳಲ್ಲಿ ಈ ಮಾದರಿಯು ಐತಿಹಾಸಿಕ ಮಾನದಂಡಕ್ಕಿಂತ ${evaluation.accuracyUplift} ಅಂಕ ಹೆಚ್ಚು ಗಳಿಸಿದೆ ಮತ್ತು ಹೆಚ್ಚು ವಿಶ್ವಾಸಾರ್ಹ ಸಂಭವನೀಯತೆಗಳನ್ನು ನೀಡಿದೆ.`)}</p>
+          <div className="validation-metrics">
+            <div><span>{tr("Balanced accuracy", "ಸಮತೋಲಿತ ನಿಖರತೆ")}</span><strong>{evaluation.balancedAccuracy}%</strong><small>{tr("Balances detected and missed activity", "ಗುರುತಿಸಿದ ಮತ್ತು ತಪ್ಪಿಸಿದ ಚಟುವಟಿಕೆಯನ್ನು ಸಮತೋಲನಗೊಳಿಸುತ್ತದೆ")}</small></div>
+            <div><span>{tr("Historical benchmark", "ಐತಿಹಾಸಿಕ ಮಾನದಂಡ")}</span><strong>{evaluation.baselineBalancedAccuracy}%</strong><small>{tr("Same period and density comparison", "ಅದೇ ಅವಧಿ ಮತ್ತು ಸಾಂದ್ರತೆಯ ಹೋಲಿಕೆ")}</small></div>
+            <div><span>{tr("Improvement", "ಸುಧಾರಣೆ")}</span><strong className={evaluation.accuracyUplift > 0 ? "is-positive" : "is-negative"}>{evaluation.accuracyUplift > 0 ? "+" : ""}{evaluation.accuracyUplift} {tr("points", "ಅಂಕಗಳು")}</strong><small>{tr("Model minus baseline", "ಮಾದರಿ ಮೈನಸ್ ಮೂಲಮಟ್ಟ")}</small></div>
+            <div><span>{tr("Weekly accuracy range", "ವಾರದ ನಿಖರತೆಯ ವ್ಯಾಪ್ತಿ")}</span><strong>{evaluation.balancedAccuracyLow}%–{evaluation.balancedAccuracyHigh}%</strong><small>{confidenceLabel} {tr("confidence", "ವಿಶ್ವಾಸ")}</small></div>
+          </div>
+          <details className="validation-details">
+            <summary>{tr("See back-test details", "ಹಿಂದಿನ ಪರೀಕ್ಷೆಯ ವಿವರಗಳನ್ನು ನೋಡಿ")}</summary>
+            <div>
+              <dl>
+                <div><dt>{tr("Older area-time samples", "ಹಳೆಯ ಪ್ರದೇಶ-ಸಮಯ ಮಾದರಿಗಳು")}</dt><dd>{evaluation.trainingSamples.toLocaleString(locale)}</dd></div>
+                <div><dt>{tr("Newer area-time samples", "ಹೊಸ ಪ್ರದೇಶ-ಸಮಯ ಮಾದರಿಗಳು")}</dt><dd>{evaluation.validationSamples.toLocaleString(locale)}</dd></div>
+                <div><dt>{tr("Held-out weekly windows", "ಪ್ರತ್ಯೇಕಿಸಿದ ವಾರದ ಅವಧಿಗಳು")}</dt><dd>{evaluation.backtestWindows}</dd></div>
+                <div><dt>{tr("Newer test period", "ಹೊಸ ಪರೀಕ್ಷಾ ಅವಧಿ")}</dt><dd>{validationRange}</dd></div>
+                <div><dt>{tr("Precision", "ನಿಖರತೆ (ಪ್ರಿಸಿಷನ್)")}</dt><dd>{evaluation.precision}%</dd></div>
+                <div><dt>{tr("Recall", "ರಿಕಾಲ್")}</dt><dd>{evaluation.recall}%</dd></div>
+                <div><dt>{tr("Specificity", "ಸ್ಪೆಸಿಫಿಸಿಟಿ")}</dt><dd>{evaluation.specificity}%</dd></div>
+                <div><dt>{tr("Probability error (lower is better)", "ಸಂಭವನೀಯತೆ ದೋಷ (ಕಡಿಮೆ ಉತ್ತಮ)")}</dt><dd>{evaluation.brierScore} · {tr("baseline", "ಮೂಲಮಟ್ಟ")} {evaluation.baselineBrierScore}</dd></div>
+              </dl>
+              <p>{tr(`These are area × time × forecast-window samples generated from authorized FIR history—not additional FIR records. There is no time leakage: every training outcome ended before testing began. The accuracy range resamples the ${evaluation.backtestWindows} held-out weekly periods, keeping related samples together. The map's error band gives incident and no-incident errors equal weight so common quiet periods cannot make uncertainty look artificially small.`, `ಇವು ಅಧಿಕೃತ ಎಫ್‌ಐಆರ್ ಇತಿಹಾಸದಿಂದ ರಚಿಸಲಾದ ಪ್ರದೇಶ × ಸಮಯ × ಮುನ್ಸೂಚನೆ-ಅವಧಿಯ ಮಾದರಿಗಳು—ಹೆಚ್ಚುವರಿ ಎಫ್‌ಐಆರ್ ದಾಖಲೆಗಳಲ್ಲ. ಸಮಯ ಸೋರಿಕೆ ಇಲ್ಲ: ಪರೀಕ್ಷೆ ಆರಂಭವಾಗುವ ಮೊದಲು ಪ್ರತಿಯೊಂದು ತರಬೇತಿ ಫಲಿತಾಂಶವೂ ಅಂತ್ಯಗೊಂಡಿದೆ. ನಿಖರತೆಯ ವ್ಯಾಪ್ತಿಯು ಸಂಬಂಧಿತ ಮಾದರಿಗಳನ್ನು ಒಟ್ಟಿಗೆ ಇಟ್ಟು ${evaluation.backtestWindows} ಪ್ರತ್ಯೇಕಿಸಿದ ವಾರದ ಅವಧಿಗಳನ್ನು ಮರುಮಾದರಿಗೊಳಿಸುತ್ತದೆ. ಸಾಮಾನ್ಯ ಶಾಂತ ಅವಧಿಗಳು ಅನಿಶ್ಚಿತತೆಯನ್ನು ಕೃತಕವಾಗಿ ಕಡಿಮೆ ತೋರಿಸದಂತೆ ನಕ್ಷೆಯ ದೋಷದ ವ್ಯಾಪ್ತಿಯು ಘಟನೆ ಮತ್ತು ಘಟನೆ-ಇಲ್ಲದ ದೋಷಗಳಿಗೆ ಸಮಾನ ತೂಕ ನೀಡುತ್ತದೆ.`)}</p>
+            </div>
+          </details>
+      </section> : null}
 
       {patrolConfirmOpen && selected && (
         <div className="modal-backdrop fixed inset-0 z-50 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="patrol-sms-title">
@@ -252,9 +339,9 @@ const CrimeIntelligence: React.FC = () => {
         <div><span>{tr("High-score locations", "ಹೆಚ್ಚಿನ ಅಂಕದ ಸ್ಥಳಗಳು")}</span><strong>{highRiskCount}</strong><small>{tr("exact coordinates requiring attention", "ಗಮನ ಅಗತ್ಯವಿರುವ ನಿಖರ ನಿರ್ದೇಶಾಂಕಗಳು")}</small></div>
         <div><span>{tr("Average score", "ಸರಾಸರಿ ಅಂಕ")}</span><strong>{averageRisk}%</strong><small>{activeMode === "forecast" ? tr(`${horizonDays}-day neural forecast`, `${horizonDays} ದಿನಗಳ ನ್ಯೂರಲ್ ಮುನ್ಸೂಚನೆ`) : tr("recorded relative density", "ದಾಖಲಾದ ಸಂಬಂಧಿತ ಸಾಂದ್ರತೆ")}</small></div>
         <div><span>{tr("FIR rows analysed", "ವಿಶ್ಲೇಷಿಸಿದ ಎಫ್‌ಐಆರ್ ಸಾಲುಗಳು")}</span><strong>{records.length.toLocaleString(language === "kn" ? "kn-IN" : "en-IN")}</strong><small>{dataset.geocodedRecords.toLocaleString(language === "kn" ? "kn-IN" : "en-IN")} {tr("valid Bengaluru coordinates", "ಮಾನ್ಯ ಬೆಂಗಳೂರು ನಿರ್ದೇಶಾಂಕಗಳು")}</small></div>
-        <div><span>{trainedModel ? tr("Real holdout validation", "ನೈಜ ಹೋಲ್ಡ್‌ಔಟ್ ಮೌಲ್ಯೀಕರಣ") : tr("Latest FIR date", "ಇತ್ತೀಚಿನ ಎಫ್‌ಐಆರ್ ದಿನಾಂಕ")}</span><strong className="model-ready">{trainedModel ? `${trainedModel.metrics.balancedAccuracy}%` : latestDate}</strong><small>{trainedModel ? tr(`${validationRange} · ${trainedModel.metrics.validationSamples} matured outcomes · Brier ${trainedModel.metrics.brierScore}`, `${validationRange} · ${trainedModel.metrics.validationSamples} ಪೂರ್ಣಗೊಂಡ ಫಲಿತಾಂಶಗಳು · ಬ್ರೈಯರ್ ${trainedModel.metrics.brierScore}`) : tr(`Case register synced at ${lastSyncLabel}`, `ಪ್ರಕರಣ ದಾಖಲೆ ${lastSyncLabel}ಕ್ಕೆ ಸಿಂಕ್ ಆಗಿದೆ`)}</small></div>
+        <div><span>{activeMode === "forecast" && evaluation ? tr("Newer-period back-test", "ಹೊಸ ಅವಧಿಯ ಹಿಂದಿನ ಪರೀಕ್ಷೆ") : tr("Latest FIR date", "ಇತ್ತೀಚಿನ ಎಫ್‌ಐಆರ್ ದಿನಾಂಕ")}</span><strong className={activeMode === "forecast" ? "model-ready" : ""}>{activeMode === "forecast" && evaluation ? `${evaluation.balancedAccuracy}%` : latestDate}</strong><small>{activeMode === "forecast" && evaluation ? tr(`${evaluation.accuracyUplift > 0 ? "+" : ""}${evaluation.accuracyUplift} points vs historical baseline · ${evaluation.backtestWindows} weekly windows`, `ಐತಿಹಾಸಿಕ ಮೂಲಮಟ್ಟಕ್ಕಿಂತ ${evaluation.accuracyUplift > 0 ? "+" : ""}${evaluation.accuracyUplift} ಅಂಕಗಳು · ${evaluation.backtestWindows} ವಾರದ ಅವಧಿಗಳು`) : tr(`Case register synced at ${lastSyncLabel}`, `ಪ್ರಕರಣ ದಾಖಲೆ ${lastSyncLabel}ಕ್ಕೆ ಸಿಂಕ್ ಆಗಿದೆ`)}</small></div>
       </section>
-      <p className="intelligence-disclaimer">{tr("The case register auto-syncs every 60 seconds and retrains only from dated, geocoded FIR outcomes. Displayed validation metrics come exclusively from later, matured, non-overlapping historical outcomes. AI forecasts remain operational aids and never replace officer judgment.", "ಪ್ರಕರಣ ದಾಖಲೆ ಪ್ರತಿ 60 ಸೆಕೆಂಡಿಗೆ ಸ್ವಯಂ-ಸಿಂಕ್ ಆಗುತ್ತದೆ ಮತ್ತು ದಿನಾಂಕ ಹೊಂದಿರುವ, ಜಿಯೋ-ಕೋಡ್ ಮಾಡಿದ ಎಫ್‌ಐಆರ್ ಫಲಿತಾಂಶಗಳಿಂದ ಮಾತ್ರ ಮರುತರಬೇತಿ ಪಡೆಯುತ್ತದೆ. ಪ್ರದರ್ಶಿಸಲಾದ ಮೌಲ್ಯೀಕರಣ ಅಳತೆಗಳು ನಂತರದ, ಪೂರ್ಣಗೊಂಡ, ಅತಿಕ್ರಮಿಸದ ಐತಿಹಾಸಿಕ ಫಲಿತಾಂಶಗಳಿಂದ ಮಾತ್ರ ಬರುತ್ತವೆ. ಎಐ ಮುನ್ಸೂಚನೆಗಳು ಅಧಿಕಾರಿಯ ನಿರ್ಣಯವನ್ನು ಬದಲಿಸುವುದಿಲ್ಲ.")}</p>
+      <p className="intelligence-disclaimer">{tr("Area-and-time forecasts use only authorized, dated and geocoded FIR history. They do not predict individual behaviour, do not identify a person, and never replace officer judgment.", "ಪ್ರದೇಶ ಮತ್ತು ಸಮಯದ ಮುನ್ಸೂಚನೆಗಳು ಅಧಿಕೃತ, ದಿನಾಂಕ ಮತ್ತು ಜಿಯೋ-ಕೋಡ್ ಮಾಡಿದ ಎಫ್‌ಐಆರ್ ಇತಿಹಾಸವನ್ನು ಮಾತ್ರ ಬಳಸುತ್ತವೆ. ಅವು ವ್ಯಕ್ತಿಯ ನಡವಳಿಕೆಯನ್ನು ಊಹಿಸುವುದಿಲ್ಲ, ವ್ಯಕ್ತಿಯನ್ನು ಗುರುತಿಸುವುದಿಲ್ಲ ಮತ್ತು ಅಧಿಕಾರಿಯ ನಿರ್ಣಯವನ್ನು ಎಂದಿಗೂ ಬದಲಿಸುವುದಿಲ್ಲ.")}</p>
     </div>
   );
 };

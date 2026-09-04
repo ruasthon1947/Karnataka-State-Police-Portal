@@ -1,0 +1,15 @@
+{
+  "name": "kspp-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npm --prefix kspp run dev",
+    "build": "npm --prefix kspp run build",
+    "preview": "npm --prefix kspp run preview",
+    "start": "npm --prefix kspp start",
+    "test": "npm --prefix kspp test",
+    "typecheck": "npm --prefix kspp run typecheck",
+    "verify": "npm --prefix kspp run verify"
+  }
+}

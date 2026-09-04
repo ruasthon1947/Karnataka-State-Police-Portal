@@ -21,6 +21,10 @@ import { useLanguage } from "../context/LanguageContext";
 import { displayKnownValue } from "../lib/kannadaValues";
 import { displayPlaceName } from "../lib/kannadaPlaces";
 import CasePassQR from "../components/CasePassQR";
+import { CriminalNetworkGraph } from "../components/search/CriminalNetworkGraph";
+import { AuditTrailPanel } from "../components/reports/AuditTrailPanel";
+import { buildCriminalNetwork } from "../lib/criminalNetwork";
+import { recordAuditEvent } from "../lib/audit";
 import {
   CaseRecord,
   FirRecord,
@@ -36,115 +40,6 @@ import {
   useCases,
   useFirRecords,
 } from "../lib/cases";
-
-type FIR = {
-  id: string;
-  fir: string;
-  category: string;
-  station: string;
-  io: string;
-  status: string;
-  gravity: string;
-  date: string;
-  complainant: string;
-  accused: string;
-  phone: string;
-  vehicle: string;
-  section: string;
-};
-
-export const FIR_RECORDS: FIR[] = [
-  {
-    id: "CR-041/2026",
-    fir: "104430041202600041",
-    category: "Cyber Crime",
-    station: "Whitefield PS",
-    io: "S. Parvathi",
-    status: "Under Investigation",
-    gravity: "Heinous",
-    date: "2026-07-08",
-    complainant: "Ananya Rao",
-    accused: "Unknown",
-    phone: "9876543210",
-    vehicle: "-",
-    section: "BNS 318(4)",
-  },
-  {
-    id: "CR-038/2026",
-    fir: "104430006202600038",
-    category: "Theft",
-    station: "Indiranagar PS",
-    io: "R. Krishnamurthy",
-    status: "Charge-Sheeted",
-    gravity: "Non-Heinous",
-    date: "2026-07-07",
-    complainant: "Ravi Kumar",
-    accused: "Manoj K",
-    phone: "9845011223",
-    vehicle: "KA-03-MN-4421",
-    section: "BNS 303",
-  },
-  {
-    id: "CR-032/2026",
-    fir: "104430041202600032",
-    category: "Offences Against Body",
-    station: "MG Road PS",
-    io: "K. Srinivas",
-    status: "Under Investigation",
-    gravity: "Heinous",
-    date: "2026-07-05",
-    complainant: "Nisha S",
-    accused: "Arun P",
-    phone: "9900123456",
-    vehicle: "-",
-    section: "BNS 109",
-  },
-  {
-    id: "CR-027/2026",
-    fir: "104430011202600027",
-    category: "Motor Vehicle Accident",
-    station: "Yelahanka PS",
-    io: "Rekha M",
-    status: "Registered",
-    gravity: "Non-Heinous",
-    date: "2026-07-03",
-    complainant: "Deepak H",
-    accused: "Driver unknown",
-    phone: "9988776655",
-    vehicle: "KA-50-AB-9090",
-    section: "BNS 281",
-  },
-  {
-    id: "CR-019/2026",
-    fir: "104430020202600019",
-    category: "Narcotics",
-    station: "Cubbon Park PS",
-    io: "Anand Rao",
-    status: "Undetected",
-    gravity: "Heinous",
-    date: "2026-06-29",
-    complainant: "State",
-    accused: "Unknown",
-    phone: "-",
-    vehicle: "-",
-    section: "NDPS 20(b)",
-  },
-  {
-    id: "CR-014/2026",
-    fir: "104430006202600014",
-    category: "Theft",
-    station: "Indiranagar PS",
-    io: "S. Parvathi",
-    status: "Closed",
-    gravity: "Non-Heinous",
-    date: "2026-06-25",
-    complainant: "Meera N",
-    accused: "Vijay R",
-    phone: "9880010101",
-    vehicle: "KA-01-HH-1222",
-    section: "BNS 303",
-  },
-];
 
 const useT = () => useLanguage().tr;
 
@@ -1176,6 +1071,8 @@ export const AdvancedSearch: React.FC = () => {
   const [station, setStation] = useState(() => searchParams.get("station") || "");
   const [status, setStatus] = useState(() => searchParams.get("status") || "");
   const [page, setPage] = useState(1);
+  const [selectedCaseId, setSelectedCaseId] = useState("");
+  const [showNetwork, setShowNetwork] = useState(false);
   const pageSize = 25;
 
   const [saved, setSaved] = useState<string[]>(() =>
@@ -1192,8 +1089,15 @@ export const AdvancedSearch: React.FC = () => {
     )
   );
 
-  const nav = useNavigate();
   const { records, options, loading, error, reload } = useFirRecords();
+  const selectedRecord = useMemo(
+    () => records.find((record) => record.id === selectedCaseId),
+    [records, selectedCaseId],
+  );
+  const criminalNetwork = useMemo(
+    () => (selectedRecord ? buildCriminalNetwork(selectedRecord, records) : null),
+    [records, selectedRecord],
+  );
 
   const results = useMemo(
     () =>
@@ -1212,15 +1116,57 @@ export const AdvancedSearch: React.FC = () => {
   const pageCount = Math.max(1, Math.ceil(results.length / pageSize));
   const pageResults = results.slice((page - 1) * pageSize, page * pageSize);
 
-  useEffect(() => setPage(1), [q, station, status]);
+  useEffect(() => {
+    setPage(1);
+    setSelectedCaseId("");
+    setShowNetwork(false);
+  }, [q, station, status]);
+
+  useEffect(() => {
+    if (selectedCaseId && !selectedRecord && !loading) {
+      setSelectedCaseId("");
+      setShowNetwork(false);
+    }
+  }, [loading, selectedCaseId, selectedRecord]);
+
+  const selectFir = (record: FirRecord) => {
+    setSelectedCaseId(record.id);
+    setShowNetwork(false);
+    void recordAuditEvent({
+      action: "RECORD_ACCESS",
+      targetType: "FIR",
+      targetId: record.fir || record.label || record.id,
+      result: "SUCCESS",
+      details: { source: "Advanced Search" },
+    });
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        document.getElementById("selected-fir-details")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    });
+  };
 
   const run = () => {
-    if (!q) return;
+    if (!q && !station && !status) return;
 
-    const n = [
-      q,
-      ...recent.filter((x) => x !== q),
-    ].slice(0, 5);
+    void recordAuditEvent({
+      action: "SEARCH",
+      targetType: "FIR_RECORDS",
+      targetId: "Advanced Search",
+      result: "SUCCESS",
+      details: {
+        query: q,
+        station: station || "All stations",
+        status: status || "All statuses",
+        matchingCases: results.length,
+      },
+    });
+
+    const searchLabel = q || `${station} ${status}`.trim();
+    const n = [searchLabel, ...recent.filter((x) => x !== searchLabel)].slice(0, 5);
 
     setRecent(n);
 
@@ -1261,8 +1207,8 @@ export const AdvancedSearch: React.FC = () => {
 
         <p className="text-sm text-muted mt-1">
           {t(
-            "Search across FIR number, names, phone, vehicle, section, station and IO.",
-            "ಎಫ್‌ಐಆರ್ ಸಂಖ್ಯೆ, ಹೆಸರು, ಫೋನ್, ವಾಹನ, ಸೆಕ್ಷನ್, ಠಾಣೆ ಮತ್ತು ತನಿಖಾಧಿಕಾರಿ ಮೂಲಕ ಹುಡುಕಿ."
+            "Search across FIR number, accused, complainant, section, station and investigating officer.",
+            "ಎಫ್‌ಐಆರ್ ಸಂಖ್ಯೆ, ಆರೋಪಿ, ದೂರುದಾರ, ಸೆಕ್ಷನ್, ಠಾಣೆ ಮತ್ತು ತನಿಖಾಧಿಕಾರಿ ಮೂಲಕ ಹುಡುಕಿ."
           )}
         </p>
       </div>
@@ -1276,8 +1222,8 @@ export const AdvancedSearch: React.FC = () => {
               e.key === "Enter" && run()
             }
             placeholder={t(
-              "Crime no, name, phone, vehicle, section...",
-              "ಪ್ರಕರಣ ಸಂಖ್ಯೆ, ಹೆಸರು, ಫೋನ್, ವಾಹನ, ಸೆಕ್ಷನ್..."
+              "Crime no, accused, complainant, section...",
+              "ಪ್ರಕರಣ ಸಂಖ್ಯೆ, ಆರೋಪಿ, ದೂರುದಾರ, ಸೆಕ್ಷನ್..."
             )}
             className="h-10 bg-panel border border-line rounded-lg px-3 text-sm outline-none focus:border-brand"
           />
@@ -1393,14 +1339,86 @@ export const AdvancedSearch: React.FC = () => {
               <button type="button" onClick={() => void reload()} className="mt-3 rounded-lg border border-rose/40 px-3 py-2 text-xs font-semibold">{t("Try again", "ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ")}</button>
             </div>
           )}
-          {!loading && !error && <div className="space-y-2">
+          {!loading && !error && showNetwork && criminalNetwork && (
+            <CriminalNetworkGraph
+              network={criminalNetwork}
+              onBack={() => setShowNetwork(false)}
+              t={t}
+            />
+          )}
+          {!loading && !error && !showNetwork && <div className="space-y-2">
+            {selectedRecord && criminalNetwork && (
+              <section id="selected-fir-details" className="mb-4 scroll-mt-4 rounded-xl border border-brand/35 bg-panel p-4 shadow-glow" aria-labelledby="selected-fir-title">
+                <div className="flex flex-col gap-3 border-b border-line pb-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted">
+                      {t("FIR details from database", "ಡೇಟಾಬೇಸ್‌ನಿಂದ ಎಫ್‌ಐಆರ್ ವಿವರಗಳು")}
+                    </span>
+                    <h2 id="selected-fir-title" className="mt-1 text-lg font-semibold text-brand">
+                      {selectedRecord.label}
+                    </h2>
+                    <p className="mt-1 text-xs text-muted">
+                      {displayKnownValue(selectedRecord.category, language)} · {displayKnownValue(selectedRecord.status, language)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCaseId("")}
+                    className="min-h-9 self-start rounded-lg border border-line px-3 text-xs font-semibold hover:border-brand"
+                  >
+                    {t("Close details", "ವಿವರಗಳನ್ನು ಮುಚ್ಚಿ")}
+                  </button>
+                </div>
+
+                <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                  <div>
+                    <dt className="text-muted">{t("Crime number", "ಅಪರಾಧ ಸಂಖ್ಯೆ")}</dt>
+                    <dd className="mt-1 font-semibold">{selectedRecord.fir || t("Not recorded", "ದಾಖಲಾಗಿಲ್ಲ")}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted">{t("Police station", "ಪೊಲೀಸ್ ಠಾಣೆ")}</dt>
+                    <dd className="mt-1 font-semibold">{selectedRecord.station ? displayPlaceName(selectedRecord.station, language) : t("Not recorded", "ದಾಖಲಾಗಿಲ್ಲ")}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted">{t("Registered date", "ದಾಖಲಿಸಿದ ದಿನಾಂಕ")}</dt>
+                    <dd className="mt-1 font-semibold">{selectedRecord.date || t("Not recorded", "ದಾಖಲಾಗಿಲ್ಲ")}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted">{t("Accused names", "ಆರೋಪಿಗಳ ಹೆಸರುಗಳು")}</dt>
+                    <dd className="mt-1 font-semibold">{selectedRecord.raw.AccusedNames || t("Not recorded", "ದಾಖಲಾಗಿಲ್ಲ")}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted">{t("Investigating officer", "ತನಿಖಾಧಿಕಾರಿ")}</dt>
+                    <dd className="mt-1 font-semibold">{selectedRecord.io || t("Not recorded", "ದಾಖಲಾಗಿಲ್ಲ")}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted">{t("Acts and sections", "ಕಾಯ್ದೆಗಳು ಮತ್ತು ಸೆಕ್ಷನ್‌ಗಳು")}</dt>
+                    <dd className="mt-1 font-semibold">{selectedRecord.section || t("Not recorded", "ದಾಖಲಾಗಿಲ್ಲ")}</dd>
+                  </div>
+                </dl>
+
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowNetwork(true)}
+                    className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white shadow-glow"
+                  >
+                    {t("Criminal Network Graph", "ಅಪರಾಧ ಜಾಲ ನಕ್ಷೆ")}
+                    <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px]">
+                      {criminalNetwork.relatedCases.length} {t("linked FIRs", "ಸಂಬಂಧಿತ ಎಫ್‌ಐಆರ್‌ಗಳು")}
+                    </span>
+                  </button>
+                </div>
+              </section>
+            )}
+
             {pageResults.map((r) => (
               <button
-                onClick={() =>
-                  nav(`/fir/${caseRoute(r.raw)}`)
-                }
+                type="button"
+                onClick={() => selectFir(r)}
                 key={r.id}
-                className="w-full p-3 rounded-lg border border-line hover:border-brand/40 text-left flex justify-between"
+                aria-pressed={selectedCaseId === r.id}
+                className={`w-full p-3 rounded-lg border text-left flex justify-between ${selectedCaseId === r.id ? "border-brand bg-brand/5" : "border-line hover:border-brand/40"}`}
               >
                 <div>
                   <div className="text-sm font-semibold text-brand">
@@ -1413,8 +1431,9 @@ export const AdvancedSearch: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="text-xs text-muted">
-                  {displayKnownValue(r.status, language)}
+                <div className="ml-3 shrink-0 text-right text-xs text-muted">
+                  <div>{displayKnownValue(r.status, language)}</div>
+                  <div className="mt-2 font-semibold text-brand">{t("View details", "ವಿವರಗಳನ್ನು ನೋಡಿ")} →</div>
                 </div>
               </button>
             ))}
@@ -1451,6 +1470,7 @@ export const AdvancedSearch: React.FC = () => {
 export const Reports: React.FC = () => {
   const { language, tr: t } = useLanguage();
   const { records, loading, error } = useFirRecords();
+  const [activeView, setActiveView] = useState<"reports" | "audit">("reports");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const closedStatuses = ["Charge Sheeted", "Disposed by Court", "Closed - False Case"];
@@ -1615,11 +1635,29 @@ export const Reports: React.FC = () => {
     a.click();
 
     URL.revokeObjectURL(url);
+    void recordAuditEvent({
+      action: "REPORT_EXPORT",
+      targetType: "REPORT",
+      targetId: "FIR report CSV",
+      result: "SUCCESS",
+      details: { format: "CSV", records: filteredRecords.length, fromDate, toDate },
+    });
+  };
+
+  const printReport = () => {
+    void recordAuditEvent({
+      action: "REPORT_PRINT",
+      targetType: "REPORT",
+      targetId: "Reports and Analytics",
+      result: "SUCCESS",
+      details: { format: "Print or PDF", records: filteredRecords.length, fromDate, toDate },
+    });
+    window.print();
   };
 
   return (
     <div className="p-5 space-y-4">
-      <div className="flex justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold">
             {t(
@@ -1629,16 +1667,21 @@ export const Reports: React.FC = () => {
           </h1>
 
           <p className="text-sm text-muted mt-1">
-            {t(
-              "Operational trends, workload and disposal performance.",
-              "ಕಾರ್ಯಾಚರಣಾ ಪ್ರವೃತ್ತಿ, ಕೆಲಸದ ಹೊರೆ ಮತ್ತು ವಿಲೇವಾರಿ ಕಾರ್ಯಕ್ಷಮತೆ."
-            )}
+            {activeView === "reports"
+              ? t(
+                  "Operational trends, workload and disposal performance.",
+                  "ಕಾರ್ಯಾಚರಣಾ ಪ್ರವೃತ್ತಿ, ಕೆಲಸದ ಹೊರೆ ಮತ್ತು ವಿಲೇವಾರಿ ಕಾರ್ಯಕ್ಷಮತೆ."
+                )
+              : t(
+                  "Who did what, when, where and whether it succeeded.",
+                  "ಯಾರು ಏನು, ಯಾವಾಗ, ಎಲ್ಲಿ ಮಾಡಿದರು ಮತ್ತು ಅದು ಯಶಸ್ವಿಯಾಗಿದೆಯೇ."
+                )}
           </p>
         </div>
 
-        <div className="flex gap-2">
+        {activeView === "reports" && <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => window.print()}
+            onClick={printReport}
             className="h-9 px-3 border border-line rounded-lg text-xs"
           >
             {t(
@@ -1656,9 +1699,31 @@ export const Reports: React.FC = () => {
               "ಸಿಎಸ್ವಿ ರಫ್ತು"
             )}
           </button>
-        </div>
+        </div>}
       </div>
 
+      <div className="inline-flex w-full rounded-xl border border-line bg-shell p-1 sm:w-auto" role="tablist" aria-label={t("Reports sections", "ವರದಿ ವಿಭಾಗಗಳು")}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeView === "reports"}
+          onClick={() => setActiveView("reports")}
+          className={`min-h-10 flex-1 rounded-lg px-4 text-sm font-semibold transition sm:flex-none ${activeView === "reports" ? "bg-brand text-white shadow-soft" : "text-muted hover:text-brand"}`}
+        >
+          {t("Reports & Analytics", "ವರದಿಗಳು ಮತ್ತು ವಿಶ್ಲೇಷಣೆ")}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeView === "audit"}
+          onClick={() => setActiveView("audit")}
+          className={`min-h-10 flex-1 rounded-lg px-4 text-sm font-semibold transition sm:flex-none ${activeView === "audit" ? "bg-brand text-white shadow-soft" : "text-muted hover:text-brand"}`}
+        >
+          {t("Audit Trail", "ಲೆಕ್ಕಪರಿಶೋಧನಾ ದಾಖಲೆ")}
+        </button>
+      </div>
+
+      {activeView === "audit" ? <AuditTrailPanel /> : <>
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         {[
           [
@@ -1896,6 +1961,7 @@ export const Reports: React.FC = () => {
           emptyText={t("No station workload data available.", "ಠಾಣೆಯ ಕೆಲಸದ ಹೊರೆ ದತ್ತಾಂಶ ಲಭ್ಯವಿಲ್ಲ.")}
         />
       </div>
+      </>}
     </div>
   );
 };

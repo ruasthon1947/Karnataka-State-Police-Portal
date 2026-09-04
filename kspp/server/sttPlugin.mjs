@@ -1,18 +1,19 @@
-import "dotenv/config";
+import "./env.mjs";
 import { checkSpeechRateLimit, requireSession } from "./security.mjs";
 
 // ---------------------------------------------------------------------------
 // Configuration — Groq Whisper (whisper-large-v3-turbo)
 // ---------------------------------------------------------------------------
 
-const GROQ_KEYS = (process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || "")
-  .split(",")
-  .map((k) => k.trim())
-  .filter(Boolean);
+function getGroqKeys() {
+  return (process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || "")
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
+
 const GROQ_WHISPER_MODEL = "whisper-large-v3-turbo";
 const GROQ_WHISPER_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
-
-const STT_ENABLED = GROQ_KEYS.length > 0;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,7 +55,8 @@ function readBody(req) {
 // ---------------------------------------------------------------------------
 
 async function transcribeAudio(audioBase64, lang, mimeType) {
-  if (GROQ_KEYS.length === 0) {
+  const groqKeys = getGroqKeys();
+  if (groqKeys.length === 0) {
     throw Object.assign(
       new Error("Speech-to-text is not configured. Set GROQ_API_KEYS."),
       { status: 503 },
@@ -114,7 +116,7 @@ async function transcribeAudio(audioBase64, lang, mimeType) {
 
   // Try each Groq key until one works
   let lastError = null;
-  for (const apiKey of GROQ_KEYS) {
+  for (const apiKey of groqKeys) {
     try {
       let transcript = await callWhisper(apiKey, model, whisperLang);
 
@@ -158,10 +160,11 @@ async function handleSttRequest(req, res, next) {
 
   // --- Health check (unauthenticated) ---
   if (req.method === "GET") {
+    const isEnabled = getGroqKeys().length > 0;
     sendJson(res, 200, {
-      ok: STT_ENABLED,
-      configured: STT_ENABLED,
-      service: STT_ENABLED ? "groq-whisper" : "none",
+      ok: isEnabled,
+      configured: isEnabled,
+      service: isEnabled ? "groq-whisper" : "none",
     });
     return true;
   }

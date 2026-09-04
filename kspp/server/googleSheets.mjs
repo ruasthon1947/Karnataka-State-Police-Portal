@@ -1,18 +1,27 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import "dotenv/config";
+import { fileURLToPath } from "node:url";
+import "./env.mjs";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Credentials are deliberately server-only.  The service-account e-mail alone
 // cannot authenticate to Google; set CATALYST_SERVICE_ACCOUNT_JSON to the JSON
 // key (or a path to it) for catalyst-sync@karnatakastatepolice.iam.gserviceaccount.com.
 const SCOPES = "https://www.googleapis.com/auth/spreadsheets";
-const MASTER_SHEET_ID = String(
-  process.env.GOOGLE_MASTER_SHEET_ID || process.env.GOOGLE_SHEET_ID || "",
-).trim();
-const CONSOLIDATED_SHEET_ID = String(
-  process.env.GOOGLE_CONSOLIDATED_SHEET_ID || "",
-).trim();
+
+export function getMasterSheetId() {
+  return String(
+    process.env.GOOGLE_MASTER_SHEET_ID || process.env.GOOGLE_SHEET_ID || "",
+  ).trim();
+}
+
+export function getConsolidatedSheetId() {
+  return String(
+    process.env.GOOGLE_CONSOLIDATED_SHEET_ID || "",
+  ).trim();
+}
 
 const b64url = (value) => Buffer.from(value).toString("base64url");
 const quoteRange = (tab, range = "A:ZZ") => encodeURIComponent(`'${tab.replace(/'/g, "''")}'!${range}`);
@@ -21,10 +30,26 @@ function resolveCredentialSource(configured) {
   const raw = configured.trim();
   if (raw.startsWith("{")) return raw;
 
-  const candidates = [path.resolve(raw)];
-  for (const fallback of ["service-account.json", "config/service-account.json", "local_db/service_account.json"]) {
+  const candidates = [
+    path.resolve(raw),
+    path.resolve(process.cwd(), "..", raw),
+    path.resolve(__dirname, "../../", raw),
+    path.resolve(__dirname, "../", raw),
+  ];
+  for (const fallback of [
+    "service-account.json",
+    "../service-account.json",
+    "config/service-account.json",
+    "../config/service-account.json",
+    "local_db/service_account.json",
+    "../local_db/service_account.json",
+  ]) {
     const resolved = path.resolve(fallback);
     if (!candidates.includes(resolved)) candidates.push(resolved);
+    const parentResolved = path.resolve(process.cwd(), "..", fallback);
+    if (!candidates.includes(parentResolved)) candidates.push(parentResolved);
+    const serverDirResolved = path.resolve(__dirname, "../../", fallback);
+    if (!candidates.includes(serverDirResolved)) candidates.push(serverDirResolved);
   }
 
   const found = candidates.find((candidate) => fs.existsSync(candidate));
@@ -40,10 +65,22 @@ function credential() {
   let configured = process.env.CATALYST_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   
   if (!configured) {
-    for (const fallback of ["service-account.json", "config/service-account.json", "local_db/service_account.json"]) {
-      const resolved = path.resolve(fallback);
-      if (fs.existsSync(resolved)) {
-        configured = resolved;
+    for (const fallback of [
+      "service-account.json",
+      "../service-account.json",
+      "config/service-account.json",
+      "../config/service-account.json",
+      "local_db/service_account.json",
+      "../local_db/service_account.json",
+    ]) {
+      const candidates = [
+        path.resolve(fallback),
+        path.resolve(process.cwd(), "..", fallback),
+        path.resolve(__dirname, "../../", fallback),
+      ];
+      const found = candidates.find((c) => fs.existsSync(c));
+      if (found) {
+        configured = found;
         break;
       }
     }
@@ -286,10 +323,11 @@ async function syncChildTabs(record) {
   const caseId = rowKey(record, "CaseMasterID");
   if (!caseId) return;
 
+  const masterSheetId = getMasterSheetId();
   const [accused, victims, complainants] = await Promise.all([
-    readTable(MASTER_SHEET_ID, "Accused"),
-    readTable(MASTER_SHEET_ID, "Victim"),
-    readTable(MASTER_SHEET_ID, "ComplainantDetails"),
+    readTable(masterSheetId, "Accused"),
+    readTable(masterSheetId, "Victim"),
+    readTable(masterSheetId, "ComplainantDetails"),
   ]);
 
   const accusedHeaders = accused.headers.length ? accused.headers : ["AccusedMasterID", "CaseMasterID", "AccusedName"];
@@ -310,7 +348,7 @@ async function syncChildTabs(record) {
   if (newAccused.length || accused.rows.some((row) => rowKey(row, "CaseMasterID") === caseId)) {
     writes.push(
       writeTable(
-        MASTER_SHEET_ID,
+        masterSheetId,
         "Accused",
         accusedHeaders,
         replaceChildCases(accused.rows, newAccused, caseId),
@@ -320,7 +358,7 @@ async function syncChildTabs(record) {
   if (newVictims.length || victims.rows.some((row) => rowKey(row, "CaseMasterID") === caseId)) {
     writes.push(
       writeTable(
-        MASTER_SHEET_ID,
+        masterSheetId,
         "Victim",
         victimHeaders,
         replaceChildCases(victims.rows, newVictims, caseId),
@@ -330,7 +368,7 @@ async function syncChildTabs(record) {
   if (newComplainants.length || complainants.rows.some((row) => rowKey(row, "CaseMasterID") === caseId)) {
     writes.push(
       writeTable(
-        MASTER_SHEET_ID,
+        masterSheetId,
         "ComplainantDetails",
         complainantHeaders,
         replaceChildCases(complainants.rows, newComplainants, caseId),
@@ -369,11 +407,13 @@ export async function casesFromGoogle() {
     return casesCache.data;
   }
 
+  const masterSheetId = getMasterSheetId();
+  const consolidatedSheetId = getConsolidatedSheetId();
   const consolidatedTab = process.env.GOOGLE_CONSOLIDATED_TAB || "Consolidated_Cases";
   const [master, consolidated] = await Promise.all([
-    readTable(MASTER_SHEET_ID, "CaseMaster"),
-    CONSOLIDATED_SHEET_ID
-      ? readTable(CONSOLIDATED_SHEET_ID, consolidatedTab)
+    readTable(masterSheetId, "CaseMaster"),
+    consolidatedSheetId
+      ? readTable(consolidatedSheetId, consolidatedTab)
       : Promise.resolve({ headers: [], rows: [] }),
   ]);
   const data = mergeCaseTables(master, consolidated);
@@ -381,8 +421,10 @@ export async function casesFromGoogle() {
   return data;
 }
 export async function upsertCaseInGoogle(record) {
+  const consolidatedSheetId = getConsolidatedSheetId();
+  const masterSheetId = getMasterSheetId();
   const tab = process.env.GOOGLE_CONSOLIDATED_TAB || "Consolidated_Cases";
-  const consolidated = await readTable(CONSOLIDATED_SHEET_ID, tab);
+  const consolidated = await readTable(consolidatedSheetId, tab);
   
   let headers = [...consolidated.headers];
   let headersChanged = false;
@@ -404,20 +446,20 @@ export async function upsertCaseInGoogle(record) {
   // Fill empty header gaps or update headers row if new columns were added
   if (headersChanged) {
     if (consolidated.rows.length === 0) {
-      await writeTable(CONSOLIDATED_SHEET_ID, tab, headers, []);
+      await writeTable(consolidatedSheetId, tab, headers, []);
     } else {
-      await updateRow(CONSOLIDATED_SHEET_ID, tab, 1, headers);
+      await updateRow(consolidatedSheetId, tab, 1, headers);
     }
   }
   
   const rowArray = headers.map(h => String(record[h] || ""));
   if (index >= 0) {
-    await updateRow(CONSOLIDATED_SHEET_ID, tab, index + 2, rowArray);
+    await updateRow(consolidatedSheetId, tab, index + 2, rowArray);
   } else {
-    await appendRow(CONSOLIDATED_SHEET_ID, tab, rowArray);
+    await appendRow(consolidatedSheetId, tab, rowArray);
   }
 
-  const master = await readTable(MASTER_SHEET_ID, "CaseMaster");
+  const master = await readTable(masterSheetId, "CaseMaster");
   let masterHeaders = [...master.headers];
   let masterHeadersChanged = false;
   
@@ -434,16 +476,16 @@ export async function upsertCaseInGoogle(record) {
   }
 
   if (masterHeadersChanged && master.rows.length > 0) {
-    await updateRow(MASTER_SHEET_ID, "CaseMaster", 1, masterHeaders);
+    await updateRow(masterSheetId, "CaseMaster", 1, masterHeaders);
   }
 
   if (masterHeaders.length) {
     const masterRowArray = masterHeaders.map((header) => String(record[header] || ""));
     const masterIndex = master.rows.findIndex((row) => recordKey(row) === key);
     if (masterIndex >= 0) {
-      await updateRow(MASTER_SHEET_ID, "CaseMaster", masterIndex + 2, masterRowArray);
+      await updateRow(masterSheetId, "CaseMaster", masterIndex + 2, masterRowArray);
     } else {
-      await appendRow(MASTER_SHEET_ID, "CaseMaster", masterRowArray);
+      await appendRow(masterSheetId, "CaseMaster", masterRowArray);
     }
   }
 
@@ -454,7 +496,8 @@ export async function upsertCaseInGoogle(record) {
 }
 
 export async function employeeById(employeeId) {
-  const table = await readTable(MASTER_SHEET_ID, "Employee");
+  const masterSheetId = getMasterSheetId();
+  const table = await readTable(masterSheetId, "Employee");
   const target = String(employeeId || "").trim().toLowerCase();
   const rawId = target.replace(/^(emp|ksp|kgid)[-_\s]*/i, "");
   const row = table.rows.find((item) => {
@@ -479,11 +522,12 @@ export async function updateEmployee(employeeId, changes) {
     }
   }
 
+  const masterSheetId = getMasterSheetId();
   if (headersChanged) {
-    await updateRow(MASTER_SHEET_ID, "Employee", 1, headers);
+    await updateRow(masterSheetId, "Employee", 1, headers);
   }
   await updateRow(
-    MASTER_SHEET_ID,
+    masterSheetId,
     "Employee",
     index + 2,
     headers.map((header) => String(updatedRow[header] ?? "")),

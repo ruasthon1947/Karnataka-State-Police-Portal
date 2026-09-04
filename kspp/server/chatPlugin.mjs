@@ -1,9 +1,8 @@
-import "dotenv/config";
+import "./env.mjs";
 import dns from "node:dns";
 import { findMatchingCases, generateFirDraft, handleChatQuery } from "./geminiService.mjs";
 import { casesFromGoogle } from "./googleSheets.mjs";
 import { checkChatRateLimit, filterCasesForSession, requireSession } from "./security.mjs";
-
 dns.setDefaultResultOrder("ipv4first");
 
 const MAX_BODY_BYTES = 3_000_000;

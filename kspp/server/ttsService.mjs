@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import "dotenv/config";
+import { fileURLToPath } from "node:url";
+import "./env.mjs";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 const TTS_ENDPOINT = "https://texttospeech.googleapis.com/v1/text:synthesize";
@@ -47,22 +50,36 @@ function configuredCredentials() {
       process.env.GOOGLE_APPLICATION_CREDENTIALS ||
       "",
   ).trim();
-  const candidates = configured && !configured.startsWith("{")
-    ? [path.resolve(configured)]
-    : [];
-
-  for (const fallback of [
-    "service-account.json",
-    "config/service-account.json",
-    "local_db/service_account.json",
-  ]) {
-    const candidate = path.resolve(fallback);
-    if (!candidates.includes(candidate)) candidates.push(candidate);
-  }
 
   if (configured.startsWith("{")) {
     return JSON.parse(configured);
   }
+
+  const candidates = configured
+    ? [
+        path.resolve(configured),
+        path.resolve(process.cwd(), "..", configured),
+        path.resolve(__dirname, "../../", configured),
+        path.resolve(__dirname, "../", configured),
+      ]
+    : [];
+
+  for (const fallback of [
+    "service-account.json",
+    "../service-account.json",
+    "config/service-account.json",
+    "../config/service-account.json",
+    "local_db/service_account.json",
+    "../local_db/service_account.json",
+  ]) {
+    const candidate = path.resolve(fallback);
+    if (!candidates.includes(candidate)) candidates.push(candidate);
+    const parentCandidate = path.resolve(process.cwd(), "..", fallback);
+    if (!candidates.includes(parentCandidate)) candidates.push(parentCandidate);
+    const serverDirCandidate = path.resolve(__dirname, "../../", fallback);
+    if (!candidates.includes(serverDirCandidate)) candidates.push(serverDirCandidate);
+  }
+
   const keyFilename = candidates.find((candidate) => fs.existsSync(candidate));
   if (!keyFilename) {
     throw new Error(

@@ -11,10 +11,18 @@ export type HotspotModelInput = {
 
 export type HotspotModelMetrics = {
   balancedAccuracy: number;
+  balancedAccuracyLow: number;
+  balancedAccuracyHigh: number;
+  baselineBalancedAccuracy: number;
+  accuracyUplift: number;
   precision: number;
   recall: number;
   specificity: number;
   brierScore: number;
+  baselineBrierScore: number;
+  uncertaintyMargin: number;
+  confidenceLevel: "high" | "medium" | "low";
+  backtestWindows: number;
   validationSamples: number;
   validationPositives: number;
   validationFrom: number;
@@ -25,7 +33,7 @@ export type HotspotModelMetrics = {
 };
 
 export type TrainedHotspotModel = {
-  version: "1.1";
+  version: "1.3";
   dataFingerprint: string;
   dataThrough: number;
   trainedAt: number;
@@ -33,6 +41,9 @@ export type TrainedHotspotModel = {
   hiddenBiases: number[];
   outputWeights: number[];
   outputBias: number;
+  positiveClassWeight: number;
+  negativeClassWeight: number;
+  decisionThreshold: number;
   featureMeans: number[];
   featureScales: number[];
   metrics: HotspotModelMetrics;
@@ -40,6 +51,8 @@ export type TrainedHotspotModel = {
 
 export type HotspotTrainingResult = {
   model: TrainedHotspotModel | null;
+  evaluation: HotspotModelMetrics | null;
+  status: "validated" | "below_baseline" | "insufficient_data";
   reason: string;
   datedGeocodedRecords: number;
   historyDays: number;
@@ -55,6 +68,7 @@ type ModelEvent = {
 type TrainingSample = {
   cutoff: number;
   outcomeThrough: number;
+  horizonDays: number;
   features: number[];
   target: 0 | 1;
 };
@@ -168,6 +182,7 @@ const createSamples = (events: ModelEvent[]) => {
           samples.push({
             cutoff,
             outcomeThrough: cutoff + (horizonDays * DAY_MS),
+            horizonDays,
             features: rawFeatureVector({
               liveRisk: (history30.length / maximumHistory) * 100,
               recentCases: history30.length,
@@ -211,26 +226,32 @@ const seededRandom = (seedValue: number) => {
 const standardize = (features: number[], means: number[], scales: number[]) =>
   features.map((value, index) => (value - means[index]) / scales[index]);
 
-const outputProbability = (model: Pick<TrainedHotspotModel, "hiddenWeights" | "hiddenBiases" | "outputWeights" | "outputBias" | "featureMeans" | "featureScales">, features: number[]) => {
+const outputProbability = (model: Pick<TrainedHotspotModel, "hiddenWeights" | "hiddenBiases" | "outputWeights" | "outputBias" | "positiveClassWeight" | "negativeClassWeight" | "featureMeans" | "featureScales">, features: number[]) => {
   const standardized = standardize(features, model.featureMeans, model.featureScales);
   const hidden = model.hiddenWeights.map((weights, unit) =>
     Math.tanh(weights.reduce((sum, weight, index) => sum + (weight * standardized[index]), model.hiddenBiases[unit])),
   );
-  return sigmoid(hidden.reduce((sum, activation, index) => sum + (activation * model.outputWeights[index]), model.outputBias));
+  const weightedProbability = sigmoid(hidden.reduce((sum, activation, index) => sum + (activation * model.outputWeights[index]), model.outputBias));
+  // Class balancing is useful while training rare-event data, but its raw
+  // output overstates event probability. Reverse that weighting before a
+  // percentage is evaluated or shown to an officer.
+  const denominator = (model.positiveClassWeight * (1 - weightedProbability)) + (model.negativeClassWeight * weightedProbability);
+  return denominator > 0 ? (weightedProbability * model.negativeClassWeight) / denominator : weightedProbability;
 };
 
-const validationMetrics = (model: TrainedHotspotModel, samples: TrainingSample[], trainingSamples: TrainingSample[]): HotspotModelMetrics => {
+type ScoredOutcome = { probability: number; target: 0 | 1 };
+
+const scoreOutcomes = (outcomes: ScoredOutcome[], threshold = 0.5) => {
   let truePositive = 0;
   let trueNegative = 0;
   let falsePositive = 0;
   let falseNegative = 0;
   let brierTotal = 0;
-  for (const sample of samples) {
-    const probability = outputProbability(model, sample.features);
-    const predicted = probability >= 0.5 ? 1 : 0;
-    brierTotal += (probability - sample.target) ** 2;
-    if (predicted === 1 && sample.target === 1) truePositive += 1;
-    else if (predicted === 0 && sample.target === 0) trueNegative += 1;
+  for (const { probability, target } of outcomes) {
+    const predicted = probability >= threshold ? 1 : 0;
+    brierTotal += (probability - target) ** 2;
+    if (predicted === 1 && target === 1) truePositive += 1;
+    else if (predicted === 0 && target === 0) trueNegative += 1;
     else if (predicted === 1) falsePositive += 1;
     else falseNegative += 1;
   }
@@ -238,11 +259,124 @@ const validationMetrics = (model: TrainedHotspotModel, samples: TrainingSample[]
   const specificity = trueNegative / Math.max(trueNegative + falsePositive, 1);
   const precision = truePositive / Math.max(truePositive + falsePositive, 1);
   return {
-    balancedAccuracy: Math.round(((recall + specificity) / 2) * 100),
-    precision: Math.round(precision * 100),
-    recall: Math.round(recall * 100),
-    specificity: Math.round(specificity * 100),
-    brierScore: Number((brierTotal / Math.max(samples.length, 1)).toFixed(3)),
+    balancedAccuracy: ((recall + specificity) / 2) * 100,
+    precision: precision * 100,
+    recall: recall * 100,
+    specificity: specificity * 100,
+    brierScore: brierTotal / Math.max(outcomes.length, 1),
+  };
+};
+
+const balancedThreshold = (outcomes: ScoredOutcome[]) => {
+  let bestThreshold = 0.5;
+  let bestAccuracy = -1;
+  // Threshold selection uses older training data only. The chosen value is
+  // then frozen before the newer chronological back-test is evaluated.
+  for (let step = 1; step < 100; step += 1) {
+    const threshold = step / 100;
+    const accuracy = scoreOutcomes(outcomes, threshold).balancedAccuracy;
+    if (accuracy > bestAccuracy) {
+      bestAccuracy = accuracy;
+      bestThreshold = threshold;
+    }
+  }
+  return bestThreshold;
+};
+
+const percentile = (values: number[], position: number) => {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(position * (sorted.length - 1))))];
+};
+
+const validationMetrics = (
+  model: TrainedHotspotModel,
+  samples: TrainingSample[],
+  trainingSamples: TrainingSample[],
+  seed: number,
+): HotspotModelMetrics => {
+  const modelOutcomes = samples.map((sample) => ({
+    probability: outputProbability(model, sample.features),
+    target: sample.target,
+  }));
+  const trainingModelOutcomes = trainingSamples.map((sample) => ({
+    probability: outputProbability(model, sample.features),
+    target: sample.target,
+  }));
+  model.decisionThreshold = balancedThreshold(trainingModelOutcomes);
+  const overallHistoricalRate = trainingSamples.reduce((sum, sample) => sum + sample.target, 0) / trainingSamples.length;
+  const baselineKey = (sample: TrainingSample) => `${sample.horizonDays}:${Math.min(3, Math.floor(sample.features[0] * 4))}`;
+  const baselineGroups = new Map<string, { positives: number; total: number }>();
+  for (const sample of trainingSamples) {
+    const key = baselineKey(sample);
+    const group = baselineGroups.get(key) || { positives: 0, total: 0 };
+    group.positives += sample.target;
+    group.total += 1;
+    baselineGroups.set(key, group);
+  }
+  const baselineProbability = (sample: TrainingSample) => {
+    const group = baselineGroups.get(baselineKey(sample));
+    if (!group) return overallHistoricalRate;
+    // Eight prior-equivalent observations keep a sparse density band from
+    // becoming an unrealistically certain 0% or 100% baseline.
+    return (group.positives + (overallHistoricalRate * 8)) / (group.total + 8);
+  };
+  const baselineTrainingOutcomes = trainingSamples.map((sample) => ({
+    probability: baselineProbability(sample),
+    target: sample.target,
+  }));
+  const baselineThreshold = balancedThreshold(baselineTrainingOutcomes);
+  const baselineOutcomes = samples.map((sample) => ({
+    probability: baselineProbability(sample),
+    target: sample.target,
+  }));
+  const scoredModel = scoreOutcomes(modelOutcomes, model.decisionThreshold);
+  const scoredBaseline = scoreOutcomes(baselineOutcomes, baselineThreshold);
+  const random = seededRandom(seed ^ 0x9e3779b9);
+  const outcomesByWeek = new Map<number, ScoredOutcome[]>();
+  samples.forEach((sample, index) => outcomesByWeek.set(sample.cutoff, [
+    ...(outcomesByWeek.get(sample.cutoff) || []),
+    modelOutcomes[index],
+  ]));
+  const weeklyOutcomes = Array.from(outcomesByWeek.values());
+  const bootstrappedAccuracy: number[] = [];
+  for (let iteration = 0; iteration < 240; iteration += 1) {
+    const resample = Array.from({ length: weeklyOutcomes.length }, () => weeklyOutcomes[Math.floor(random() * weeklyOutcomes.length)]).flat();
+    const positives = resample.reduce((sum, outcome) => sum + outcome.target, 0);
+    if (positives > 0 && positives < resample.length) bootstrappedAccuracy.push(scoreOutcomes(resample, model.decisionThreshold).balancedAccuracy);
+  }
+  const balancedAccuracyPoint = Math.round(scoredModel.balancedAccuracy);
+  const balancedAccuracyLow = Math.min(balancedAccuracyPoint, Math.round(percentile(bootstrappedAccuracy, 0.05)));
+  const balancedAccuracyHigh = Math.max(balancedAccuracyPoint, Math.round(percentile(bootstrappedAccuracy, 0.95)));
+  const positiveErrors = modelOutcomes.filter((outcome) => outcome.target === 1).map((outcome) => Math.abs(outcome.probability - 1));
+  const negativeErrors = modelOutcomes.filter((outcome) => outcome.target === 0).map((outcome) => outcome.probability);
+  // Weight incident and no-incident errors equally so a large number of easy
+  // negatives cannot make the officer-facing uncertainty band look too tight.
+  const uncertaintyMargin = Math.round(((percentile(positiveErrors, 0.8) + percentile(negativeErrors, 0.8)) / 2) * 100);
+  const accuracyUplift = Math.round(scoredModel.balancedAccuracy - scoredBaseline.balancedAccuracy);
+  const backtestWindows = new Set(samples.map((sample) => sample.cutoff)).size;
+  const intervalWidth = balancedAccuracyHigh - balancedAccuracyLow;
+  const confidenceLevel: HotspotModelMetrics["confidenceLevel"] =
+    backtestWindows >= 8 && samples.length >= 200 && accuracyUplift >= 5 && intervalWidth <= 12 && scoredModel.brierScore <= scoredBaseline.brierScore
+      ? "high"
+      : backtestWindows >= 4 && samples.length >= 80 && accuracyUplift > 0 && intervalWidth <= 25
+        ? "medium"
+        : "low";
+
+  return {
+    balancedAccuracy: balancedAccuracyPoint,
+    balancedAccuracyLow,
+    balancedAccuracyHigh,
+    baselineBalancedAccuracy: Math.round(scoredBaseline.balancedAccuracy),
+    accuracyUplift,
+    precision: Math.round(scoredModel.precision),
+    recall: Math.round(scoredModel.recall),
+    specificity: Math.round(scoredModel.specificity),
+    brierScore: Number(scoredModel.brierScore.toFixed(3)),
+    baselineBrierScore: Number(scoredBaseline.brierScore.toFixed(3)),
+    uncertaintyMargin,
+    confidenceLevel,
+    backtestWindows,
     validationSamples: samples.length,
     validationPositives: samples.reduce((sum, sample) => sum + sample.target, 0),
     validationFrom: Math.min(...samples.map((sample) => sample.cutoff)),
@@ -253,19 +387,28 @@ const validationMetrics = (model: TrainedHotspotModel, samples: TrainingSample[]
   };
 };
 
+const insufficientResult = (reason: string, datedGeocodedRecords: number, historyDays: number): HotspotTrainingResult => ({
+  model: null,
+  evaluation: null,
+  status: "insufficient_data",
+  reason,
+  datedGeocodedRecords,
+  historyDays,
+});
+
 export const trainHotspotModel = (records: FirRecord[]): HotspotTrainingResult => {
   const events = modelEvents(records);
   if (events.length < 60) {
-    return { model: null, reason: "At least 60 dated, geocoded FIRs are required for training.", datedGeocodedRecords: events.length, historyDays: 0 };
+    return insufficientResult("At least 60 dated, geocoded FIRs are required for training.", events.length, 0);
   }
   const historyDays = Math.floor((events[events.length - 1].occurredAt - events[0].occurredAt) / DAY_MS);
   if (historyDays < 45) {
-    return { model: null, reason: "At least 45 days of FIR history are required for chronological validation.", datedGeocodedRecords: events.length, historyDays };
+    return insufficientResult("At least 45 days of FIR history are required for chronological validation.", events.length, historyDays);
   }
 
   const samples = createSamples(events).sort((left, right) => left.cutoff - right.cutoff);
   if (samples.length < 100) {
-    return { model: null, reason: "The available history did not produce enough training windows.", datedGeocodedRecords: events.length, historyDays };
+    return insufficientResult("The available history did not produce enough training windows.", events.length, historyDays);
   }
   const cutoffs = Array.from(new Set(samples.map((sample) => sample.cutoff))).sort((left, right) => left - right);
   const validationStart = cutoffs[Math.min(cutoffs.length - 1, Math.max(1, Math.floor(cutoffs.length * 0.8)))];
@@ -274,12 +417,12 @@ export const trainHotspotModel = (records: FirRecord[]): HotspotTrainingResult =
   const trainingSamples = samples.filter((sample) => sample.outcomeThrough < validationStart);
   const validationSamples = samples.filter((sample) => sample.cutoff >= validationStart);
   if (trainingSamples.length < 80 || validationSamples.length < 20) {
-    return { model: null, reason: "The available history did not leave enough non-overlapping chronological validation windows.", datedGeocodedRecords: events.length, historyDays };
+    return insufficientResult("The available history did not leave enough non-overlapping chronological validation windows.", events.length, historyDays);
   }
   const trainPositives = trainingSamples.reduce((sum, sample) => sum + sample.target, 0);
   const validationPositives = validationSamples.reduce((sum, sample) => sum + sample.target, 0);
   if (trainPositives < 10 || trainingSamples.length - trainPositives < 10 || validationPositives < 3 || validationSamples.length - validationPositives < 3) {
-    return { model: null, reason: "Training and validation require both incident and no-incident historical windows.", datedGeocodedRecords: events.length, historyDays };
+    return insufficientResult("Training and validation require both incident and no-incident historical windows.", events.length, historyDays);
   }
 
   const featureCount = trainingSamples[0].features.length;
@@ -334,7 +477,7 @@ export const trainHotspotModel = (records: FirRecord[]): HotspotTrainingResult =
   }
 
   const model: TrainedHotspotModel = {
-    version: "1.1",
+    version: "1.3",
     dataFingerprint: modelFingerprint,
     dataThrough: events[events.length - 1].occurredAt,
     trainedAt: Date.now(),
@@ -342,14 +485,25 @@ export const trainHotspotModel = (records: FirRecord[]): HotspotTrainingResult =
     hiddenBiases,
     outputWeights,
     outputBias,
+    positiveClassWeight: positiveWeight,
+    negativeClassWeight: negativeWeight,
+    decisionThreshold: 0.5,
     featureMeans,
     featureScales,
     metrics: {
       balancedAccuracy: 0,
+      balancedAccuracyLow: 0,
+      balancedAccuracyHigh: 0,
+      baselineBalancedAccuracy: 0,
+      accuracyUplift: 0,
       precision: 0,
       recall: 0,
       specificity: 0,
       brierScore: 0,
+      baselineBrierScore: 0,
+      uncertaintyMargin: 0,
+      confidenceLevel: "low",
+      backtestWindows: 0,
       validationSamples: 0,
       validationPositives: 0,
       validationFrom: 0,
@@ -359,20 +513,68 @@ export const trainHotspotModel = (records: FirRecord[]): HotspotTrainingResult =
       trainingThrough: 0,
     },
   };
-  model.metrics = validationMetrics(model, validationSamples, trainingSamples);
-  if (model.metrics.balancedAccuracy < 55 || model.metrics.brierScore > 0.35) {
+  model.metrics = validationMetrics(model, validationSamples, trainingSamples, Number.parseInt(modelFingerprint, 16));
+  if (
+    model.metrics.balancedAccuracy < 55
+    || model.metrics.brierScore > 0.35
+    || model.metrics.accuracyUplift <= 0
+    || model.metrics.brierScore > model.metrics.baselineBrierScore
+  ) {
     return {
       model: null,
-      reason: `Chronological validation did not pass the deployment gate (balanced accuracy ${model.metrics.balancedAccuracy}%, Brier ${model.metrics.brierScore}).`,
+      evaluation: model.metrics,
+      status: "below_baseline",
+      reason: `Forecast hidden: balanced accuracy was ${model.metrics.balancedAccuracy}% versus ${model.metrics.baselineBalancedAccuracy}%, and probability error was ${model.metrics.brierScore} versus ${model.metrics.baselineBrierScore} (lower is better).`,
       datedGeocodedRecords: events.length,
       historyDays,
     };
   }
-  return { model, reason: "", datedGeocodedRecords: events.length, historyDays };
+  return { model, evaluation: model.metrics, status: "validated", reason: "", datedGeocodedRecords: events.length, historyDays };
+};
+
+export type HotspotForecastFactor = {
+  id: "density" | "recentCases" | "trend" | "crimePattern" | "time" | "window";
+  direction: "raises" | "lowers";
+  impactPoints: number;
+};
+
+export type HotspotForecast = {
+  risk: number;
+  lowerBound: number;
+  upperBound: number;
+  confidenceLevel: HotspotModelMetrics["confidenceLevel"];
+  factors: HotspotForecastFactor[];
+};
+
+export const predictHotspotForecast = (model: TrainedHotspotModel, input: HotspotModelInput): HotspotForecast => {
+  const features = rawFeatureVector(input);
+  const probability = outputProbability(model, features);
+  const groups: Array<{ id: HotspotForecastFactor["id"]; indices: number[] }> = [
+    { id: "density", indices: [0] },
+    { id: "recentCases", indices: [1] },
+    { id: "trend", indices: [2] },
+    { id: "crimePattern", indices: [3] },
+    { id: "time", indices: [4, 5] },
+    { id: "window", indices: [6] },
+  ];
+  const factors = groups.map(({ id, indices }) => {
+    const typicalFeatures = [...features];
+    for (const index of indices) typicalFeatures[index] = model.featureMeans[index];
+    const impact = Math.round((probability - outputProbability(model, typicalFeatures)) * 100);
+    return { id, direction: impact >= 0 ? "raises" as const : "lowers" as const, impactPoints: Math.abs(impact) };
+  }).sort((left, right) => right.impactPoints - left.impactPoints).slice(0, 3);
+  const risk = Math.round(probability * 100);
+  return {
+    risk,
+    lowerBound: clamp(risk - model.metrics.uncertaintyMargin, 0, 100),
+    upperBound: clamp(risk + model.metrics.uncertaintyMargin, 0, 100),
+    confidenceLevel: model.metrics.confidenceLevel,
+    factors,
+  };
 };
 
 export const predictHotspotRisk = (model: TrainedHotspotModel, input: HotspotModelInput) =>
-  Math.round(outputProbability(model, rawFeatureVector(input)) * 100);
+  predictHotspotForecast(model, input).risk;
 
 
 

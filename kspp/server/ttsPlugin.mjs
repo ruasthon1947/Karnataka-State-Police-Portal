@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./env.mjs";
 import { checkTtsRateLimit, requireSession } from "./security.mjs";
 import { prewarmNaturalSpeech, synthesizeNaturalSpeech } from "./ttsService.mjs";
 

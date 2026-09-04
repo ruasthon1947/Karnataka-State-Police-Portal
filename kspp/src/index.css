@@ -894,6 +894,23 @@ html.dark .crime-intelligence-page {
 .neural-status.is-limited { border-color: rgba(255, 181, 71, .25); color: #b97812; }
 .neural-status.is-limited i { background: var(--intel-amber); box-shadow: 0 0 10px rgba(255, 181, 71, .6); }
 
+.forecast-availability-note {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  margin-top: .75rem;
+  border: 1px solid rgba(84, 215, 255, .25);
+  border-radius: .75rem;
+  background: rgba(84, 215, 255, .06);
+  padding: .62rem .8rem;
+  color: var(--muted);
+  font-size: .65rem;
+}
+.forecast-availability-note strong { flex: none; color: #279bc1; font-size: .67rem; }
+.forecast-availability-note span { line-height: 1.45; }
+.forecast-availability-note.is-warning { border-color: rgba(255, 181, 71, .3); background: rgba(255, 181, 71, .07); }
+.forecast-availability-note.is-warning strong { color: #bd7811; }
+
 .intelligence-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 21rem;
@@ -1300,6 +1317,21 @@ html.dark .crime-intelligence-page {
 .prediction-metrics strong { margin-top: 0.2rem; font-size: 1rem; }
 .trend-up { color: #4de2a7; }
 
+.forecast-confidence {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .5rem;
+  margin: 0 0 .6rem;
+  border: 1px solid rgba(77, 226, 167, .28);
+  border-radius: .75rem;
+  background: rgba(77, 226, 167, .07);
+  padding: .75rem;
+}
+.forecast-confidence > div { display: grid; gap: .14rem; }
+.forecast-confidence span { color: var(--muted); font-size: .54rem; font-weight: 850; letter-spacing: .09em; }
+.forecast-confidence strong { color: #20a876; font-size: .88rem; }
+.forecast-confidence p { grid-column: 1 / -1; margin-top: .2rem; color: var(--muted); font-size: .61rem; line-height: 1.45; }
+
 .prediction-drivers { margin-top: 0.6rem; padding: 0.8rem; }
 .prediction-drivers h3 { margin-bottom: 0.6rem; font-size: 0.7rem; }
 .prediction-drivers > div { display: flex; gap: 0.55rem; align-items: start; margin-top: 0.45rem; }
@@ -1324,6 +1356,59 @@ html.dark .crime-intelligence-page {
 .model-ready { color: #4de2a7; }
 .intelligence-disclaimer { margin: 0.75rem 0 0; color: var(--muted); font-size: 0.6rem; text-align: center; }
 
+.forecast-validation-panel {
+  margin-top: .85rem;
+  overflow: hidden;
+  border: 1px solid rgba(84, 215, 255, .2);
+  border-radius: 1rem;
+  background: var(--shell);
+  box-shadow: 0 16px 42px rgba(3, 19, 33, .09);
+}
+.forecast-validation-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(84, 215, 255, .07), transparent 58%);
+  padding: .9rem 1rem;
+}
+.validation-eyebrow { color: var(--intel-cyan); font-size: .54rem; font-weight: 900; letter-spacing: .13em; }
+.forecast-validation-panel h2 { margin-top: .24rem; font-size: .96rem; font-weight: 750; }
+.validation-status {
+  flex: none;
+  border: 1px solid rgba(77, 226, 167, .3);
+  border-radius: 999px;
+  background: rgba(77, 226, 167, .09);
+  padding: .45rem .72rem;
+  color: #20a876;
+  font-size: .63rem;
+}
+.validation-below_baseline .validation-status,
+.validation-insufficient_data .validation-status {
+  border-color: rgba(255, 181, 71, .32);
+  background: rgba(255, 181, 71, .09);
+  color: #bd7811;
+}
+.validation-checking .validation-status { border-color: rgba(84, 215, 255, .3); background: rgba(84, 215, 255, .08); color: #279bc1; }
+.validation-message { padding: .85rem 1rem 0; color: var(--muted); font-size: .72rem; line-height: 1.55; }
+.forecast-validation-panel > .validation-message:last-child { padding-bottom: .85rem; }
+.validation-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: .65rem; padding: .85rem 1rem; }
+.validation-metrics > div { display: grid; min-width: 0; border: 1px solid var(--line); border-radius: .7rem; background: var(--panel); padding: .72rem; }
+.validation-metrics span { color: var(--muted); font-size: .54rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.validation-metrics strong { margin-top: .25rem; font-size: 1.16rem; }
+.validation-metrics small { margin-top: .12rem; color: var(--muted); font-size: .57rem; line-height: 1.35; }
+.validation-metrics .is-positive { color: #20a876; }
+.validation-metrics .is-negative { color: var(--intel-red); }
+.validation-details { margin: 0 1rem 1rem; border: 1px solid var(--line); border-radius: .7rem; background: var(--panel); }
+.validation-details summary { cursor: pointer; padding: .72rem .8rem; color: var(--text); font-size: .68rem; font-weight: 750; }
+.validation-details > div { border-top: 1px solid var(--line); padding: .8rem; }
+.validation-details dl { display: grid; grid-template-columns: repeat(4, 1fr); gap: .55rem; }
+.validation-details dl > div { min-width: 0; }
+.validation-details dt { color: var(--muted); font-size: .55rem; line-height: 1.3; }
+.validation-details dd { margin-top: .16rem; font-size: .7rem; font-weight: 750; overflow-wrap: anywhere; }
+.validation-details p { margin-top: .7rem; border-top: 1px solid var(--line); padding-top: .65rem; color: var(--muted); font-size: .59rem; line-height: 1.5; }
+
 html.light .crime-map-card { box-shadow: 0 18px 45px rgba(11,49,95,.11); }
 
 @media (max-width: 1180px) {
@@ -1335,6 +1420,7 @@ html.light .crime-map-card { box-shadow: 0 18px 45px rgba(11,49,95,.11); }
   .hotspot-intelligence-panel .risk-ring { grid-column: 2; grid-row: 1 / span 3; margin: 0; }
   .hotspot-intelligence-panel .prediction-primary { grid-column: 3; grid-row: 1 / span 3; }
   .hotspot-intelligence-panel .prediction-metrics { grid-column: 4; grid-row: 1 / span 3; margin: 0; }
+  .forecast-confidence { grid-column: 1 / span 2; margin: 0; }
   .prediction-drivers { grid-column: 1 / span 2; }
   .patrol-recommendation { grid-column: 3 / span 2; }
 }
@@ -1358,6 +1444,10 @@ html.light .crime-map-card { box-shadow: 0 18px 45px rgba(11,49,95,.11); }
   .hotspot-intelligence-panel { display: block; }
   .hotspot-intelligence-panel .risk-ring { margin: 1rem auto; }
   .prediction-metrics { margin-top: .6rem; }
+  .forecast-availability-note { align-items: flex-start; flex-direction: column; gap: .22rem; }
+  .forecast-confidence { margin: 0 0 .6rem; }
+  .validation-metrics { grid-template-columns: 1fr 1fr; }
+  .validation-details dl { grid-template-columns: 1fr 1fr; }
   .intelligence-summary { grid-template-columns: 1fr 1fr; }
 }
 
@@ -1372,6 +1462,10 @@ html.light .crime-map-card { box-shadow: 0 18px 45px rgba(11,49,95,.11); }
   .real-map-mode-badge { top: .6rem; left: .6rem; max-width: 10.5rem; }
   .real-map-help { display: none; }
   .hotspot-marker { width: 2.5rem; height: 2.5rem; }
+  .forecast-validation-panel > header { align-items: flex-start; flex-direction: column; }
+  .validation-status { white-space: normal; }
+  .validation-metrics,
+  .validation-details dl { grid-template-columns: 1fr; }
   .intelligence-summary { grid-template-columns: 1fr; }
 }
 

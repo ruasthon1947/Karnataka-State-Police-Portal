@@ -1,3 +1,4 @@
+import "./env.mjs";
 import crypto from "node:crypto";
 import { promisify } from "node:util";
 

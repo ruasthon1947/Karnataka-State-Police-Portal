@@ -36,6 +36,7 @@ import {
   updateTodo,
 } from "./todoService.mjs";
 import { readExplicitTabRecords } from "./sheetsStore.mjs";
+import { auditService, recordAuditEventSafe } from "./auditService.mjs";
 
 const execFileAsync = promisify(execFile);
 let unitLookupCache = { expiresAt: 0, rows: [] };
@@ -288,8 +289,25 @@ function employeeSubject(employeeId) {
   return String(employeeId || "").trim().toLowerCase();
 }
 
+const CLIENT_AUDIT_ACTIONS = new Set([
+  "SEARCH",
+  "RECORD_ACCESS",
+  "REPORT_EXPORT",
+  "REPORT_PRINT",
+]);
+
+function auditRequestId(req) {
+  return String(req.headers["x-request-id"] || "").trim();
+}
+
+function caseAuditId(record) {
+  return normalizeValue(record?.CrimeNo || record?.CaseNo || record?.CaseMasterID);
+}
+
 export async function handleApi(req, res, next) {
   const url = new URL(req.url || "/", "http://local-db");
+  let auditSession = null;
+  let auditFailureContext = null;
   
   // Pass endpoints owned by later plugins through instead of returning the
   // generic "Unknown API endpoint" response before their handlers can run.
@@ -449,11 +467,50 @@ export async function handleApi(req, res, next) {
 
     const session = requireSession(req, res);
     if (!session) return;
+    auditSession = session;
     
     // Attach session to request for todo operations
     attachSessionToRequest(req, session);
 
     const todoFilter = todoFilterForSession(session);
+
+    if (req.method === "GET" && url.pathname === "/api/audit-events") {
+      const audit = await auditService.list({
+        action: url.searchParams.get("action") || "",
+        result: url.searchParams.get("result") || "",
+        from: url.searchParams.get("from") || "",
+        to: url.searchParams.get("to") || "",
+        query: url.searchParams.get("q") || "",
+        limit: url.searchParams.get("limit") || "100",
+      });
+      sendJson(res, 200, { ok: true, ...audit });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/audit-events") {
+      const payload = await readBody(req);
+      const action = normalizeValue(payload.action).toUpperCase();
+      if (!CLIENT_AUDIT_ACTIONS.has(action)) {
+        sendError(res, 400, "This audit action is not supported.");
+        return;
+      }
+      const audit = await recordAuditEventSafe({
+        session,
+        action,
+        targetType: normalizeValue(payload.targetType) || "APPLICATION",
+        targetId: normalizeValue(payload.targetId),
+        result: normalizeValue(payload.result).toUpperCase() || "SUCCESS",
+        statusCode: 200,
+        details: payload.details,
+        requestId: auditRequestId(req),
+      });
+      sendJson(res, 201, {
+        ok: Boolean(audit.event),
+        recorded: Boolean(audit.event),
+        persistent: Boolean(audit.remoteSynced),
+      });
+      return;
+    }
 
     if (req.method === "GET" && url.pathname === "/api/todos") {
       sendJson(res, 200, { ok: true, todos: await fetchTodos(req, todoFilter) });
@@ -467,11 +524,26 @@ export async function handleApi(req, res, next) {
 
     if (req.method === "POST" && url.pathname === "/api/todos") {
       const taskData = await readBody(req);
+      auditFailureContext = {
+        action: "ASSIGNMENT_CREATED",
+        targetType: "ASSIGNMENT",
+        targetId: normalizeValue(taskData.title),
+      };
       const todo = await createTodo(req, {
         ...taskData,
         assignedTo: session.employeeId,
         createdBy: session.employeeId,
         policeStation: session.policeStation,
+      });
+      void recordAuditEventSafe({
+        session,
+        action: "ASSIGNMENT_CREATED",
+        targetType: "ASSIGNMENT",
+        targetId: todo.taskId,
+        result: "SUCCESS",
+        statusCode: 201,
+        details: { title: todo.title, priority: todo.priority, assignedTo: todo.assignedTo },
+        requestId: auditRequestId(req),
       });
       sendJson(res, 201, { ok: true, todo });
       return;
@@ -482,7 +554,22 @@ export async function handleApi(req, res, next) {
         sendError(res, 403, "Only Inspectors and SP officers can import tasks.");
         return;
       }
+      auditFailureContext = {
+        action: "ASSIGNMENT_IMPORTED",
+        targetType: "ASSIGNMENT_BATCH",
+        targetId: session.policeStation,
+      };
       const result = await importFromGoogleSheets(req, session);
+      void recordAuditEventSafe({
+        session,
+        action: "ASSIGNMENT_IMPORTED",
+        targetType: "ASSIGNMENT_BATCH",
+        targetId: session.policeStation,
+        result: "SUCCESS",
+        statusCode: 200,
+        details: { imported: result.imported, total: result.total },
+        requestId: auditRequestId(req),
+      });
       sendJson(res, 200, { ok: true, ...result });
       return;
     }
@@ -490,13 +577,43 @@ export async function handleApi(req, res, next) {
     const todoMatch = url.pathname.match(/^\/api\/todos\/([^/]+)$/);
     if (todoMatch && req.method === "PATCH") {
       const updates = await readBody(req);
+      auditFailureContext = {
+        action: "ASSIGNMENT_UPDATED",
+        targetType: "ASSIGNMENT",
+        targetId: decodeURIComponent(todoMatch[1]),
+      };
       const todo = await updateTodo(req, decodeURIComponent(todoMatch[1]), updates);
+      void recordAuditEventSafe({
+        session,
+        action: "ASSIGNMENT_UPDATED",
+        targetType: "ASSIGNMENT",
+        targetId: todo.taskId || decodeURIComponent(todoMatch[1]),
+        result: "SUCCESS",
+        statusCode: 200,
+        details: { changedFields: Object.keys(updates), status: todo.status, priority: todo.priority },
+        requestId: auditRequestId(req),
+      });
       sendJson(res, 200, { ok: true, todo });
       return;
     }
 
     if (todoMatch && req.method === "DELETE") {
+      auditFailureContext = {
+        action: "ASSIGNMENT_DELETED",
+        targetType: "ASSIGNMENT",
+        targetId: decodeURIComponent(todoMatch[1]),
+      };
       const result = await deleteTodo(req, decodeURIComponent(todoMatch[1]));
+      void recordAuditEventSafe({
+        session,
+        action: "ASSIGNMENT_DELETED",
+        targetType: "ASSIGNMENT",
+        targetId: decodeURIComponent(todoMatch[1]),
+        result: result.deleted ? "SUCCESS" : "NOT_FOUND",
+        statusCode: 200,
+        details: { deleted: Boolean(result.deleted) },
+        requestId: auditRequestId(req),
+      });
       sendJson(res, 200, result);
       return;
     }
@@ -758,6 +875,12 @@ export async function handleApi(req, res, next) {
         return;
       }
 
+      auditFailureContext = {
+        action: "SMS_PATROL_ALERT",
+        targetType: "POLICE_STATION",
+        targetId: station,
+      };
+
       const masterSheetId = String(
         process.env.GOOGLE_MASTER_SHEET_ID || process.env.GOOGLE_SHEET_ID || "",
       ).trim();
@@ -791,6 +914,23 @@ export async function handleApi(req, res, next) {
         sent: notifications.sent,
         failed: notifications.failed,
       });
+      void recordAuditEventSafe({
+        session,
+        action: "SMS_PATROL_ALERT",
+        targetType: "POLICE_STATION",
+        targetId: station,
+        result: notifications.failed > 0 ? "PARTIAL" : "SUCCESS",
+        statusCode: 200,
+        details: {
+          zone,
+          risk: Math.round(risk),
+          matched: notifications.matched,
+          eligible: notifications.eligible,
+          sent: notifications.sent,
+          failed: notifications.failed,
+        },
+        requestId: auditRequestId(req),
+      });
       sendJson(res, 200, { ok: true, notifications });
       return;
     }
@@ -800,9 +940,29 @@ export async function handleApi(req, res, next) {
       const { headers, rows } = await casesFromGoogle();
       const record = rows.find((item) => caseMatches(item, caseMatch[1]));
       if (!record) {
+        void recordAuditEventSafe({
+          session,
+          action: "RECORD_ACCESS",
+          targetType: "FIR",
+          targetId: decodeURIComponent(caseMatch[1]),
+          result: "NOT_FOUND",
+          statusCode: 404,
+          details: { source: "Direct FIR details" },
+          requestId: auditRequestId(req),
+        });
         sendError(res, 404, "Case was not found.");
         return;
       }
+      void recordAuditEventSafe({
+        session,
+        action: "RECORD_ACCESS",
+        targetType: "FIR",
+        targetId: caseAuditId(record),
+        result: "SUCCESS",
+        statusCode: 200,
+        details: { source: "Direct FIR details" },
+        requestId: auditRequestId(req),
+      });
       sendJson(res, 200, {
         ok: true,
         headers,
@@ -818,6 +978,13 @@ export async function handleApi(req, res, next) {
       const fields = payload.case || payload.fields || payload;
       
       const key = caseMatch ? caseMatch[1] : "";
+      auditFailureContext = {
+        action: req.method === "POST" ? "FIR_CREATED" : "FIR_UPDATED",
+        targetType: "FIR",
+        targetId: normalizeValue(
+          key || fields.CrimeNo || fields.CaseNo || fields.CaseMasterID,
+        ),
+      };
       
       const knownFields = {};
       for (const [k, value] of Object.entries(fields)) {
@@ -934,6 +1101,43 @@ export async function handleApi(req, res, next) {
         }
       }
 
+      void recordAuditEventSafe({
+        session,
+        action: created ? "FIR_CREATED" : "FIR_UPDATED",
+        targetType: "FIR",
+        targetId: caseAuditId(record),
+        result: "SUCCESS",
+        statusCode: 200,
+        details: {
+          changedFields: created
+            ? Object.keys(knownFields)
+            : Object.keys(knownFields).filter(
+                (field) => normalizeValue(previousRecord?.[field]) !== normalizeValue(record[field]),
+              ),
+          policeStation: record.PoliceStation,
+          status: record.Status,
+        },
+        requestId: auditRequestId(req),
+      });
+
+      if (notificationEvent) {
+        void recordAuditEventSafe({
+          session,
+          action: "SMS_FIR_NOTIFICATION",
+          targetType: "FIR",
+          targetId: caseAuditId(record),
+          result: notifications?.failed > 0 ? "PARTIAL" : "SUCCESS",
+          statusCode: 200,
+          details: {
+            notificationType: notificationEvent,
+            matched: notifications?.matched || 0,
+            sent: notifications?.sent || 0,
+            failed: notifications?.failed || 0,
+          },
+          requestId: auditRequestId(req),
+        });
+      }
+
       sendJson(res, 200, {
         ok: true,
         created,
@@ -952,6 +1156,19 @@ export async function handleApi(req, res, next) {
     console.error("[Local DB Handler Exception]:", error && error.stack ? error.stack : error);
 
     const status = error?.status || 500;
+
+    if (auditSession && auditFailureContext) {
+      void recordAuditEventSafe({
+        session: auditSession,
+        ...auditFailureContext,
+        result: "FAILED",
+        statusCode: status,
+        details: {
+          reason: status >= 500 ? "Service failure" : "Request rejected",
+        },
+        requestId: auditRequestId(req),
+      });
+    }
 
     // Map known backend failure patterns to more specific, user-friendly messages
     const message = (function() {

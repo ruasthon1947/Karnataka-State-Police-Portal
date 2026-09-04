@@ -1,3 +1,4 @@
+import "./env.mjs";
 import dns from "node:dns";
 dns.setDefaultResultOrder("ipv4first");
 
@@ -86,18 +87,18 @@ function normalizeCrimeNoUnified(str) {
 //   .filter(Boolean);
 // const FALLBACK_GEMINI_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash-lite"];
 
-const GROQ_KEYS = (process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || "")
-  .split(",")
-  .map((k) => k.trim())
-  .filter(Boolean);
+function getGroqKeys() {
+  return (process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || "")
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
 
 const FALLBACK_GROQ_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"];
 
-// Tertiary fallback, used only after every Groq key/model combination above
-// has failed (rate limit, quota, auth, or other error). Requires
-// OPENAI_API_KEY in .env. Left undefined-safe so the app still runs (minus
-// this last resort) if that key isn't configured.
-const OPENAI_KEY = (process.env.OPENAI_API_KEY || "").trim();
+function getOpenAiKey() {
+  return (process.env.OPENAI_API_KEY || "").trim();
+}
 const OPENAI_MODEL = "gpt-4o-mini";
 
 const STOP_WORDS = new Set([
@@ -599,9 +600,10 @@ async function generateWithFallback(
   }
 
   let lastError = null;
+  const groqKeys = getGroqKeys();
 
-  for (let i = 0; i < GROQ_KEYS.length; i++) {
-    const key = GROQ_KEYS[i];
+  for (let i = 0; i < groqKeys.length; i++) {
+    const key = groqKeys[i];
     try {
       console.log(`[Copilot Engine] 🚀 Executing request via Groq Engine Key #${i + 1}...`);
       return await generateWithGroq(fullPrompt, key, maxTokens, isJson);
@@ -613,10 +615,11 @@ async function generateWithFallback(
 
   // Tertiary fallback: every Groq key/model above failed (rate limit, quota,
   // auth, or otherwise) — try OpenAI before giving up on the request.
-  if (OPENAI_KEY) {
+  const openAiKey = getOpenAiKey();
+  if (openAiKey) {
     try {
       console.log(`[Copilot Engine] 🚀 Executing request via OpenAI Engine (fallback)...`);
-      return await generateWithOpenAI(fullPrompt, OPENAI_KEY, maxTokens, isJson);
+      return await generateWithOpenAI(fullPrompt, openAiKey, maxTokens, isJson);
     } catch (err) {
       console.warn(`[Copilot Engine] ⚠️ OpenAI fallback failed:`, err.message);
       lastError = err;
@@ -1096,6 +1099,14 @@ export function isCaseRecordQuestion(question) {
   return true;
 }
 
+export function isPendingCase(record) {
+  const status = String(record?.Status || record?.status || "").trim().toLowerCase();
+  if (!status) return false;
+  const closedKeywords = ["disposed", "closed", "acquitted", "convicted", "abated", "quashed", "settled"];
+  if (closedKeywords.some((k) => status.includes(k))) return false;
+  return true;
+}
+
 // CHAT SESSION MANAGEMENT
 export async function saveChatSession(userId, sessionId, messages, title = "New Session") {
   if (!userId || !sessionId) return null;
@@ -1155,6 +1166,48 @@ export async function handleChatQuery({
   userId
 }) {
   try {
+    const trimmedQuestion = String(question || "").trim();
+    const isKannada = language === "kn" || /[\u0C80-\u0CFF]/.test(trimmedQuestion);
+
+    const myStationQuestionRe = /^(which|what|where)\s+is\s+my\s+(police\s+)?station\??$/i;
+    const myStationKannadaRe = /^(ನನ್ನ\s+(ಪೊಲೀಸ್\s+)?ಠಾಣೆ\s+ಯಾವುದು\??|ನನ್ನ\s+ಠಾಣೆ\s+ಯಾವುದು\??)/i;
+
+    if (stationId && (myStationQuestionRe.test(trimmedQuestion) || myStationKannadaRe.test(trimmedQuestion))) {
+      if (isKannada) {
+        let s = stationId.replace(/\bpolice\s+station\b/gi, "").trim();
+        const lower = s.toLowerCase();
+        const knownPlaces = {
+          byappanahalli: "ಬೈಯಪ್ಪನಹಳ್ಳಿ",
+          baiyappanahalli: "ಬೈಯಪ್ಪನಹಳ್ಳಿ",
+          jayanagar: "ಜಯನಗರ",
+          indiranagar: "ಇಂದಿರಾನಗರ",
+          koramangala: "ಕೋರಮಂಗಲ",
+          whitefield: "ವೈಟ್‌ಫೀಲ್ಡ್",
+          yelahanka: "ಯಲಹಂಕ",
+          upparpet: "ಉಪ್ಪಾರಪೇಟೆ",
+          majestic: "ಮೆಜೆಸ್ಟಿಕ್",
+          hebbal: "ಹೆಬ್ಬಾಳ",
+          marathahalli: "ಮಾರತಹಳ್ಳಿ",
+          banashankari: "ಬನಶಂಕರಿ",
+          malleswaram: "ಮಲ್ಲೇಶ್ವರಂ",
+          malleshwaram: "ಮಲ್ಲೇಶ್ವರಂ",
+          rajajinagar: "ರಾಜಾಜಿನಗರ",
+          vijayanagar: "ವಿಜಯನಗರ",
+          basavanagudi: "ಬಸವನಗುಡಿ",
+          shivajinagar: "ಶಿವಾಜಿನಗರ",
+          kengeri: "ಕೆಂಗೇರಿ",
+          peenya: "ಪೀಣ್ಯ",
+          halasuru: "ಹಲಸೂರು",
+          ulsoor: "ಹಲಸೂರು",
+          mahadevapura: "ಮಹದೇವಪುರ",
+          bommanahalli: "ಬೊಮ್ಮನಹಳ್ಳಿ",
+        };
+        const knName = knownPlaces[lower] || s;
+        return `ನಿಮಗೆ ನಿಯೋಜಿಸಲಾದ ಠಾಣೆ ${knName} ಪೊಲೀಸ್ ಠಾಣೆ.`;
+      }
+      return `Your assigned police station is ${stationId}.`;
+    }
+
     if (String(question || "").toLowerCase().includes("extract fir details into json format")) {
       return JSON.stringify(await generateFirDraft(question));
     }
@@ -1162,7 +1215,6 @@ export async function handleChatQuery({
     const recentHistory = compactConversationHistory(history);
     const searchQuestion = searchQuestionWithHistory(question, recentHistory);
     const asksForCaseRecords = isCaseRecordQuestion(searchQuestion);
-    const isKannada = language === "kn" || /[\u0C80-\u0CFF]/.test(question || "");
     const languageInstruction = isKannada
       ? "Respond completely and exclusively in Kannada."
       : "Respond completely and exclusively in English.";
