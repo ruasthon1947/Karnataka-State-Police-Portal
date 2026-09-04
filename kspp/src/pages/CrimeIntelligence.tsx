@@ -208,11 +208,11 @@ const CrimeIntelligence: React.FC = () => {
         `${factorName(factor)} ಈ ಪ್ರದೇಶ ಮತ್ತು ಸಮಯದ ಅಂಕವನ್ನು ಸುಮಾರು ${factor.impactPoints} ಅಂಕ ${factor.direction === "raises" ? "ಹೆಚ್ಚಿಸಿದೆ" : "ಕಡಿಮೆ ಮಾಡಿದೆ"}.`,
       ))
     : [
-    tr(`${hotspot.nearbyCases} geocoded FIRs within 1.5 km of this area centre`, `ಈ ಪ್ರದೇಶದ ಕೇಂದ್ರದ 1.5 ಕಿ.ಮೀ ಒಳಗೆ ${hotspot.nearbyCases} ಜಿಯೋ-ಕೋಡ್ ಮಾಡಿದ ಎಫ್‌ಐಆರ್‌ಗಳು`),
-    tr(`${hotspot.recentCases} nearby FIRs recorded in the latest 30-day data window`, `ಇತ್ತೀಚಿನ 30 ದಿನಗಳ ದತ್ತಾಂಶ ಅವಧಿಯಲ್ಲಿ ${hotspot.recentCases} ಹತ್ತಿರದ ಎಫ್‌ಐಆರ್‌ಗಳು ದಾಖಲಾಗಿವೆ`),
-    hotspot.trend > 0
-      ? tr(`Seven-day incident trend increased ${hotspot.trend}%`, `ಏಳು ದಿನಗಳ ಘಟನೆ ಪ್ರವೃತ್ತಿ ${hotspot.trend}% ಹೆಚ್ಚಾಗಿದೆ`)
-      : tr(`Seven-day incident trend is ${Math.abs(hotspot.trend)}% lower or unchanged`, `ಏಳು ದಿನಗಳ ಘಟನೆ ಪ್ರವೃತ್ತಿ ${Math.abs(hotspot.trend)}% ಕಡಿಮೆ ಅಥವಾ ಬದಲಾಗಿಲ್ಲ`),
+      tr(`${hotspot.nearbyCases} geocoded FIRs within 1.5 km of this area centre`, `ಈ ಪ್ರದೇಶದ ಕೇಂದ್ರದ 1.5 ಕಿ.ಮೀ ಒಳಗೆ ${hotspot.nearbyCases} ಜಿಯೋ-ಕೋಡ್ ಮಾಡಿದ ಎಫ್‌ಐಆರ್‌ಗಳು`),
+      tr(`${hotspot.recentCases} nearby FIRs recorded in the latest 30-day data window`, `ಇತ್ತೀಚಿನ 30 ದಿನಗಳ ದತ್ತಾಂಶ ಅವಧಿಯಲ್ಲಿ ${hotspot.recentCases} ಹತ್ತಿರದ ಎಫ್‌ಐಆರ್‌ಗಳು ದಾಖಲಾಗಿವೆ`),
+      hotspot.trend > 0
+        ? tr(`Seven-day incident trend increased ${hotspot.trend}%`, `ಏಳು ದಿನಗಳ ಘಟನೆ ಪ್ರವೃತ್ತಿ ${hotspot.trend}% ಹೆಚ್ಚಾಗಿದೆ`)
+        : tr(`Seven-day incident trend is ${Math.abs(hotspot.trend)}% lower or unchanged`, `ಏಳು ದಿನಗಳ ಘಟನೆ ಪ್ರವೃತ್ತಿ ${Math.abs(hotspot.trend)}% ಕಡಿಮೆ ಅಥವಾ ಬದಲಾಗಿಲ್ಲ`),
     ];
 
   return (
@@ -292,7 +292,7 @@ const CrimeIntelligence: React.FC = () => {
             {selectedForecast ? <div className="forecast-confidence" role="status">
               <div><span>{tr("BACK-TEST ERROR BAND", "ಹಿಂದಿನ-ಪರೀಕ್ಷಾ ದೋಷದ ವ್ಯಾಪ್ತಿ")}</span><strong>{selectedForecast.lowerBound}%–{selectedForecast.upperBound}%</strong></div>
               <div><span>{tr("CONFIDENCE", "ವಿಶ್ವಾಸ")}</span><strong>{confidenceLabel}</strong></div>
-              <p>{tr("Range comes from errors in newer back-test periods. For this area and selected time only—never a prediction about a person.", "ಹೊಸ ಹಿಂದಿನ-ಪರೀಕ್ಷಾ ಅವಧಿಗಳ ದೋಷಗಳಿಂದ ಈ ವ್ಯಾಪ್ತಿ ಬರುತ್ತದೆ. ಈ ಪ್ರದೇಶ ಮತ್ತು ಆಯ್ದ ಸಮಯಕ್ಕೆ ಮಾತ್ರ—ಎಂದಿಗೂ ವ್ಯಕ್ತಿಯ ಕುರಿತ ಮುನ್ಸೂಚನೆಯಲ್ಲ.")}</p>
+              <p>{tr("Range comes from errors in newer back-test periods. For this area and selected time only-never a prediction about a person.", "ಹೊಸ ಹಿಂದಿನ-ಪರೀಕ್ಷಾ ಅವಧಿಗಳ ದೋಷಗಳಿಂದ ಈ ವ್ಯಾಪ್ತಿ ಬರುತ್ತದೆ. ಈ ಪ್ರದೇಶ ಮತ್ತು ಆಯ್ದ ಸಮಯಕ್ಕೆ ಮಾತ್ರ-ಎಂದಿಗೂ ವ್ಯಕ್ತಿಯ ಕುರಿತ ಮುನ್ಸೂಚನೆಯಲ್ಲ.")}</p>
             </div> : null}
             <div className="prediction-primary"><span>{tr("Dominant recorded pattern", "ಪ್ರಮುಖ ದಾಖಲಾದ ಮಾದರಿ")}</span><strong>{displayKnownValue(selected.category, language)}</strong><div><span>{tr("Peak recorded window", "ಗರಿಷ್ಠ ದಾಖಲಾದ ಅವಧಿ")}</span><b>{displayKnownValue(selected.peakWindow, language)}</b></div></div>
             <div className="prediction-metrics"><div><span>{tr("Nearby FIRs", "ಹತ್ತಿರದ ಎಫ್‌ಐಆರ್‌ಗಳು")}</span><strong>{selected.nearbyCases}</strong></div><div><span>{tr("7-day trend", "7 ದಿನಗಳ ಪ್ರವೃತ್ತಿ")}</span><strong className={selected.trend > 0 ? "trend-up" : ""}>{selected.trend > 0 ? "↗" : "↘"} {Math.abs(selected.trend)}%</strong></div></div>
@@ -314,33 +314,33 @@ const CrimeIntelligence: React.FC = () => {
           <strong className="validation-status">{tr("✓ Passed · ready to use", "✓ ಉತ್ತೀರ್ಣ · ಬಳಸಲು ಸಿದ್ಧ")}</strong>
         </header>
 
-          <p className="validation-message">{tr(`On later, unseen FIR periods, this model scored ${evaluation.accuracyUplift} point${evaluation.accuracyUplift === 1 ? "" : "s"} above the historical benchmark and produced more reliable probabilities.`, `ನಂತರದ, ಕಾಣದ ಎಫ್‌ಐಆರ್ ಅವಧಿಗಳಲ್ಲಿ ಈ ಮಾದರಿಯು ಐತಿಹಾಸಿಕ ಮಾನದಂಡಕ್ಕಿಂತ ${evaluation.accuracyUplift} ಅಂಕ ಹೆಚ್ಚು ಗಳಿಸಿದೆ ಮತ್ತು ಹೆಚ್ಚು ವಿಶ್ವಾಸಾರ್ಹ ಸಂಭವನೀಯತೆಗಳನ್ನು ನೀಡಿದೆ.`)}</p>
-          <div className="validation-metrics">
-            <div><span>{tr("Balanced accuracy", "ಸಮತೋಲಿತ ನಿಖರತೆ")}</span><strong>{evaluation.balancedAccuracy}%</strong><small>{tr("Balances detected and missed activity", "ಗುರುತಿಸಿದ ಮತ್ತು ತಪ್ಪಿಸಿದ ಚಟುವಟಿಕೆಯನ್ನು ಸಮತೋಲನಗೊಳಿಸುತ್ತದೆ")}</small></div>
-            <div><span>{tr("Historical benchmark", "ಐತಿಹಾಸಿಕ ಮಾನದಂಡ")}</span><strong>{evaluation.baselineBalancedAccuracy}%</strong><small>{tr("Same period and density comparison", "ಅದೇ ಅವಧಿ ಮತ್ತು ಸಾಂದ್ರತೆಯ ಹೋಲಿಕೆ")}</small></div>
-            <div><span>{tr("Improvement", "ಸುಧಾರಣೆ")}</span><strong className={evaluation.accuracyUplift > 0 ? "is-positive" : "is-negative"}>{evaluation.accuracyUplift > 0 ? "+" : ""}{evaluation.accuracyUplift} {tr("points", "ಅಂಕಗಳು")}</strong><small>{tr("Model minus baseline", "ಮಾದರಿ ಮೈನಸ್ ಮೂಲಮಟ್ಟ")}</small></div>
-            <div><span>{tr("Weekly accuracy range", "ವಾರದ ನಿಖರತೆಯ ವ್ಯಾಪ್ತಿ")}</span><strong>{evaluation.balancedAccuracyLow}%–{evaluation.balancedAccuracyHigh}%</strong><small>{confidenceLabel} {tr("confidence", "ವಿಶ್ವಾಸ")}</small></div>
+        <p className="validation-message">{tr(`On later, unseen FIR periods, this model scored ${evaluation.accuracyUplift} point${evaluation.accuracyUplift === 1 ? "" : "s"} above the historical benchmark and produced more reliable probabilities.`, `ನಂತರದ, ಕಾಣದ ಎಫ್‌ಐಆರ್ ಅವಧಿಗಳಲ್ಲಿ ಈ ಮಾದರಿಯು ಐತಿಹಾಸಿಕ ಮಾನದಂಡಕ್ಕಿಂತ ${evaluation.accuracyUplift} ಅಂಕ ಹೆಚ್ಚು ಗಳಿಸಿದೆ ಮತ್ತು ಹೆಚ್ಚು ವಿಶ್ವಾಸಾರ್ಹ ಸಂಭವನೀಯತೆಗಳನ್ನು ನೀಡಿದೆ.`)}</p>
+        <div className="validation-metrics">
+          <div><span>{tr("Balanced accuracy", "ಸಮತೋಲಿತ ನಿಖರತೆ")}</span><strong>{evaluation.balancedAccuracy}%</strong><small>{tr("Balances detected and missed activity", "ಗುರುತಿಸಿದ ಮತ್ತು ತಪ್ಪಿಸಿದ ಚಟುವಟಿಕೆಯನ್ನು ಸಮತೋಲನಗೊಳಿಸುತ್ತದೆ")}</small></div>
+          <div><span>{tr("Historical benchmark", "ಐತಿಹಾಸಿಕ ಮಾನದಂಡ")}</span><strong>{evaluation.baselineBalancedAccuracy}%</strong><small>{tr("Same period and density comparison", "ಅದೇ ಅವಧಿ ಮತ್ತು ಸಾಂದ್ರತೆಯ ಹೋಲಿಕೆ")}</small></div>
+          <div><span>{tr("Improvement", "ಸುಧಾರಣೆ")}</span><strong className={evaluation.accuracyUplift > 0 ? "is-positive" : "is-negative"}>{evaluation.accuracyUplift > 0 ? "+" : ""}{evaluation.accuracyUplift} {tr("points", "ಅಂಕಗಳು")}</strong><small>{tr("Model minus baseline", "ಮಾದರಿ ಮೈನಸ್ ಮೂಲಮಟ್ಟ")}</small></div>
+          <div><span>{tr("Weekly accuracy range", "ವಾರದ ನಿಖರತೆಯ ವ್ಯಾಪ್ತಿ")}</span><strong>{evaluation.balancedAccuracyLow}%–{evaluation.balancedAccuracyHigh}%</strong><small>{confidenceLabel} {tr("confidence", "ವಿಶ್ವಾಸ")}</small></div>
+        </div>
+        <details className="validation-details">
+          <summary>{tr("See back-test details", "ಹಿಂದಿನ ಪರೀಕ್ಷೆಯ ವಿವರಗಳನ್ನು ನೋಡಿ")}</summary>
+          <div>
+            <dl>
+              <div><dt>{tr("Older area-time samples", "ಹಳೆಯ ಪ್ರದೇಶ-ಸಮಯ ಮಾದರಿಗಳು")}</dt><dd>{evaluation.trainingSamples.toLocaleString(locale)}</dd></div>
+              <div><dt>{tr("Newer area-time samples", "ಹೊಸ ಪ್ರದೇಶ-ಸಮಯ ಮಾದರಿಗಳು")}</dt><dd>{evaluation.validationSamples.toLocaleString(locale)}</dd></div>
+              <div><dt>{tr("Held-out weekly windows", "ಪ್ರತ್ಯೇಕಿಸಿದ ವಾರದ ಅವಧಿಗಳು")}</dt><dd>{evaluation.backtestWindows}</dd></div>
+              <div><dt>{tr("Newer test period", "ಹೊಸ ಪರೀಕ್ಷಾ ಅವಧಿ")}</dt><dd>{validationRange}</dd></div>
+              <div><dt>{tr("Precision", "ನಿಖರತೆ (ಪ್ರಿಸಿಷನ್)")}</dt><dd>{evaluation.precision}%</dd></div>
+              <div><dt>{tr("Precision lift", "ಪ್ರಿಸಿಷನ್ ಏರಿಕೆ")}</dt><dd>{evaluation.precisionLift}× {tr("vs test event rate", "ಪರೀಕ್ಷಾ ಘಟನೆ ದರಕ್ಕೆ ಹೋಲಿಕೆ")}</dd></div>
+              <div><dt>{tr("F1 score", "ಎಫ್‌1 ಅಂಕ")}</dt><dd>{evaluation.f1Score}%</dd></div>
+              <div><dt>{tr("Recall", "ರಿಕಾಲ್")}</dt><dd>{evaluation.recall}%</dd></div>
+              <div><dt>{tr("Specificity", "ಸ್ಪೆಸಿಫಿಸಿಟಿ")}</dt><dd>{evaluation.specificity}%</dd></div>
+              <div><dt>{tr("Operational alert threshold", "ಕಾರ್ಯಾಚರಣೆಯ ಎಚ್ಚರಿಕೆ ಮಿತಿ")}</dt><dd>{evaluation.alertThreshold}%</dd></div>
+              <div><dt>{tr("Newer-period event rate", "ಹೊಸ ಅವಧಿಯ ಘಟನೆ ದರ")}</dt><dd>{evaluation.validationEventRate}%</dd></div>
+              <div><dt>{tr("Probability error (lower is better)", "ಸಂಭವನೀಯತೆ ದೋಷ (ಕಡಿಮೆ ಉತ್ತಮ)")}</dt><dd>{evaluation.brierScore} · {tr("baseline", "ಮೂಲಮಟ್ಟ")} {evaluation.baselineBrierScore}</dd></div>
+            </dl>
+            <p>{tr(`These are area × time × forecast-window samples generated from authorized FIR history-not additional FIR records. There is no time leakage: every training outcome ended before testing began. The alert threshold is selected only on older training periods to reduce false alerts while retaining useful recall. The accuracy range resamples the ${evaluation.backtestWindows} held-out weekly periods, keeping related samples together. The map's error band gives incident and no-incident errors equal weight so common quiet periods cannot make uncertainty look artificially small.`, `ಇವು ಅಧಿಕೃತ ಎಫ್‌ಐಆರ್ ಇತಿಹಾಸದಿಂದ ರಚಿಸಲಾದ ಪ್ರದೇಶ × ಸಮಯ × ಮುನ್ಸೂಚನೆ-ಅವಧಿಯ ಮಾದರಿಗಳು-ಹೆಚ್ಚುವರಿ ಎಫ್‌ಐಆರ್ ದಾಖಲೆಗಳಲ್ಲ. ಸಮಯ ಸೋರಿಕೆ ಇಲ್ಲ: ಪರೀಕ್ಷೆ ಆರಂಭವಾಗುವ ಮೊದಲು ಪ್ರತಿಯೊಂದು ತರಬೇತಿ ಫಲಿತಾಂಶವೂ ಅಂತ್ಯಗೊಂಡಿದೆ. ತಪ್ಪು ಎಚ್ಚರಿಕೆಗಳನ್ನು ಕಡಿಮೆ ಮಾಡಿ ಉಪಯುಕ್ತ ರಿಕಾಲ್ ಉಳಿಸಲು ಎಚ್ಚರಿಕೆ ಮಿತಿಯನ್ನು ಹಳೆಯ ತರಬೇತಿ ಅವಧಿಗಳಲ್ಲಿ ಮಾತ್ರ ಆಯ್ಕೆ ಮಾಡಲಾಗಿದೆ. ನಿಖರತೆಯ ವ್ಯಾಪ್ತಿಯು ಸಂಬಂಧಿತ ಮಾದರಿಗಳನ್ನು ಒಟ್ಟಿಗೆ ಇಟ್ಟು ${evaluation.backtestWindows} ಪ್ರತ್ಯೇಕಿಸಿದ ವಾರದ ಅವಧಿಗಳನ್ನು ಮರುಮಾದರಿಗೊಳಿಸುತ್ತದೆ. ಸಾಮಾನ್ಯ ಶಾಂತ ಅವಧಿಗಳು ಅನಿಶ್ಚಿತತೆಯನ್ನು ಕೃತಕವಾಗಿ ಕಡಿಮೆ ತೋರಿಸದಂತೆ ನಕ್ಷೆಯ ದೋಷದ ವ್ಯಾಪ್ತಿಯು ಘಟನೆ ಮತ್ತು ಘಟನೆ-ಇಲ್ಲದ ದೋಷಗಳಿಗೆ ಸಮಾನ ತೂಕ ನೀಡುತ್ತದೆ.`)}</p>
           </div>
-          <details className="validation-details">
-            <summary>{tr("See back-test details", "ಹಿಂದಿನ ಪರೀಕ್ಷೆಯ ವಿವರಗಳನ್ನು ನೋಡಿ")}</summary>
-            <div>
-              <dl>
-                <div><dt>{tr("Older area-time samples", "ಹಳೆಯ ಪ್ರದೇಶ-ಸಮಯ ಮಾದರಿಗಳು")}</dt><dd>{evaluation.trainingSamples.toLocaleString(locale)}</dd></div>
-                <div><dt>{tr("Newer area-time samples", "ಹೊಸ ಪ್ರದೇಶ-ಸಮಯ ಮಾದರಿಗಳು")}</dt><dd>{evaluation.validationSamples.toLocaleString(locale)}</dd></div>
-                <div><dt>{tr("Held-out weekly windows", "ಪ್ರತ್ಯೇಕಿಸಿದ ವಾರದ ಅವಧಿಗಳು")}</dt><dd>{evaluation.backtestWindows}</dd></div>
-                <div><dt>{tr("Newer test period", "ಹೊಸ ಪರೀಕ್ಷಾ ಅವಧಿ")}</dt><dd>{validationRange}</dd></div>
-                <div><dt>{tr("Precision", "ನಿಖರತೆ (ಪ್ರಿಸಿಷನ್)")}</dt><dd>{evaluation.precision}%</dd></div>
-                <div><dt>{tr("Precision lift", "ಪ್ರಿಸಿಷನ್ ಏರಿಕೆ")}</dt><dd>{evaluation.precisionLift}× {tr("vs test event rate", "ಪರೀಕ್ಷಾ ಘಟನೆ ದರಕ್ಕೆ ಹೋಲಿಕೆ")}</dd></div>
-                <div><dt>{tr("F1 score", "ಎಫ್‌1 ಅಂಕ")}</dt><dd>{evaluation.f1Score}%</dd></div>
-                <div><dt>{tr("Recall", "ರಿಕಾಲ್")}</dt><dd>{evaluation.recall}%</dd></div>
-                <div><dt>{tr("Specificity", "ಸ್ಪೆಸಿಫಿಸಿಟಿ")}</dt><dd>{evaluation.specificity}%</dd></div>
-                <div><dt>{tr("Operational alert threshold", "ಕಾರ್ಯಾಚರಣೆಯ ಎಚ್ಚರಿಕೆ ಮಿತಿ")}</dt><dd>{evaluation.alertThreshold}%</dd></div>
-                <div><dt>{tr("Newer-period event rate", "ಹೊಸ ಅವಧಿಯ ಘಟನೆ ದರ")}</dt><dd>{evaluation.validationEventRate}%</dd></div>
-                <div><dt>{tr("Probability error (lower is better)", "ಸಂಭವನೀಯತೆ ದೋಷ (ಕಡಿಮೆ ಉತ್ತಮ)")}</dt><dd>{evaluation.brierScore} · {tr("baseline", "ಮೂಲಮಟ್ಟ")} {evaluation.baselineBrierScore}</dd></div>
-              </dl>
-              <p>{tr(`These are area × time × forecast-window samples generated from authorized FIR history—not additional FIR records. There is no time leakage: every training outcome ended before testing began. The alert threshold is selected only on older training periods to reduce false alerts while retaining useful recall. The accuracy range resamples the ${evaluation.backtestWindows} held-out weekly periods, keeping related samples together. The map's error band gives incident and no-incident errors equal weight so common quiet periods cannot make uncertainty look artificially small.`, `ಇವು ಅಧಿಕೃತ ಎಫ್‌ಐಆರ್ ಇತಿಹಾಸದಿಂದ ರಚಿಸಲಾದ ಪ್ರದೇಶ × ಸಮಯ × ಮುನ್ಸೂಚನೆ-ಅವಧಿಯ ಮಾದರಿಗಳು—ಹೆಚ್ಚುವರಿ ಎಫ್‌ಐಆರ್ ದಾಖಲೆಗಳಲ್ಲ. ಸಮಯ ಸೋರಿಕೆ ಇಲ್ಲ: ಪರೀಕ್ಷೆ ಆರಂಭವಾಗುವ ಮೊದಲು ಪ್ರತಿಯೊಂದು ತರಬೇತಿ ಫಲಿತಾಂಶವೂ ಅಂತ್ಯಗೊಂಡಿದೆ. ತಪ್ಪು ಎಚ್ಚರಿಕೆಗಳನ್ನು ಕಡಿಮೆ ಮಾಡಿ ಉಪಯುಕ್ತ ರಿಕಾಲ್ ಉಳಿಸಲು ಎಚ್ಚರಿಕೆ ಮಿತಿಯನ್ನು ಹಳೆಯ ತರಬೇತಿ ಅವಧಿಗಳಲ್ಲಿ ಮಾತ್ರ ಆಯ್ಕೆ ಮಾಡಲಾಗಿದೆ. ನಿಖರತೆಯ ವ್ಯಾಪ್ತಿಯು ಸಂಬಂಧಿತ ಮಾದರಿಗಳನ್ನು ಒಟ್ಟಿಗೆ ಇಟ್ಟು ${evaluation.backtestWindows} ಪ್ರತ್ಯೇಕಿಸಿದ ವಾರದ ಅವಧಿಗಳನ್ನು ಮರುಮಾದರಿಗೊಳಿಸುತ್ತದೆ. ಸಾಮಾನ್ಯ ಶಾಂತ ಅವಧಿಗಳು ಅನಿಶ್ಚಿತತೆಯನ್ನು ಕೃತಕವಾಗಿ ಕಡಿಮೆ ತೋರಿಸದಂತೆ ನಕ್ಷೆಯ ದೋಷದ ವ್ಯಾಪ್ತಿಯು ಘಟನೆ ಮತ್ತು ಘಟನೆ-ಇಲ್ಲದ ದೋಷಗಳಿಗೆ ಸಮಾನ ತೂಕ ನೀಡುತ್ತದೆ.`)}</p>
-            </div>
-          </details>
+        </details>
       </section> : null}
 
       {patrolConfirmOpen && selected && (

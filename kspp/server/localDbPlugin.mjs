@@ -309,7 +309,7 @@ export async function handleApi(req, res, next) {
   const url = new URL(req.url || "/", "http://local-db");
   let auditSession = null;
   let auditFailureContext = null;
-  
+
   // Pass endpoints owned by later plugins through instead of returning the
   // generic "Unknown API endpoint" response before their handlers can run.
   const delegatedEndpoints = new Set([
@@ -440,18 +440,18 @@ export async function handleApi(req, res, next) {
           sendError(res, 404, "Case not found.");
           return;
         }
-        // Return ONLY safe, limited public fields — no witness, accused, or investigation details
+        // Return ONLY safe, limited public fields - no witness, accused, or investigation details
         sendJson(res, 200, {
           ok: true,
           pass: {
-            CaseMasterID:        String(found.CaseMasterID || ""),
-            CrimeNo:             String(found.CrimeNo || ""),
-            CaseNo:              String(found.CaseNo || ""),
+            CaseMasterID: String(found.CaseMasterID || ""),
+            CrimeNo: String(found.CrimeNo || ""),
+            CaseNo: String(found.CaseNo || ""),
             CrimeRegisteredDate: String(found.CrimeRegisteredDate || ""),
-            Officer:             String(found.Officer || "").split(";")[0].trim(),
-            Status:              String(found.Status || ""),
-            ChargesheetStatus:   String(found.ChargesheetStatus || ""),
-            PoliceStation:       String(found.PoliceStation || ""),
+            Officer: String(found.Officer || "").split(";")[0].trim(),
+            Status: String(found.Status || ""),
+            ChargesheetStatus: String(found.ChargesheetStatus || ""),
+            PoliceStation: String(found.PoliceStation || ""),
           },
         });
       } catch (err) {
@@ -464,7 +464,7 @@ export async function handleApi(req, res, next) {
     const session = requireSession(req, res);
     if (!session) return;
     auditSession = session;
-    
+
     // Attach session to request for todo operations
     attachSessionToRequest(req, session);
 
@@ -854,25 +854,25 @@ export async function handleApi(req, res, next) {
         if (!consolidatedSheetId) {
           throw new Error("GOOGLE_CONSOLIDATED_SHEET_ID is not configured.");
         }
-        
+
         await execFileAsync(
           process.env.PYTHON_EXECUTABLE || "python",
           [exportScript, "--output", tempCsv],
           { env },
         );
-        
+
         if (fs.existsSync(tempCsv)) {
           const csvData = fs.readFileSync(tempCsv, "utf8");
           const records = parse(csvData, { columns: true, skip_empty_lines: true });
           if (records.length > 0) {
             const headers = Object.keys(records[0]);
             const tab = process.env.GOOGLE_CONSOLIDATED_TAB || "Consolidated_Cases";
-            
+
             await writeTable(consolidatedSheetId, tab, headers, records);
           }
           fs.unlinkSync(tempCsv); // Cleanup
         }
-        
+
         const { headers, rows } = await casesFromGoogle();
         sendJson(res, 200, {
           ok: true,
@@ -1002,7 +1002,7 @@ export async function handleApi(req, res, next) {
       const payload = await readBody(req);
       const { headers, rows: records } = await casesFromGoogle();
       const fields = payload.case || payload.fields || payload;
-      
+
       const key = caseMatch ? caseMatch[1] : "";
       auditFailureContext = {
         action: req.method === "POST" ? "FIR_CREATED" : "FIR_UPDATED",
@@ -1011,7 +1011,7 @@ export async function handleApi(req, res, next) {
           key || fields.CrimeNo || fields.CaseNo || fields.CaseMasterID,
         ),
       };
-      
+
       const knownFields = {};
       for (const [k, value] of Object.entries(fields)) {
         knownFields[k] = normalizeValue(value);
@@ -1024,7 +1024,7 @@ export async function handleApi(req, res, next) {
         sendError(res, 403, "You do not have permission to update this case.");
         return;
       }
-      
+
       const record = {};
       headers.forEach((header) => {
         record[header] = created ? "" : records[index][header] || "";
@@ -1065,7 +1065,7 @@ export async function handleApi(req, res, next) {
         sendError(res, 400, "Drafts are saved securely in the browser. Remove skipSync to submit the FIR.");
         return;
       }
-      
+
       // Direct Google Sheets Upsert with explicit logging
       console.log(`[Google Sheets Write] Upserting record for CaseMasterID: ${record.CaseMasterID}...`);
       try {
@@ -1075,11 +1075,11 @@ export async function handleApi(req, res, next) {
         console.error(`[Google Sheets Write Error] ❌ Failed to write to Google Sheets:`, googleErr);
         throw new Error(`Google Sheets API write error: ${googleErr.message || String(googleErr)}`);
       }
-      
+
       const statusChanged =
         previousRecord &&
         normalizeValue(previousRecord.Status).toLocaleLowerCase() !==
-          normalizeValue(record.Status).toLocaleLowerCase();
+        normalizeValue(record.Status).toLocaleLowerCase();
       const notificationEvent = created
         ? "new_fir"
         : statusChanged
@@ -1138,8 +1138,8 @@ export async function handleApi(req, res, next) {
           changedFields: created
             ? Object.keys(knownFields)
             : Object.keys(knownFields).filter(
-                (field) => normalizeValue(previousRecord?.[field]) !== normalizeValue(record[field]),
-              ),
+              (field) => normalizeValue(previousRecord?.[field]) !== normalizeValue(record[field]),
+            ),
           policeStation: record.PoliceStation,
           status: record.Status,
         },
@@ -1197,7 +1197,7 @@ export async function handleApi(req, res, next) {
     }
 
     // Map known backend failure patterns to more specific, user-friendly messages
-    const message = (function() {
+    const message = (function () {
       const msg = String(error?.message || "").toLowerCase();
       if (msg.includes('google authentication failed') || msg.includes('google sheets request failed') || msg.includes('failed to write updated table')) {
         return 'Backend data store error: failed to communicate with Google Sheets. Please check server configuration.';

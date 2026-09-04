@@ -1,16 +1,16 @@
 /**
- * taskEngine.ts — Auto-generated task engine for the KSPP Officer To-Do List.
+ * taskEngine.ts - Auto-generated task engine for the KSPP Officer To-Do List.
  *
  * Pure functions only. No React, no API calls, no side-effects.
  * Tasks are re-derived fresh from FIR data every time generateTasksForOfficer()
- * is called — they are never persisted to any store.
+ * is called - they are never persisted to any store.
  *
  * Rule reference:
- *   R1 — Investigate:     status === "Under Investigation"
- *   R2 — Court:           CourtDate within 7 days  (opt-in field — add "CourtDate"
+ *   R1 - Investigate:     status === "Under Investigation"
+ *   R2 - Court:           CourtDate within 7 days  (opt-in field - add "CourtDate"
  *                         column to your Google Sheet to enable this rule)
- *   R3 — Stalled:         daysSince(CrimeRegisteredDate) > 30 and not closed
- *   R4 — Chargesheet:     CrPC deadline (90d heinous / 60d non-heinous from
+ *   R3 - Stalled:         daysSince(CrimeRegisteredDate) > 30 and not closed
+ *   R4 - Chargesheet:     CrPC deadline (90d heinous / 60d non-heinous from
  *                         CrimeRegisteredDate) within 5 days, chargesheet not filed
  */
 
@@ -22,7 +22,7 @@ export type TaskPriority = "low" | "medium" | "high" | "critical";
 export type TaskCategory = "investigation" | "court" | "followup" | "chargesheet";
 
 export type GeneratedTask = {
-  /** Stable ID derived from FIR number + rule — never random. */
+  /** Stable ID derived from FIR number + rule - never random. */
   id: string;
   title: string;
   priority: TaskPriority;
@@ -69,15 +69,15 @@ export function displayGeneratedTaskContext(task: GeneratedTask, language: "en" 
   const numbers = task.dueContext.match(/\d+/g) || [];
   if (task.category === "investigation") return "ಸ್ಥಿತಿ: ತನಿಖೆಯಲ್ಲಿದೆ";
   if (task.category === "court") {
-    if (/TODAY/i.test(task.dueContext)) return "ನ್ಯಾಯಾಲಯದ ದಿನಾಂಕ ಇಂದು — ತಕ್ಷಣದ ಕ್ರಮ ಅಗತ್ಯ";
+    if (/TODAY/i.test(task.dueContext)) return "ನ್ಯಾಯಾಲಯದ ದಿನಾಂಕ ಇಂದು - ತಕ್ಷಣದ ಕ್ರಮ ಅಗತ್ಯ";
     if (/TOMORROW/i.test(task.dueContext)) return "ನ್ಯಾಯಾಲಯ ಹಾಜರಾತಿ ನಾಳೆ";
-    if (/was/i.test(task.dueContext)) return `ನ್ಯಾಯಾಲಯದ ದಿನಾಂಕ ${numbers[0] || 0} ದಿನಗಳ ಹಿಂದೆ ಇತ್ತು — ತಕ್ಷಣ ಅನುಸರಿಸಿ`;
+    if (/was/i.test(task.dueContext)) return `ನ್ಯಾಯಾಲಯದ ದಿನಾಂಕ ${numbers[0] || 0} ದಿನಗಳ ಹಿಂದೆ ಇತ್ತು - ತಕ್ಷಣ ಅನುಸರಿಸಿ`;
     return `${numbers[0] || 0} ದಿನಗಳಲ್ಲಿ ನ್ಯಾಯಾಲಯ ಹಾಜರಾತಿ`;
   }
-  if (task.category === "followup") return `${numbers[0] || 0} ದಿನಗಳ ಹಿಂದೆ ಸಲ್ಲಿಸಲಾಗಿದೆ — ಇನ್ನೂ ತೆರೆದಿದೆ`;
-  if (/OVERDUE/i.test(task.dueContext)) return `ಆರೋಪಪಟ್ಟಿ ${numbers[0] || 0} ದಿನ ವಿಳಂಬವಾಗಿದೆ — CrPC ಸೆ.167 ಉಲ್ಲಂಘನೆ`;
+  if (task.category === "followup") return `${numbers[0] || 0} ದಿನಗಳ ಹಿಂದೆ ಸಲ್ಲಿಸಲಾಗಿದೆ - ಇನ್ನೂ ತೆರೆದಿದೆ`;
+  if (/OVERDUE/i.test(task.dueContext)) return `ಆರೋಪಪಟ್ಟಿ ${numbers[0] || 0} ದಿನ ವಿಳಂಬವಾಗಿದೆ - CrPC ಸೆ.167 ಉಲ್ಲಂಘನೆ`;
   if (/TODAY/i.test(task.dueContext)) return `ಆರೋಪಪಟ್ಟಿ ಇಂದು ಸಲ್ಲಿಸಬೇಕು (${numbers[0] || 0} ದಿನಗಳ CrPC ಮಿತಿ)`;
-  return `${numbers[0] || 0} ದಿನಗಳಲ್ಲಿ ಆರೋಪಪಟ್ಟಿ ಸಲ್ಲಿಸಬೇಕು — ${numbers[1] || 0} ದಿನಗಳ CrPC ಮಿತಿ`;
+  return `${numbers[0] || 0} ದಿನಗಳಲ್ಲಿ ಆರೋಪಪಟ್ಟಿ ಸಲ್ಲಿಸಬೇಕು - ${numbers[1] || 0} ದಿನಗಳ CrPC ಮಿತಿ`;
 }
 
 // ─── Date Utilities ───────────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ function isClosed(status: string): boolean {
 // ─── Four Rules ───────────────────────────────────────────────────────────────
 
 /**
- * R1 — Investigate
+ * R1 - Investigate
  * Fires when status is "Under Investigation".
  */
 function ruleInvestigate(fir: FirRecord): GeneratedTask | null {
@@ -188,9 +188,9 @@ function ruleInvestigate(fir: FirRecord): GeneratedTask | null {
 }
 
 /**
- * R2 — Court Appearance
+ * R2 - Court Appearance
  * Fires when raw["CourtDate"] is within 7 days.
- * CourtDate is an opt-in column — add it to your Google Sheet to enable this rule.
+ * CourtDate is an opt-in column - add it to your Google Sheet to enable this rule.
  * Priority escalates to "critical" if within 2 days.
  */
 function ruleCourt(fir: FirRecord, today: Date): GeneratedTask | null {
@@ -205,16 +205,16 @@ function ruleCourt(fir: FirRecord, today: Date): GeneratedTask | null {
   const priority: TaskPriority = remaining <= 2 ? "critical" : "high";
   const dueContext =
     remaining < 0
-      ? `Court date was ${Math.abs(remaining)} day(s) ago — follow up immediately`
+      ? `Court date was ${Math.abs(remaining)} day(s) ago - follow up immediately`
       : remaining === 0
-      ? "Court date is TODAY — immediate action required"
-      : remaining === 1
-      ? "Court appearance TOMORROW"
-      : `Court appearance in ${remaining} days`;
+        ? "Court date is TODAY - immediate action required"
+        : remaining === 1
+          ? "Court appearance TOMORROW"
+          : `Court appearance in ${remaining} days`;
 
   return {
     id: makeId(num, "court"),
-    title: `Prepare for court appearance — FIR ${displayNum}`,
+    title: `Prepare for court appearance - FIR ${displayNum}`,
     priority,
     dueContext,
     linkedFirNumber: num,
@@ -225,7 +225,7 @@ function ruleCourt(fir: FirRecord, today: Date): GeneratedTask | null {
 }
 
 /**
- * R3 — Stalled Investigation Follow-Up
+ * R3 - Stalled Investigation Follow-Up
  * Fires when CrimeRegisteredDate is > 30 days ago and the case is not closed.
  */
 function ruleStalled(fir: FirRecord, today: Date): GeneratedTask | null {
@@ -237,9 +237,9 @@ function ruleStalled(fir: FirRecord, today: Date): GeneratedTask | null {
   const displayNum = displayIdentifier(num);
   return {
     id: makeId(num, "stalled"),
-    title: `Follow up on stalled investigation — FIR ${displayNum}`,
+    title: `Follow up on stalled investigation - FIR ${displayNum}`,
     priority: "high",
-    dueContext: `Filed ${since} days ago — still open (${fir.status})`,
+    dueContext: `Filed ${since} days ago - still open (${fir.status})`,
     linkedFirNumber: num,
     displayFirNumber: displayNum,
     category: "followup",
@@ -247,7 +247,7 @@ function ruleStalled(fir: FirRecord, today: Date): GeneratedTask | null {
 }
 
 /**
- * R4 — Chargesheet Deadline
+ * R4 - Chargesheet Deadline
  * CrPC S.167: 90 days for heinous offences, 60 days for non-heinous.
  * Fires when the deadline is within 5 days and ChargesheetStatus !== "Filed".
  */
@@ -278,14 +278,14 @@ function ruleChargesheet(fir: FirRecord, today: Date): GeneratedTask | null {
   const priority: TaskPriority = "critical";
   const dueContext =
     remaining < 0
-      ? `Chargesheet OVERDUE by ${Math.abs(remaining)} day(s) — CrPC S.167 breach`
+      ? `Chargesheet OVERDUE by ${Math.abs(remaining)} day(s) - CrPC S.167 breach`
       : remaining === 0
-      ? `Chargesheet due TODAY (${limitDays}-day CrPC limit)`
-      : `Chargesheet due in ${remaining} day(s) — ${limitDays}-day CrPC limit`;
+        ? `Chargesheet due TODAY (${limitDays}-day CrPC limit)`
+        : `Chargesheet due in ${remaining} day(s) - ${limitDays}-day CrPC limit`;
 
   return {
     id: makeId(num, "chargesheet"),
-    title: `File chargesheet — FIR ${displayNum}`,
+    title: `File chargesheet - FIR ${displayNum}`,
     priority,
     dueContext,
     linkedFirNumber: num,
@@ -304,7 +304,7 @@ function ruleChargesheet(fir: FirRecord, today: Date): GeneratedTask | null {
  *                     Matching is case-insensitive and trims whitespace.
  * @param allFirs      All FIR records fetched by useFirRecords().
  * @param today        Current date (injected for testability; default: new Date()).
- * @returns            Stable, sorted list of generated tasks. Always fresh —
+ * @returns            Stable, sorted list of generated tasks. Always fresh -
  *                     call this every render; never cache the result.
  */
 export function generateTasksForOfficer(

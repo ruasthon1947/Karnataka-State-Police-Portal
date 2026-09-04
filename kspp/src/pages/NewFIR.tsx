@@ -183,11 +183,11 @@ const buildPayload = (form: FormState, user?: { employeeId: string } | null): Ca
   payload.VictimNames = joinNames(splitNames(payload.VictimNames));
   payload.AccusedCount = String(splitNames(payload.AccusedNames).length);
   payload.VictimCount = String(splitNames(payload.VictimNames).length);
-  
+
   if (user?.employeeId && !payload.FiledBy) {
     payload.FiledBy = user.employeeId;
   }
-  
+
   return payload;
 };
 
@@ -623,10 +623,10 @@ const NewFIR: React.FC = () => {
         buildPayload(form, user),
         editing ? persistedCaseId || id : undefined,
       );
-      
+
       const nextForm = toForm(result.case);
       const nextKey = caseKey(result.case);
-      
+
       setForm(nextForm);
       setPersistedCaseId(nextKey);
       setLoadedKey(nextKey);
@@ -649,7 +649,7 @@ const NewFIR: React.FC = () => {
       return null;
     }
   };
-  
+
   const goNext = async () => {
     const result = await saveCurrentStep(false);
     if (!result) return;
@@ -670,7 +670,7 @@ const NewFIR: React.FC = () => {
     if (!complaint.trim()) return;
     setAiLoading(true);
     setSaveState({ status: "idle", message: "" });
-    
+
     try {
       const optionFields = [
         "CrimeHead",
@@ -762,21 +762,21 @@ const NewFIR: React.FC = () => {
       }));
 
       setAiReady(true);
-      setSaveState({ 
-        status: "saved", 
+      setSaveState({
+        status: "saved",
         message: tr("AI Assistant extracted the available details. Review every field before saving or submitting.", "ಎಐ ಸಹಾಯಕ ಲಭ್ಯವಿರುವ ವಿವರಗಳನ್ನು ಹೊರತೆಗೆದಿದೆ. ಉಳಿಸುವ ಅಥವಾ ಸಲ್ಲಿಸುವ ಮೊದಲು ಪ್ರತಿ ಕ್ಷೇತ್ರವನ್ನು ಪರಿಶೀಲಿಸಿ.")
       });
     } catch (err: any) {
       console.error("[Autonomous Auto-Fill Failure]:", err);
-      setSaveState({ 
-        status: "error", 
+      setSaveState({
+        status: "error",
         message: tr(`AI Draft extraction error: ${err.message || "Failed to parse JSON format"}. Please review fields manually.`, "ಎಐ ಕರಡು ವಿವರ ಹೊರತೆಗೆಯುವಲ್ಲಿ ದೋಷವಾಗಿದೆ. ದಯವಿಟ್ಟು ಕ್ಷೇತ್ರಗಳನ್ನು ಕೈಯಾರೆ ಪರಿಶೀಲಿಸಿ.")
       });
     } finally {
       setAiLoading(false);
     }
   };
-  
+
   const stationOptions = optionList(options, "PoliceStation");
   const crimeHeadOptions = optionList(options, "CrimeHead");
   const crimeSubHeadOptions = subHeadOptions(options, form.CrimeHead);
@@ -889,7 +889,7 @@ const NewFIR: React.FC = () => {
   if (loading && editing && !existingCase) {
     return <div className="p-6 text-sm text-muted">{tr("Loading case from Google Sheets...", "Google Sheets ನಿಂದ ಪ್ರಕರಣ ಲೋಡ್ ಆಗುತ್ತಿದೆ...")}</div>;
   }
- 
+
   if (error && editing && !existingCase) {
     return <div className="p-6 text-sm text-rose">{error}</div>;
   }
@@ -933,12 +933,11 @@ const NewFIR: React.FC = () => {
                 {duplicateCases.map((dc) => (
                   <div key={dc.CaseMasterID} className="px-6 py-4">
                     <div className="flex flex-wrap items-center gap-2 mb-3">
-                      <span className="text-white font-semibold text-sm">{tr("FIR No", "ಎಫ್‌ಐಆರ್ ಸಂಖ್ಯೆ")}: {dc.CrimeNo || '—'}</span>
+                      <span className="text-white font-semibold text-sm">{tr("FIR No", "ಎಫ್‌ಐಆರ್ ಸಂಖ್ಯೆ")}: {dc.CrimeNo || '-'}</span>
                       <span className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted">{tr("ID", "ಐಡಿ")}: {dc.CaseMasterID}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                        (dc.Status || '').toLowerCase().includes('solved') || (dc.Status || '').toLowerCase().includes('closed')
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${(dc.Status || '').toLowerCase().includes('solved') || (dc.Status || '').toLowerCase().includes('closed')
                           ? 'bg-sage/15 text-sage' : 'bg-amber/15 text-amber'
-                      }`}>{displayKnownValue(dc.Status || "Unknown", language)}</span>
+                        }`}>{displayKnownValue(dc.Status || "Unknown", language)}</span>
                       <button
                         onClick={() => {
                           setDuplicateModalOpen(false);
@@ -985,7 +984,7 @@ const NewFIR: React.FC = () => {
             onClick={() => setDuplicateModalOpen(true)}
             className="mx-auto max-w-6xl mb-4 w-full text-left rounded-xl border border-rose/30 bg-rose/10 px-4 py-3 text-sm text-rose hover:bg-rose/15 transition"
           >
-            <strong>{tr(`${duplicateCases.length} similar case${duplicateCases.length > 1 ? "s" : ""} found`, `${duplicateCases.length} ಹೋಲುವ ${duplicateCases.length > 1 ? "ಪ್ರಕರಣಗಳು" : "ಪ್ರಕರಣ"} ಕಂಡುಬಂದಿದೆ`)}</strong> — {tr("FIR", "ಎಫ್‌ಐಆರ್")} {duplicateCases.map(d => d.CrimeNo).join(', ')}. {tr("Click to review.", "ಪರಿಶೀಲಿಸಲು ಕ್ಲಿಕ್ ಮಾಡಿ.")}
+            <strong>{tr(`${duplicateCases.length} similar case${duplicateCases.length > 1 ? "s" : ""} found`, `${duplicateCases.length} ಹೋಲುವ ${duplicateCases.length > 1 ? "ಪ್ರಕರಣಗಳು" : "ಪ್ರಕರಣ"} ಕಂಡುಬಂದಿದೆ`)}</strong> - {tr("FIR", "ಎಫ್‌ಐಆರ್")} {duplicateCases.map(d => d.CrimeNo).join(', ')}. {tr("Click to review.", "ಪರಿಶೀಲಿಸಲು ಕ್ಲಿಕ್ ಮಾಡಿ.")}
           </button>
         )}
 
@@ -1017,22 +1016,21 @@ const NewFIR: React.FC = () => {
               className="w-full resize-none bg-panel border border-line rounded-xl p-3 text-sm text-white placeholder-muted outline-none focus:border-brand/50"
             />
             <button
-            type="button"
-            onClick={generateDraft}
-            disabled={!complaint.trim() || aiLoading}
-            className="lg:w-48 rounded-xl bg-brand px-5 py-3 text-sm font-medium text-white disabled:opacity-40 transition hover:bg-brand/90"
+              type="button"
+              onClick={generateDraft}
+              disabled={!complaint.trim() || aiLoading}
+              className="lg:w-48 rounded-xl bg-brand px-5 py-3 text-sm font-medium text-white disabled:opacity-40 transition hover:bg-brand/90"
             >
-            {aiLoading ? tr("Analyzing text...", "ಪಠ್ಯ ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ...") : aiReady ? tr("Refresh Auto-Fill", "ಸ್ವಯಂ ಭರ್ತಿ ನವೀಕರಿಸಿ") : tr("Run Autonomous Fill", "ಸ್ವಯಂ ಭರ್ತಿ ಪ್ರಾರಂಭಿಸಿ")}
-          </button>
+              {aiLoading ? tr("Analyzing text...", "ಪಠ್ಯ ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ...") : aiReady ? tr("Refresh Auto-Fill", "ಸ್ವಯಂ ಭರ್ತಿ ನವೀಕರಿಸಿ") : tr("Run Autonomous Fill", "ಸ್ವಯಂ ಭರ್ತಿ ಪ್ರಾರಂಭಿಸಿ")}
+            </button>
           </div>
 
           {saveState.message && (
             <div
-              className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
-                saveState.status === "error"
+              className={`mt-3 rounded-lg border px-3 py-2 text-xs ${saveState.status === "error"
                   ? "border-amber/30 bg-amber/10 text-amber"
                   : "border-sage/30 bg-sage/10 text-sage"
-              }`}
+                }`}
             >
               {saveState.message}
             </div>
@@ -1040,10 +1038,10 @@ const NewFIR: React.FC = () => {
         </div>
       </div>
 
-        <div className="mt-4 flex flex-col lg:flex-row">
-          <aside className="w-full shrink-0 border-b border-line bg-ink px-4 py-4 lg:sticky lg:top-0 lg:w-72 lg:self-start lg:border-b-0 lg:border-r lg:px-6 lg:py-8">
-            <div className="new-fir-steps flex gap-2 overflow-x-auto pb-2 lg:block lg:space-y-1 lg:overflow-visible lg:pb-0">
-              {STEPS.map((item) => {
+      <div className="mt-4 flex flex-col lg:flex-row">
+        <aside className="w-full shrink-0 border-b border-line bg-ink px-4 py-4 lg:sticky lg:top-0 lg:w-72 lg:self-start lg:border-b-0 lg:border-r lg:px-6 lg:py-8">
+          <div className="new-fir-steps flex gap-2 overflow-x-auto pb-2 lg:block lg:space-y-1 lg:overflow-visible lg:pb-0">
+            {STEPS.map((item) => {
               const active = step === item.id;
               const done = step > item.id;
               const locked = item.id > highestUnlocked;
@@ -1053,23 +1051,21 @@ const NewFIR: React.FC = () => {
                   onClick={() => !locked && setStep(item.id)}
                   disabled={locked}
                   aria-current={active ? "step" : undefined}
-                  className={`new-fir-step w-[min(76vw,17rem)] shrink-0 rounded-xl border px-3 py-3 text-left transition lg:w-full ${
-                    active
+                  className={`new-fir-step w-[min(76vw,17rem)] shrink-0 rounded-xl border px-3 py-3 text-left transition lg:w-full ${active
                       ? "bg-brand/10 border-brand/40"
                       : done
-                      ? "border-sage/30 bg-sage/5 hover:bg-sage/10"
-                      : "border-transparent hover:bg-panel"
-                  } ${locked ? "opacity-45 cursor-not-allowed" : ""}`}
+                        ? "border-sage/30 bg-sage/5 hover:bg-sage/10"
+                        : "border-transparent hover:bg-panel"
+                    } ${locked ? "opacity-45 cursor-not-allowed" : ""}`}
                 >
                   <div className="flex items-start gap-3">
                     <div
-                      className={`h-7 w-7 rounded-full grid place-items-center text-xs font-semibold shrink-0 ${
-                        active
+                      className={`h-7 w-7 rounded-full grid place-items-center text-xs font-semibold shrink-0 ${active
                           ? "bg-brand text-white"
                           : done
-                          ? "bg-sage/15 text-sage border border-sage/30"
-                          : "bg-panel text-muted border border-line"
-                      }`}
+                            ? "bg-sage/15 text-sage border border-sage/30"
+                            : "bg-panel text-muted border border-line"
+                        }`}
                     >
                       {done ? "OK" : item.id}
                     </div>
@@ -1086,102 +1082,102 @@ const NewFIR: React.FC = () => {
           </div>
         </aside>
 
-          <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:min-h-[calc(100vh-4rem)] lg:px-8 lg:py-8">
-            <div className="mx-auto w-full max-w-4xl">
-              <div className="mb-5 flex flex-col gap-2 min-[480px]:flex-row min-[480px]:items-start min-[480px]:justify-between sm:mb-6">
-                <div className="min-w-0">
-                  <h1 className="text-2xl font-schibsted text-white font-semibold">
-                   {tr(meta.title, ["", "ಪ್ರಕರಣದ ಮೂಲ ವಿವರಗಳು", "ಘಟನೆಯ ವಿವರಗಳು", "ದೂರುದಾರ", "ಸಂತ್ರಸ್ತರು", "ಆರೋಪಿತರು", "ಕಾಯ್ದೆಗಳು ಮತ್ತು ಸೆಕ್ಷನ್‌ಗಳು", "ಪರಿಶೀಲಿಸಿ ಮತ್ತು ಸಲ್ಲಿಸಿ"][step])}
-                 </h1>
-                 <p className="text-muted text-sm mt-1">{tr(meta.subtitle, ["", "ಸಂಬಂಧಿತ ವಿವರಗಳನ್ನು ನಮೂದಿಸುವ ಮೊದಲು ಪ್ರಕರಣದ ಸಾಲನ್ನು ಉಳಿಸಿ", "ಸಂಗತಿಗಳು, ವರದಿ ದಿನಾಂಕ, ಘಟನೆ ಅವಧಿ ಮತ್ತು ಸ್ಥಳ", "ದೂರು ಸಲ್ಲಿಸಿದ ವ್ಯಕ್ತಿ ಅಥವಾ ಸಂಸ್ಥೆ", "ಸಂತ್ರಸ್ತರ ಹೆಸರುಗಳನ್ನು Consolidated_Cases ಸಾಲಿನಲ್ಲಿ ಸಂಗ್ರಹಿಸಲಾಗುತ್ತದೆ", "ಪ್ರಕರಣ ಅಸ್ತಿತ್ವದಲ್ಲಿದ್ದ ಬಳಿಕವೇ ಆರೋಪಿತರ ವಿವರಗಳು ತೆರೆಯುತ್ತವೆ", "ಕಾಯ್ದೆಗಳು, ಸೆಕ್ಷನ್‌ಗಳು, ಬಂಧನಗಳು ಮತ್ತು ಆರೋಪಪಟ್ಟಿ ಕ್ಷೇತ್ರಗಳು", "Google Sheets ಮಾಸ್ಟರ್ ನವೀಕರಿಸಲು ಒಮ್ಮೆ ಸಲ್ಲಿಸಿ"][step])}</p>
-               </div>
-               <div className="text-xs text-muted">
-                 {tr("Step", "ಹಂತ")} <span className="text-white font-semibold">{step}</span> {tr("of", "ರಲ್ಲಿ")} {STEPS.length}
-               </div>
-             </div>
+        <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:min-h-[calc(100vh-4rem)] lg:px-8 lg:py-8">
+          <div className="mx-auto w-full max-w-4xl">
+            <div className="mb-5 flex flex-col gap-2 min-[480px]:flex-row min-[480px]:items-start min-[480px]:justify-between sm:mb-6">
+              <div className="min-w-0">
+                <h1 className="text-2xl font-schibsted text-white font-semibold">
+                  {tr(meta.title, ["", "ಪ್ರಕರಣದ ಮೂಲ ವಿವರಗಳು", "ಘಟನೆಯ ವಿವರಗಳು", "ದೂರುದಾರ", "ಸಂತ್ರಸ್ತರು", "ಆರೋಪಿತರು", "ಕಾಯ್ದೆಗಳು ಮತ್ತು ಸೆಕ್ಷನ್‌ಗಳು", "ಪರಿಶೀಲಿಸಿ ಮತ್ತು ಸಲ್ಲಿಸಿ"][step])}
+                </h1>
+                <p className="text-muted text-sm mt-1">{tr(meta.subtitle, ["", "ಸಂಬಂಧಿತ ವಿವರಗಳನ್ನು ನಮೂದಿಸುವ ಮೊದಲು ಪ್ರಕರಣದ ಸಾಲನ್ನು ಉಳಿಸಿ", "ಸಂಗತಿಗಳು, ವರದಿ ದಿನಾಂಕ, ಘಟನೆ ಅವಧಿ ಮತ್ತು ಸ್ಥಳ", "ದೂರು ಸಲ್ಲಿಸಿದ ವ್ಯಕ್ತಿ ಅಥವಾ ಸಂಸ್ಥೆ", "ಸಂತ್ರಸ್ತರ ಹೆಸರುಗಳನ್ನು Consolidated_Cases ಸಾಲಿನಲ್ಲಿ ಸಂಗ್ರಹಿಸಲಾಗುತ್ತದೆ", "ಪ್ರಕರಣ ಅಸ್ತಿತ್ವದಲ್ಲಿದ್ದ ಬಳಿಕವೇ ಆರೋಪಿತರ ವಿವರಗಳು ತೆರೆಯುತ್ತವೆ", "ಕಾಯ್ದೆಗಳು, ಸೆಕ್ಷನ್‌ಗಳು, ಬಂಧನಗಳು ಮತ್ತು ಆರೋಪಪಟ್ಟಿ ಕ್ಷೇತ್ರಗಳು", "Google Sheets ಮಾಸ್ಟರ್ ನವೀಕರಿಸಲು ಒಮ್ಮೆ ಸಲ್ಲಿಸಿ"][step])}</p>
+              </div>
+              <div className="text-xs text-muted">
+                {tr("Step", "ಹಂತ")} <span className="text-white font-semibold">{step}</span> {tr("of", "ರಲ್ಲಿ")} {STEPS.length}
+              </div>
+            </div>
 
-              <div className="rounded-2xl border border-line bg-shell/40 p-4 sm:p-6">
-               {step === 1 && (
-                 <Step1
-                   form={form}
-                   update={update}
-                   options={options}
-                   stationOptions={stationOptions}
-                   crimeHeadOptions={crimeHeadOptions}
-                   crimeSubHeadOptions={crimeSubHeadOptions}
-                   refreshOptions={refreshOptions}
-                 />
-               )}
-               {step === 2 && <Step2 form={form} update={update} />}
-               {step === 3 && <Step3 form={form} update={update} />}
-               {step === 4 && <Step4 form={form} update={update} victimCount={victimCount} />}
-               {step === 5 && (
-                 <Step5
-                   form={form}
-                   update={update}
-                   disabled={false}
-                   accusedCount={accusedCount}
-                 />
-               )}
-               {step === 6 && (
-                 <Step6
-                   form={form}
-                   update={update}
-                   options={options}
-                   refreshOptions={refreshOptions}
-                 />
-               )}
-               {step === 7 && <Step7 form={form} persisted={persisted} />}
-             </div>
+            <div className="rounded-2xl border border-line bg-shell/40 p-4 sm:p-6">
+              {step === 1 && (
+                <Step1
+                  form={form}
+                  update={update}
+                  options={options}
+                  stationOptions={stationOptions}
+                  crimeHeadOptions={crimeHeadOptions}
+                  crimeSubHeadOptions={crimeSubHeadOptions}
+                  refreshOptions={refreshOptions}
+                />
+              )}
+              {step === 2 && <Step2 form={form} update={update} />}
+              {step === 3 && <Step3 form={form} update={update} />}
+              {step === 4 && <Step4 form={form} update={update} victimCount={victimCount} />}
+              {step === 5 && (
+                <Step5
+                  form={form}
+                  update={update}
+                  disabled={false}
+                  accusedCount={accusedCount}
+                />
+              )}
+              {step === 6 && (
+                <Step6
+                  form={form}
+                  update={update}
+                  options={options}
+                  refreshOptions={refreshOptions}
+                />
+              )}
+              {step === 7 && <Step7 form={form} persisted={persisted} />}
+            </div>
 
-              <div className="mt-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mt-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                onClick={() => setStep((current) => Math.max(1, current - 1))}
+                disabled={step === 1 || saveState.status === "saving"}
+                className="self-start px-3 py-2 text-sm text-muted hover:text-white disabled:opacity-40"
+              >
+                {tr("← Previous", "← ಹಿಂದಿನದು")}
+              </button>
+
+              <div className="new-fir-actions grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-3">
                 <button
-                 onClick={() => setStep((current) => Math.max(1, current - 1))}
-                 disabled={step === 1 || saveState.status === "saving"}
-                 className="self-start px-3 py-2 text-sm text-muted hover:text-white disabled:opacity-40"
-               >
-                 {tr("← Previous", "← ಹಿಂದಿನದು")}
-               </button>
+                  onClick={fillDemoForStep}
+                  disabled={saveState.status === "saving"}
+                  className="h-10 rounded-lg border border-brand/40 px-3 text-sm text-brand hover:bg-brand/10 disabled:opacity-40 sm:px-4"
+                >
+                  {tr("Fill demo", "ಮಾದರಿ ತುಂಬಿಸಿ")}
+                </button>
 
-                <div className="new-fir-actions grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-3">
-                 <button
-                   onClick={fillDemoForStep}
-                   disabled={saveState.status === "saving"}
-                    className="h-10 rounded-lg border border-brand/40 px-3 text-sm text-brand hover:bg-brand/10 disabled:opacity-40 sm:px-4"
-                 >
-                   {tr("Fill demo", "ಮಾದರಿ ತುಂಬಿಸಿ")}
-                 </button>
+                <button
+                  onClick={() => saveCurrentStep(false)}
+                  disabled={saveState.status === "saving"}
+                  className="h-10 rounded-lg border border-line px-3 text-sm text-muted hover:text-white disabled:opacity-40 sm:px-4"
+                >
+                  {saveState.status === "saving" ? tr("Saving...", "ಉಳಿಸಲಾಗುತ್ತಿದೆ...") : tr("Save draft", "ಕರಡು ಉಳಿಸಿ")}
+                </button>
 
-                 <button
-                   onClick={() => saveCurrentStep(false)}
-                   disabled={saveState.status === "saving"}
-                    className="h-10 rounded-lg border border-line px-3 text-sm text-muted hover:text-white disabled:opacity-40 sm:px-4"
-                 >
-                   {saveState.status === "saving" ? tr("Saving...", "ಉಳಿಸಲಾಗುತ್ತಿದೆ...") : tr("Save draft", "ಕರಡು ಉಳಿಸಿ")}
-                 </button>
-
-                 {step < STEPS.length ? (
-                   <button
-                     onClick={goNext}
-                     disabled={saveState.status === "saving"}
-                      className="col-span-2 min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white shadow-glow hover:bg-brand/90 disabled:opacity-40 sm:px-5"
-                   >
-                     {tr("Save draft & continue →", "ಕರಡು ಉಳಿಸಿ ಮತ್ತು ಮುಂದುವರಿಸಿ →")}
-                   </button>
-                 ) : (
-                   <button
-                     onClick={submit}
-                     disabled={saveState.status === "saving"}
-                      className="col-span-2 min-h-10 rounded-lg bg-sage px-4 py-2 text-sm font-medium text-white hover:bg-sage/90 disabled:opacity-40 sm:px-5"
-                   >
-                     {tr("Submit FIR", "ಎಫ್‌ಐಆರ್ ಸಲ್ಲಿಸಿ")}
-                   </button>
-                 )}
-               </div>
-             </div>
-           </div>
-         </section>
-       </div>
+                {step < STEPS.length ? (
+                  <button
+                    onClick={goNext}
+                    disabled={saveState.status === "saving"}
+                    className="col-span-2 min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white shadow-glow hover:bg-brand/90 disabled:opacity-40 sm:px-5"
+                  >
+                    {tr("Save draft & continue →", "ಕರಡು ಉಳಿಸಿ ಮತ್ತು ಮುಂದುವರಿಸಿ →")}
+                  </button>
+                ) : (
+                  <button
+                    onClick={submit}
+                    disabled={saveState.status === "saving"}
+                    className="col-span-2 min-h-10 rounded-lg bg-sage px-4 py-2 text-sm font-medium text-white hover:bg-sage/90 disabled:opacity-40 sm:px-5"
+                  >
+                    {tr("Submit FIR", "ಎಫ್‌ಐಆರ್ ಸಲ್ಲಿಸಿ")}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
 
       {successRoute && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4">
@@ -1210,7 +1206,7 @@ const NewFIR: React.FC = () => {
                 {tr("View FIR", "ಎಫ್‌ಐಆರ್ ನೋಡಿ")}
               </button>
             </div>
-            
+
             {showQR && <CasePassQR record={form} onClose={() => setShowQR(false)} />}
           </div>
         </div>
@@ -1238,176 +1234,176 @@ const Step1: React.FC<{
   crimeSubHeadOptions,
   refreshOptions,
 }) => {
-  const { language, tr } = useLanguage();
-  return (
-  <>
-    <Section title="Case identity">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Field label="CaseMasterID">
-          <input 
-            value={form.CaseMasterID} 
-            onChange={(event) => update("CaseMasterID", event.target.value)} 
-            placeholder={tr("Enter random ID or auto-assign", "ಯಾದೃಚ್ಛಿಕ ಐಡಿ ನಮೂದಿಸಿ ಅಥವಾ ಸ್ವಯಂ ನಿಯೋಜಿಸಿ")} 
-            className={inputClass} 
-          />
-        </Field>
-        <Field label="CaseNo">
-          <input
-            value={form.CaseNo}
-            onChange={(event) => update("CaseNo", event.target.value)}
-            placeholder={tr("Enter random Case No", "ಯಾದೃಚ್ಛಿಕ ಪ್ರಕರಣ ಸಂಖ್ಯೆ ನಮೂದಿಸಿ")}
-            className={inputClass}
-          />
-        </Field>
-        <Field label="CrimeNo">
-          <input
-            value={form.CrimeNo}
-            onChange={(event) => update("CrimeNo", event.target.value)}
-            placeholder={tr("Enter random Crime No", "ಯಾದೃಚ್ಛಿಕ ಅಪರಾಧ ಸಂಖ್ಯೆ ನಮೂದಿಸಿ")}
-            className={inputClass}
-          />
-        </Field>
-      </div>
-    </Section>
+    const { language, tr } = useLanguage();
+    return (
+      <>
+        <Section title="Case identity">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Field label="CaseMasterID">
+              <input
+                value={form.CaseMasterID}
+                onChange={(event) => update("CaseMasterID", event.target.value)}
+                placeholder={tr("Enter random ID or auto-assign", "ಯಾದೃಚ್ಛಿಕ ಐಡಿ ನಮೂದಿಸಿ ಅಥವಾ ಸ್ವಯಂ ನಿಯೋಜಿಸಿ")}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="CaseNo">
+              <input
+                value={form.CaseNo}
+                onChange={(event) => update("CaseNo", event.target.value)}
+                placeholder={tr("Enter random Case No", "ಯಾದೃಚ್ಛಿಕ ಪ್ರಕರಣ ಸಂಖ್ಯೆ ನಮೂದಿಸಿ")}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="CrimeNo">
+              <input
+                value={form.CrimeNo}
+                onChange={(event) => update("CrimeNo", event.target.value)}
+                placeholder={tr("Enter random Crime No", "ಯಾದೃಚ್ಛಿಕ ಅಪರಾಧ ಸಂಖ್ಯೆ ನಮೂದಿಸಿ")}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+        </Section>
 
-    <Section title="Case basics">
-      <p className="mb-3 text-xs text-muted">
-        {tr("Suggestions refresh from Google Sheets when a field is opened. Select a suggestion or type a new value.", "ಕ್ಷೇತ್ರವನ್ನು ತೆರೆದಾಗ Google Sheets ನಿಂದ ಸಲಹೆಗಳು ನವೀಕರಿಸುತ್ತವೆ. ಸಲಹೆಯನ್ನು ಆಯ್ಕೆ ಮಾಡಿ ಅಥವಾ ಹೊಸ ಮೌಲ್ಯವನ್ನು ಟೈಪ್ ಮಾಡಿ.")}
-      </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Field label="CrimeRegisteredDate">
-          <input
-            type="date"
-            value={form.CrimeRegisteredDate}
-            onChange={(event) => update("CrimeRegisteredDate", event.target.value)}
-            className={inputClass}
-          />
-        </Field>
+        <Section title="Case basics">
+          <p className="mb-3 text-xs text-muted">
+            {tr("Suggestions refresh from Google Sheets when a field is opened. Select a suggestion or type a new value.", "ಕ್ಷೇತ್ರವನ್ನು ತೆರೆದಾಗ Google Sheets ನಿಂದ ಸಲಹೆಗಳು ನವೀಕರಿಸುತ್ತವೆ. ಸಲಹೆಯನ್ನು ಆಯ್ಕೆ ಮಾಡಿ ಅಥವಾ ಹೊಸ ಮೌಲ್ಯವನ್ನು ಟೈಪ್ ಮಾಡಿ.")}
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="CrimeRegisteredDate">
+              <input
+                type="date"
+                value={form.CrimeRegisteredDate}
+                onChange={(event) => update("CrimeRegisteredDate", event.target.value)}
+                className={inputClass}
+              />
+            </Field>
 
-        <Field label="PoliceStation">
-          <select
-            value={form.PoliceStation}
-            onChange={(e) => update("PoliceStation", e.target.value)}
-            className={inputClass}
-            onFocus={refreshOptions}
-          >
-            <option value="">— {tr("Select Police Station", "ಪೊಲೀಸ್ ಠಾಣೆ ಆಯ್ಕೆ ಮಾಡಿ")} —</option>
-            {stationOptions.map((s) => (
-              <option key={s} value={s}>{displayPlaceName(s, language)}</option>
-            ))}
-          </select>
-        </Field>
-        <OptionInput
-          label="CrimeHead"
-          field="CrimeHead"
-          value={form.CrimeHead}
-          onChange={(value) => {
-            update("CrimeHead", value);
-            update("CrimeSubHead", "");
-          }}
-          options={crimeHeadOptions}
-          placeholder="Select or type crime head"
-          onOptionsOpen={refreshOptions}
-        />
-        <OptionInput
-          label="CrimeSubHead"
-          field="CrimeSubHead"
-          value={form.CrimeSubHead}
-          onChange={(value) => update("CrimeSubHead", value)}
-          options={crimeSubHeadOptions}
-          placeholder="Select or type crime sub-head"
-          onOptionsOpen={refreshOptions}
-        />
-        <OptionInput
-          label="PoliceStationType"
-          field="PoliceStationType"
-          value={form.PoliceStationType}
-          onChange={(value) => update("PoliceStationType", value)}
-          options={optionList(options, "PoliceStationType")}
-          onOptionsOpen={refreshOptions}
-        />
-        <OptionInput
-          label="District"
-          field="District"
-          value={form.District}
-          onChange={(value) => update("District", value)}
-          options={optionList(options, "District")}
-          onOptionsOpen={refreshOptions}
-        />
-        <OptionInput
-          label="CaseCategory"
-          field="CaseCategory"
-          value={form.CaseCategory}
-          onChange={(value) => update("CaseCategory", value)}
-          options={optionList(options, "CaseCategory")}
-          onOptionsOpen={refreshOptions}
-        />
-        <OptionInput
-          label="Gravity"
-          field="Gravity"
-          value={form.Gravity}
-          onChange={(value) => update("Gravity", value)}
-          options={optionList(options, "Gravity")}
-          onOptionsOpen={refreshOptions}
-        />
-        <OptionInput
-          label="Status"
-          field="Status"
-          value={form.Status}
-          onChange={(value) => update("Status", value)}
-          options={optionList(options, "Status")}
-          onOptionsOpen={refreshOptions}
-        />
-        <OptionInput
-          label="Court"
-          field="Court"
-          value={form.Court}
-          onChange={(value) => update("Court", value)}
-          options={optionList(options, "Court")}
-          placeholder="Select or type court"
-          onOptionsOpen={refreshOptions}
-        />
-      </div>
-    </Section>
+            <Field label="PoliceStation">
+              <select
+                value={form.PoliceStation}
+                onChange={(e) => update("PoliceStation", e.target.value)}
+                className={inputClass}
+                onFocus={refreshOptions}
+              >
+                <option value="">- {tr("Select Police Station", "ಪೊಲೀಸ್ ಠಾಣೆ ಆಯ್ಕೆ ಮಾಡಿ")} -</option>
+                {stationOptions.map((s) => (
+                  <option key={s} value={s}>{displayPlaceName(s, language)}</option>
+                ))}
+              </select>
+            </Field>
+            <OptionInput
+              label="CrimeHead"
+              field="CrimeHead"
+              value={form.CrimeHead}
+              onChange={(value) => {
+                update("CrimeHead", value);
+                update("CrimeSubHead", "");
+              }}
+              options={crimeHeadOptions}
+              placeholder="Select or type crime head"
+              onOptionsOpen={refreshOptions}
+            />
+            <OptionInput
+              label="CrimeSubHead"
+              field="CrimeSubHead"
+              value={form.CrimeSubHead}
+              onChange={(value) => update("CrimeSubHead", value)}
+              options={crimeSubHeadOptions}
+              placeholder="Select or type crime sub-head"
+              onOptionsOpen={refreshOptions}
+            />
+            <OptionInput
+              label="PoliceStationType"
+              field="PoliceStationType"
+              value={form.PoliceStationType}
+              onChange={(value) => update("PoliceStationType", value)}
+              options={optionList(options, "PoliceStationType")}
+              onOptionsOpen={refreshOptions}
+            />
+            <OptionInput
+              label="District"
+              field="District"
+              value={form.District}
+              onChange={(value) => update("District", value)}
+              options={optionList(options, "District")}
+              onOptionsOpen={refreshOptions}
+            />
+            <OptionInput
+              label="CaseCategory"
+              field="CaseCategory"
+              value={form.CaseCategory}
+              onChange={(value) => update("CaseCategory", value)}
+              options={optionList(options, "CaseCategory")}
+              onOptionsOpen={refreshOptions}
+            />
+            <OptionInput
+              label="Gravity"
+              field="Gravity"
+              value={form.Gravity}
+              onChange={(value) => update("Gravity", value)}
+              options={optionList(options, "Gravity")}
+              onOptionsOpen={refreshOptions}
+            />
+            <OptionInput
+              label="Status"
+              field="Status"
+              value={form.Status}
+              onChange={(value) => update("Status", value)}
+              options={optionList(options, "Status")}
+              onOptionsOpen={refreshOptions}
+            />
+            <OptionInput
+              label="Court"
+              field="Court"
+              value={form.Court}
+              onChange={(value) => update("Court", value)}
+              options={optionList(options, "Court")}
+              placeholder="Select or type court"
+              onOptionsOpen={refreshOptions}
+            />
+          </div>
+        </Section>
 
-    <Section title="Officer assignment">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Field label="EmployeeID">
-          <input
-            value={form.EmployeeID}
-            onChange={(event) => update("EmployeeID", event.target.value)}
-            className={inputClass}
-          />
-        </Field>
-        <OptionInput
-          label="Officer"
-          field="Officer"
-          value={form.Officer}
-          onChange={(value) => update("Officer", value)}
-          options={optionList(options, "Officer")}
-          onOptionsOpen={refreshOptions}
-        />
-        <OptionInput
-          label="OfficerRank"
-          field="OfficerRank"
-          value={form.OfficerRank}
-          onChange={(value) => update("OfficerRank", value)}
-          options={optionList(options, "OfficerRank")}
-          onOptionsOpen={refreshOptions}
-        />
-        <OptionInput
-          label="OfficerDesignation"
-          field="OfficerDesignation"
-          value={form.OfficerDesignation}
-          onChange={(value) => update("OfficerDesignation", value)}
-          options={optionList(options, "OfficerDesignation")}
-          onOptionsOpen={refreshOptions}
-        />
-      </div>
-    </Section>
-  </>
-  );
-};
+        <Section title="Officer assignment">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="EmployeeID">
+              <input
+                value={form.EmployeeID}
+                onChange={(event) => update("EmployeeID", event.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            <OptionInput
+              label="Officer"
+              field="Officer"
+              value={form.Officer}
+              onChange={(value) => update("Officer", value)}
+              options={optionList(options, "Officer")}
+              onOptionsOpen={refreshOptions}
+            />
+            <OptionInput
+              label="OfficerRank"
+              field="OfficerRank"
+              value={form.OfficerRank}
+              onChange={(value) => update("OfficerRank", value)}
+              options={optionList(options, "OfficerRank")}
+              onOptionsOpen={refreshOptions}
+            />
+            <OptionInput
+              label="OfficerDesignation"
+              field="OfficerDesignation"
+              value={form.OfficerDesignation}
+              onChange={(value) => update("OfficerDesignation", value)}
+              options={optionList(options, "OfficerDesignation")}
+              onOptionsOpen={refreshOptions}
+            />
+          </div>
+        </Section>
+      </>
+    );
+  };
 
 const Step2: React.FC<{ form: FormState; update: (field: string, value: string) => void }> = ({
   form,
@@ -1485,19 +1481,19 @@ const Step4: React.FC<{
 }> = ({ form, update, victimCount }) => {
   const { tr } = useLanguage();
   return (
-  <>
-    <Field label="VictimNames" hint="Enter one victim per line. Press Enter for each new name. Spaces in names are fully supported.">
-      <textarea
-        rows={6}
-        value={form.VictimNames.replace(/;\s*/g, '\n')}
-        onChange={(e) => update("VictimNames", e.target.value)}
-        className={inputClass}
-      />
-    </Field>
-    <div className="text-xs text-muted mt-3">
-      {tr("VictimCount will be saved as", "ಸಂತ್ರಸ್ತರ ಸಂಖ್ಯೆಯನ್ನು ಹೀಗೆ ಉಳಿಸಲಾಗುತ್ತದೆ")} <span className="text-white font-semibold">{victimCount}</span>.
-    </div>
-  </>
+    <>
+      <Field label="VictimNames" hint="Enter one victim per line. Press Enter for each new name. Spaces in names are fully supported.">
+        <textarea
+          rows={6}
+          value={form.VictimNames.replace(/;\s*/g, '\n')}
+          onChange={(e) => update("VictimNames", e.target.value)}
+          className={inputClass}
+        />
+      </Field>
+      <div className="text-xs text-muted mt-3">
+        {tr("VictimCount will be saved as", "ಸಂತ್ರಸ್ತರ ಸಂಖ್ಯೆಯನ್ನು ಹೀಗೆ ಉಳಿಸಲಾಗುತ್ತದೆ")} <span className="text-white font-semibold">{victimCount}</span>.
+      </div>
+    </>
   );
 };
 
@@ -1509,25 +1505,25 @@ const Step5: React.FC<{
 }> = ({ form, update, disabled, accusedCount }) => {
   const { tr } = useLanguage();
   return (
-  <>
-    {disabled && (
-      <div className="mb-4 rounded-lg border border-amber/30 bg-amber/10 text-amber text-sm px-4 py-3">
-        {tr("Save Case Basics first. Accused details cannot be entered until the case row exists.", "ಮೊದಲು ಪ್ರಕರಣದ ಮೂಲ ವಿವರಗಳನ್ನು ಉಳಿಸಿ. ಪ್ರಕರಣದ ಸಾಲು ಅಸ್ತಿತ್ವದಲ್ಲಿರುವವರೆಗೆ ಆರೋಪಿತರ ವಿವರಗಳನ್ನು ನಮೂದಿಸಲು ಸಾಧ್ಯವಿಲ್ಲ.")}
+    <>
+      {disabled && (
+        <div className="mb-4 rounded-lg border border-amber/30 bg-amber/10 text-amber text-sm px-4 py-3">
+          {tr("Save Case Basics first. Accused details cannot be entered until the case row exists.", "ಮೊದಲು ಪ್ರಕರಣದ ಮೂಲ ವಿವರಗಳನ್ನು ಉಳಿಸಿ. ಪ್ರಕರಣದ ಸಾಲು ಅಸ್ತಿತ್ವದಲ್ಲಿರುವವರೆಗೆ ಆರೋಪಿತರ ವಿವರಗಳನ್ನು ನಮೂದಿಸಲು ಸಾಧ್ಯವಿಲ್ಲ.")}
+        </div>
+      )}
+      <Field label="AccusedNames" hint="Enter one accused per line. Press Enter for each new name. Spaces in names are fully supported.">
+        <textarea
+          rows={6}
+          value={form.AccusedNames.replace(/;\s*/g, '\n')}
+          onChange={(e) => !disabled && update("AccusedNames", e.target.value)}
+          className={inputClass}
+          disabled={disabled}
+        />
+      </Field>
+      <div className="text-xs text-muted mt-3">
+        {tr("AccusedCount will be saved as", "ಆರೋಪಿತರ ಸಂಖ್ಯೆಯನ್ನು ಹೀಗೆ ಉಳಿಸಲಾಗುತ್ತದೆ")} <span className="text-white font-semibold">{accusedCount}</span>.
       </div>
-    )}
-    <Field label="AccusedNames" hint="Enter one accused per line. Press Enter for each new name. Spaces in names are fully supported.">
-      <textarea
-        rows={6}
-        value={form.AccusedNames.replace(/;\s*/g, '\n')}
-        onChange={(e) => !disabled && update("AccusedNames", e.target.value)}
-        className={inputClass}
-        disabled={disabled}
-      />
-    </Field>
-    <div className="text-xs text-muted mt-3">
-      {tr("AccusedCount will be saved as", "ಆರೋಪಿತರ ಸಂಖ್ಯೆಯನ್ನು ಹೀಗೆ ಉಳಿಸಲಾಗುತ್ತದೆ")} <span className="text-white font-semibold">{accusedCount}</span>.
-    </div>
-  </>
+    </>
   );
 };
 
@@ -1539,61 +1535,61 @@ const Step6: React.FC<{
 }> = ({ form, update, options, refreshOptions }) => {
   const { tr } = useLanguage();
   return (
-  <>
-    <p className="mb-4 text-xs text-muted">
-      {tr("Suggestions refresh from Google Sheets when a field is opened. You can also type values and separate multiple entries with semicolons.", "ಕ್ಷೇತ್ರವನ್ನು ತೆರೆದಾಗ Google Sheets ನಿಂದ ಸಲಹೆಗಳು ನವೀಕರಿಸುತ್ತವೆ. ಮೌಲ್ಯಗಳನ್ನು ಟೈಪ್ ಮಾಡಬಹುದು ಮತ್ತು ಅನೇಕ ನಮೂದುಗಳನ್ನು ಅರ್ಧವಿರಾಮ ಚಿಹ್ನೆಯಿಂದ ಬೇರ್ಪಡಿಸಬಹುದು.")}
-    </p>
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <OptionInput
-        label="Acts"
-        field="Acts"
-        value={form.Acts}
-        onChange={(value) => update("Acts", value)}
-        options={optionList(options, "Acts")}
-        placeholder="Select or type; separate multiple acts with semicolons"
-        onOptionsOpen={refreshOptions}
-      />
-      <OptionInput
-        label="Sections"
-        field="Sections"
-        value={form.Sections}
-        onChange={(value) => update("Sections", value)}
-        options={optionList(options, "Sections")}
-        placeholder="Select or type; separate multiple sections with semicolons"
-        onOptionsOpen={refreshOptions}
-      />
-      <Field label="ArrestCount">
-        <input
-          value={form.ArrestCount}
-          onChange={(event) => update("ArrestCount", event.target.value)}
-          className={inputClass}
+    <>
+      <p className="mb-4 text-xs text-muted">
+        {tr("Suggestions refresh from Google Sheets when a field is opened. You can also type values and separate multiple entries with semicolons.", "ಕ್ಷೇತ್ರವನ್ನು ತೆರೆದಾಗ Google Sheets ನಿಂದ ಸಲಹೆಗಳು ನವೀಕರಿಸುತ್ತವೆ. ಮೌಲ್ಯಗಳನ್ನು ಟೈಪ್ ಮಾಡಬಹುದು ಮತ್ತು ಅನೇಕ ನಮೂದುಗಳನ್ನು ಅರ್ಧವಿರಾಮ ಚಿಹ್ನೆಯಿಂದ ಬೇರ್ಪಡಿಸಬಹುದು.")}
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <OptionInput
+          label="Acts"
+          field="Acts"
+          value={form.Acts}
+          onChange={(value) => update("Acts", value)}
+          options={optionList(options, "Acts")}
+          placeholder="Select or type; separate multiple acts with semicolons"
+          onOptionsOpen={refreshOptions}
         />
-      </Field>
-      <Field label="ChargesheetCount">
-        <input
-          value={form.ChargesheetCount}
-          onChange={(event) => update("ChargesheetCount", event.target.value)}
-          className={inputClass}
+        <OptionInput
+          label="Sections"
+          field="Sections"
+          value={form.Sections}
+          onChange={(value) => update("Sections", value)}
+          options={optionList(options, "Sections")}
+          placeholder="Select or type; separate multiple sections with semicolons"
+          onOptionsOpen={refreshOptions}
         />
-      </Field>
-      <Field label="LatestChargesheetDate">
-        <input
-          type="date"
-          value={form.LatestChargesheetDate}
-          onChange={(event) => update("LatestChargesheetDate", event.target.value)}
-          className={inputClass}
+        <Field label="ArrestCount">
+          <input
+            value={form.ArrestCount}
+            onChange={(event) => update("ArrestCount", event.target.value)}
+            className={inputClass}
+          />
+        </Field>
+        <Field label="ChargesheetCount">
+          <input
+            value={form.ChargesheetCount}
+            onChange={(event) => update("ChargesheetCount", event.target.value)}
+            className={inputClass}
+          />
+        </Field>
+        <Field label="LatestChargesheetDate">
+          <input
+            type="date"
+            value={form.LatestChargesheetDate}
+            onChange={(event) => update("LatestChargesheetDate", event.target.value)}
+            className={inputClass}
+          />
+        </Field>
+        <OptionInput
+          label="ChargesheetStatus"
+          field="ChargesheetStatus"
+          value={form.ChargesheetStatus}
+          onChange={(value) => update("ChargesheetStatus", value)}
+          options={optionList(options, "ChargesheetStatus")}
+          onOptionsOpen={refreshOptions}
         />
-      </Field>
-      <OptionInput
-        label="ChargesheetStatus"
-        field="ChargesheetStatus"
-        value={form.ChargesheetStatus}
-        onChange={(value) => update("ChargesheetStatus", value)}
-        options={optionList(options, "ChargesheetStatus")}
-        onOptionsOpen={refreshOptions}
-      />
-    </div>
-  </>
+      </div>
+    </>
   );
 };
 

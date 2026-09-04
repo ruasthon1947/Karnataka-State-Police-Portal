@@ -4,8 +4,8 @@ import { readTable, writeTable, appendRow, updateRow, casesFromGoogle } from "./
 const TODO_TAB = "TodoTasks";
 
 const HEADERS = [
-  "taskId", "title", "description", "status", "priority", 
-  "assignedTo", "policeStation", "dueDate", "createdBy", 
+  "taskId", "title", "description", "status", "priority",
+  "assignedTo", "policeStation", "dueDate", "createdBy",
   "createdAt", "updatedAt", "source", "sheetRowRef", "category"
 ];
 
@@ -131,12 +131,12 @@ function taskOwnedBy(task, session) {
 export async function fetchTodos(req, filter = {}) {
   const sheetId = getSheetId();
   const tableData = await readTable(sheetId, TODO_TAB);
-  
+
   // If the table doesn't have headers yet, we initialize it on next write
   if (!tableData.headers || tableData.headers.length === 0) {
     return [];
   }
-  
+
   const stationLookup = filter.policeStation ? await buildStationLookup() : new Map();
   return filterTodosForAccess(tableData.rows, filter, stationLookup);
 }
@@ -144,11 +144,11 @@ export async function fetchTodos(req, filter = {}) {
 export async function createTodo(req, taskData) {
   const sheetId = getSheetId();
   taskData = sanitizeTodoCreate(taskData);
-  
+
   if (!taskData.taskId) {
     taskData.taskId = crypto.randomUUID();
   }
-  
+
   const newTask = {
     taskId: taskData.taskId,
     title: taskData.title || "",
@@ -165,9 +165,9 @@ export async function createTodo(req, taskData) {
     sheetRowRef: taskData.sheetRowRef || "",
     category: taskData.category || "investigation"
   };
-  
+
   const tableData = await readTable(sheetId, TODO_TAB);
-  
+
   if (!tableData.headers || tableData.headers.length === 0) {
     // Need to initialize the table with headers first
     await writeTable(sheetId, TODO_TAB, HEADERS, [newTask]);
@@ -175,7 +175,7 @@ export async function createTodo(req, taskData) {
     // Append to existing
     await appendRow(sheetId, TODO_TAB, toRowArray(newTask));
   }
-  
+
   return newTask;
 }
 
@@ -185,21 +185,21 @@ export async function updateTodo(req, taskId, updates) {
   const sheetId = getSheetId();
   updates = sanitizeTodoUpdates(updates);
   const tableData = await readTable(sheetId, TODO_TAB);
-  
+
   if (!tableData.headers || tableData.headers.length === 0) {
     throw new Error(`Task not found: ${taskId} (Sheet headers missing)`);
   }
-  
+
   console.log("[updateTodo] Looking for taskId:", taskId);
   const idx = tableData.rows.findIndex(r => String(r.taskId).trim() === String(taskId).trim());
   if (idx === -1) {
     throw new Error(`Task not found: ${taskId}`);
   }
-  
+
   const existingTask = tableData.rows[idx];
   const stationLookup = await buildStationLookup();
   const withinStation = sameStation(existingTask.policeStation, session.policeStation, stationLookup);
-  
+
   // Security Audit: Check Authorization (IDOR Prevention)
   if (session.role === "Inspector") {
     if (!withinStation) {
@@ -213,15 +213,15 @@ export async function updateTodo(req, taskId, updates) {
       throw httpError(403, "Forbidden: You can only modify tasks assigned to you or created by you.");
     }
   }
-  
+
   const merged = { ...existingTask, ...updates, updatedAt: new Date().toISOString() };
-  
+
   // sheetRowIndex is 1-based, and headers take row 1. So data row 0 is at row 2.
   const sheetRowIndex = idx + 2;
   const rowArray = HEADERS.map(h => String(merged[h] || ""));
-  
+
   await updateRow(sheetId, TODO_TAB, sheetRowIndex, rowArray);
-  
+
   return merged;
 }
 
@@ -292,34 +292,34 @@ export function computeTodoStats(todos, now = new Date()) {
   const tomorrowDate = new Date(`${todayStr}T00:00:00Z`);
   tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
   const tomorrowStr = tomorrowDate.toISOString().slice(0, 10);
-  
+
   const active = todos.filter(t => t.status !== "completed");
   const completed = todos.filter(t => t.status === "completed");
-  
+
   const overdue = active.filter(t => {
     if (!t.dueDate) return false;
     return t.dueDate.slice(0, 10) < todayStr;
   });
-  
+
   const dueToday = active.filter(t => {
     if (!t.dueDate) return false;
     return t.dueDate.slice(0, 10) === todayStr;
   });
-  
+
   const dueTomorrow = active.filter(t => {
     if (!t.dueDate) return false;
     return t.dueDate.slice(0, 10) === tomorrowStr;
   });
-  
+
   const critical = active.filter(t => t.priority === "critical");
   const high = active.filter(t => t.priority === "high");
-  
+
   const completedToday = completed.filter(t => {
     if (!t.updatedAt) return false;
     const updatedAt = new Date(t.updatedAt);
     return !Number.isNaN(updatedAt.getTime()) && dateInKolkata(updatedAt) === todayStr;
   });
-  
+
   // Officer workload distribution
   const officerMap = {};
   for (const t of active) {
@@ -332,9 +332,9 @@ export function computeTodoStats(todos, now = new Date()) {
   const officerWorkload = Object.entries(officerMap)
     .map(([name, counts]) => ({ name, ...counts }))
     .sort((a, b) => b.total - a.total);
-  
+
   const completionPct = todos.length > 0 ? Math.round((completed.length / todos.length) * 100) : 0;
-  
+
   // "Needs attention" = overdue + critical + due today (deduped by taskId)
   const needsAttentionMap = new Map();
   for (const t of [...overdue, ...critical, ...dueToday]) {
@@ -347,7 +347,7 @@ export function computeTodoStats(todos, now = new Date()) {
     }
   }
   const needsAttention = Array.from(needsAttentionMap.values());
-  
+
   return {
     totalTasks: todos.length,
     activeTasks: active.length,
@@ -411,23 +411,23 @@ export async function importFromGoogleSheets(req, session) {
   // We'll sync legacy columns from TodoTasks AND auto-import recent unsolved cases
   const creatorId = session.employeeId;
   const policeStation = session.policeStation;
-  
+
   const sheetId = getSheetId();
   const tableData = await readTable(sheetId, TODO_TAB);
-  
+
   if (!tableData.headers || tableData.headers.length === 0) {
     // Initialize the sheet
     await writeTable(sheetId, TODO_TAB, HEADERS, []);
   }
-  
+
   // Build station ID → name lookup
   const stationLookup = await buildStationLookup();
   const stationName = resolveStationName(policeStation, stationLookup);
-  
+
   // Backwards compatibility with the manual columns they might have added
   let newRowsCount = 0;
   let rowsModified = false;
-  
+
   const validatedRows = tableData.rows.map(row => {
     let modified = false;
     // Map custom columns (e.g. Title instead of taskId) if someone hand-typed them
@@ -448,41 +448,41 @@ export async function importFromGoogleSheets(req, session) {
       modified = true;
       newRowsCount++;
     }
-    
+
     // Fix any existing rows that still have a numeric station ID
     if (row.policeStation && stationLookup.has(row.policeStation)) {
       row.policeStation = stationLookup.get(row.policeStation);
       modified = true;
     }
-    
+
     // Clean up casing
     if (row.Title) { delete row.Title; modified = true; }
     if (row.Description) { delete row.Description; modified = true; }
-    
+
     if (modified) rowsModified = true;
     return row;
   });
-  
+
   // --- 2. Auto-import unsolved recent cases for this station ---
   try {
     const casesData = await casesFromGoogle();
     if (casesData && casesData.rows) {
       const now = Date.now();
       const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-      
+
       const unsolvedRecent = casesData.rows.filter(c => {
-        // Filter by station — match the raw ID or the resolved name
+        // Filter by station - match the raw ID or the resolved name
         const caseStation = String(c.PoliceStation || "").trim();
         const resolvedCaseStation = resolveStationName(caseStation, stationLookup);
         const sessStationStr = String(policeStation).trim();
         if (caseStation !== sessStationStr && resolvedCaseStation !== stationName) return false;
-        
+
         // Filter out closed/solved
         const status = (c.Status || "").toLowerCase();
         if (status.includes("closed") || status.includes("charge-sheeted") || status.includes("solved") || status.includes("undetected") || status.includes("un-traced") || status.includes("untraced")) {
           return false;
         }
-        
+
         // Filter by recent (last 30 days)
         if (c.CrimeRegisteredDate) {
           const regDate = new Date(c.CrimeRegisteredDate).getTime();
@@ -492,9 +492,9 @@ export async function importFromGoogleSheets(req, session) {
         }
         return false;
       });
-      
+
       const existingRefs = new Set(validatedRows.map(r => r.sheetRowRef));
-      
+
       const generateBrief = (c) => {
         if (c.BriefFacts && c.BriefFacts.trim() !== "") {
           return c.BriefFacts;
@@ -504,11 +504,11 @@ export async function importFromGoogleSheets(req, session) {
         const crime = c.CrimeSubHead || c.CrimeHead || c.CaseCategory || "an offence";
         return `${comp} reported that ${acc} committed ${crime}.`;
       };
-      
+
       unsolvedRecent.forEach(c => {
         const ref = `case_${c.CrimeNo || c.CaseMasterID}`;
         const autoBrief = generateBrief(c);
-        
+
         // Update existing rows if they have a missing brief
         if (existingRefs.has(ref)) {
           const existingRow = validatedRows.find(r => r.sheetRowRef === ref);
@@ -517,7 +517,7 @@ export async function importFromGoogleSheets(req, session) {
             rowsModified = true;
           }
         }
-        
+
         if (!existingRefs.has(ref)) {
           const newTask = {
             taskId: crypto.randomUUID(),
@@ -545,13 +545,13 @@ export async function importFromGoogleSheets(req, session) {
   } catch (err) {
     console.warn("Failed to auto-import recent cases:", err.message);
   }
-  
+
   if (rowsModified) {
     await writeTable(sheetId, TODO_TAB, HEADERS, validatedRows);
   }
-  
-  return { 
-    imported: newRowsCount, 
+
+  return {
+    imported: newRowsCount,
     total: validatedRows.length,
     newRows: newRowsCount,
     message: `Synced with Google Sheets. Auto-imported recent unsolved cases for ${stationName}.`

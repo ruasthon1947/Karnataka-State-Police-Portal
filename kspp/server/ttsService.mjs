@@ -46,9 +46,9 @@ const VOICES = {
 function configuredCredentials() {
   const configured = String(
     process.env.CATALYST_SERVICE_ACCOUNT_JSON ||
-      process.env.GOOGLE_SERVICE_ACCOUNT_JSON ||
-      process.env.GOOGLE_APPLICATION_CREDENTIALS ||
-      "",
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+    "",
   ).trim();
 
   if (configured.startsWith("{")) {
@@ -57,11 +57,11 @@ function configuredCredentials() {
 
   const candidates = configured
     ? [
-        path.resolve(configured),
-        path.resolve(process.cwd(), "..", configured),
-        path.resolve(__dirname, "../../", configured),
-        path.resolve(__dirname, "../", configured),
-      ]
+      path.resolve(configured),
+      path.resolve(process.cwd(), "..", configured),
+      path.resolve(__dirname, "../../", configured),
+      path.resolve(__dirname, "../", configured),
+    ]
     : [];
 
   for (const fallback of [
@@ -144,7 +144,7 @@ export function sanitizeSpeechText(value) {
       /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu,
       "",
     )
-    .replace(/[–—―]/g, ", ")
+    .replace(/[–-―]/g, ", ")
     .replace(/\r?\n+/g, ". ")
     .replace(/\s+/g, " ")
     .replace(/\s+([,.;:!?।॥])/g, "$1")

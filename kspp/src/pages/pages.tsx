@@ -736,9 +736,9 @@ export const FIRList: React.FC = () => {
               </div>
               <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 text-xs">
                 <div><dt className="text-muted">{t("Category", "ವರ್ಗ")}</dt><dd className="mt-0.5 font-medium">{displayKnownValue(record.category, language)}</dd></div>
-                <div><dt className="text-muted">{t("Registered", "ನೋಂದಣಿ")}</dt><dd className="mt-0.5 font-medium">{record.date || "—"}</dd></div>
-                <div><dt className="text-muted">{t("Station", "ಠಾಣೆ")}</dt><dd className="mt-0.5 font-medium">{displayPlaceName(record.station, language) || "—"}</dd></div>
-                <div><dt className="text-muted">{t("IO", "ತನಿಖಾಧಿಕಾರಿ")}</dt><dd className="mt-0.5 font-medium">{record.io || "—"}</dd></div>
+                <div><dt className="text-muted">{t("Registered", "ನೋಂದಣಿ")}</dt><dd className="mt-0.5 font-medium">{record.date || "-"}</dd></div>
+                <div><dt className="text-muted">{t("Station", "ಠಾಣೆ")}</dt><dd className="mt-0.5 font-medium">{displayPlaceName(record.station, language) || "-"}</dd></div>
+                <div><dt className="text-muted">{t("IO", "ತನಿಖಾಧಿಕಾರಿ")}</dt><dd className="mt-0.5 font-medium">{record.io || "-"}</dd></div>
               </dl>
               <div className="mt-4 text-right text-xs font-semibold text-brand">{t("Open case", "ಪ್ರಕರಣ ತೆರೆಯಿರಿ")} ›</div>
             </button>

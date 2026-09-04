@@ -2,7 +2,7 @@ import "./env.mjs";
 import { checkSpeechRateLimit, requireSession } from "./security.mjs";
 
 // ---------------------------------------------------------------------------
-// Configuration — Groq Whisper (whisper-large-v3-turbo)
+// Configuration - Groq Whisper (whisper-large-v3-turbo)
 // ---------------------------------------------------------------------------
 
 function getGroqKeys() {
@@ -78,7 +78,7 @@ async function transcribeAudio(audioBase64, lang, mimeType) {
   const KANNADA_RE = /[\u0C80-\u0CFF]/;
   function looksLikeWrongLanguage(text, expectedLang) {
     if (expectedLang !== "kn") return false;
-    // If text has Devanagari but no Kannada — it's Hindi, not Kannada
+    // If text has Devanagari but no Kannada - it's Hindi, not Kannada
     return DEVANAGARI_RE.test(text) && !KANNADA_RE.test(text);
   }
 

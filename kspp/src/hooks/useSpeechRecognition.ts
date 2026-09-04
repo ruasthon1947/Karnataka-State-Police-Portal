@@ -4,7 +4,7 @@ import { transcribeAudio, type SttLanguage } from "../lib/speechApi";
 type SpeechStatus = {
   transcript: string;
   interimTranscript: string;
-  /** Accumulated finals + current interim — the single string to show as live caption */
+  /** Accumulated finals + current interim - the single string to show as live caption */
   captionText: string;
   listening: boolean;
   starting: boolean;
@@ -17,7 +17,7 @@ type SpeechStatus = {
  * Browser-independent speech recognition.
  *
  * Strategy:
- * 1. Try the Web Speech API (instant, local — works in Chrome / Edge).
+ * 1. Try the Web Speech API (instant, local - works in Chrome / Edge).
  * 2. If no results arrive within FALLBACK_MS, switch to server-side STT
  *    (MediaRecorder → Groq Whisper).  This covers Brave, Firefox, Safari,
  *    and any environment where the Web Speech API is blocked or broken.
@@ -251,7 +251,7 @@ export function useSpeechRecognition(lang: "kn-IN" | "en-IN"): SpeechStatus {
   }, [sendChunk]);
 
   // ══════════════════════════════════════════════════════════════════
-  //  WEB SPEECH API  (Chrome / Edge — instant local recognition)
+  //  WEB SPEECH API  (Chrome / Edge - instant local recognition)
   // ══════════════════════════════════════════════════════════════════
 
   const resetHeartbeat = useCallback(
@@ -389,7 +389,7 @@ export function useSpeechRecognition(lang: "kn-IN" | "en-IN"): SpeechStatus {
           modeRef.current !== "web-speech"
         )
           return;
-        // Web Speech didn't produce results — fall back
+        // Web Speech didn't produce results - fall back
         console.log("[SpeechRec] Web Speech produced no results, falling back to server STT");
         destroyWebSpeech();
         clearT(restartTimerRef);

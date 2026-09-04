@@ -43,10 +43,10 @@ By integrating an autonomous **AI Copilot Engine** (powered by dual-engine **Goo
 * **Predictive Patrol Guidance:** Uses historical crime data to forecast emerging high-risk areas, explaining underlying risk score factors so officers can optimize patrol routes and dispatch targeted alerts.
 
 ### 📝 3. Officer To-Do List & Task Manager *(NEW)*
-* **Rule-Based Auto-Generation:** Automatically derives case tasks directly from live FIR data—flagging upcoming court hearings (within 7 days), stalled cases (>30 days inactive), and statutory chargesheet deadlines (90 days for heinous / 60 days for non-heinous offenses under CrPC/BNSS).
+* **Rule-Based Auto-Generation:** Automatically derives case tasks directly from live FIR data-flagging upcoming court hearings (within 7 days), stalled cases (>30 days inactive), and statutory chargesheet deadlines (90 days for heinous / 60 days for non-heinous offenses under CrPC/BNSS).
 * **Manual Custom Tasks:** Enables officers to manually create, edit, assign, prioritize, and delete custom operational tasks.
 * **Persistence & Morning Digest:** Supports task pinning and completion tracking saved locally per officer, along with an automated morning digest surfacing top priorities upon login.
-* **Live Stats & Bilingual Support:** Real-time metrics dashboard tracking overdue tasks, upcoming deadlines, and completion percentages—available in both **English** and **Kannada**.
+* **Live Stats & Bilingual Support:** Real-time metrics dashboard tracking overdue tasks, upcoming deadlines, and completion percentages-available in both **English** and **Kannada**.
 
 ### 🔍 4. Cross-Station Duplicate FIR Detection *(NEW)*
 * **Real-Time Overlap Scanning:** Automatically compares data during new FIR creation against existing database records to detect matching accused names, victim profiles, or complainant details.
@@ -272,7 +272,7 @@ npm install
 
 ### 2. Environment Configuration
  
-Create a `.env` file in the root directory and specify your credentials. **Never commit this file or paste real values into documentation** — `.env` is already excluded via `.gitignore`.
+Create a `.env` file in the root directory and specify your credentials. **Never commit this file or paste real values into documentation** - `.env` is already excluded via `.gitignore`.
  
 ```env
 # Gemini API Key(s) - Comma-separated for quota failover

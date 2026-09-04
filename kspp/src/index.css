@@ -1548,7 +1548,7 @@ html.light .crime-map-card { box-shadow: 0 18px 45px rgba(11,49,95,.11); }
 html.light .crime-intelligence-hero,
 html.light .hotspot-intelligence-panel { box-shadow: 0 18px 48px rgba(11, 49, 95, .1); }
 
-/* FloatingCopilot text input — always white text on dark background */
+/* FloatingCopilot text input - always white text on dark background */
 [class*="fixed z-[9999]"] input,
 [class*="fixed z-[9999]"] textarea {
   color: #ffffff !important;

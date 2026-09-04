@@ -7,7 +7,7 @@ const KANNADA_VALUES: Record<string, string> = {
   "Charge-Sheeted": "ಆರೋಪಪಟ್ಟಿ ಸಲ್ಲಿಸಲಾಗಿದೆ",
   Closed: "ಮುಚ್ಚಲಾಗಿದೆ",
   "Closed (Task Completed)": "ಮುಚ್ಚಲಾಗಿದೆ (ಕಾರ್ಯ ಪೂರ್ಣಗೊಂಡಿದೆ)",
-  "Closed - False Case": "ಮುಚ್ಚಲಾಗಿದೆ — ಸುಳ್ಳು ಪ್ರಕರಣ",
+  "Closed - False Case": "ಮುಚ್ಚಲಾಗಿದೆ - ಸುಳ್ಳು ಪ್ರಕರಣ",
   "Disposed by Court": "ನ್ಯಾಯಾಲಯದಿಂದ ವಿಲೇವಾರಿ",
   Undetected: "ಪತ್ತೆಯಾಗಿಲ್ಲ",
   Pending: "ಬಾಕಿ",

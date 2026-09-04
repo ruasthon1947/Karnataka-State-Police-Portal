@@ -131,7 +131,7 @@ const CasePassQR: React.FC<Props> = ({ record, onClose }) => {
           </div>
 
           <p className="text-[#6b7280] text-xs text-center leading-relaxed">
-            {tr("Share this QR with the complainant. They can scan it to check case status — no login needed.", "ಈ QR ಅನ್ನು ದೂರುದಾರರೊಂದಿಗೆ ಹಂಚಿಕೊಳ್ಳಿ. ಲಾಗಿನ್ ಅಗತ್ಯವಿಲ್ಲದೆ ಪ್ರಕರಣದ ಸ್ಥಿತಿ ಪರಿಶೀಲಿಸಲು ಅವರು ಇದನ್ನು ಸ್ಕ್ಯಾನ್ ಮಾಡಬಹುದು.")}
+            {tr("Share this QR with the complainant. They can scan it to check case status - no login needed.", "ಈ QR ಅನ್ನು ದೂರುದಾರರೊಂದಿಗೆ ಹಂಚಿಕೊಳ್ಳಿ. ಲಾಗಿನ್ ಅಗತ್ಯವಿಲ್ಲದೆ ಪ್ರಕರಣದ ಸ್ಥಿತಿ ಪರಿಶೀಲಿಸಲು ಅವರು ಇದನ್ನು ಸ್ಕ್ಯಾನ್ ಮಾಡಬಹುದು.")}
           </p>
 
           {/* Action buttons */}

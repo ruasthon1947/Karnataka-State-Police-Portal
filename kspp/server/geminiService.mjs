@@ -174,7 +174,7 @@ function sanitizeFieldValue(key, value) {
     console.warn(
       `[Copilot Engine] '${key}' looks corrupted by Sheets auto-number-formatting (got "${v}").`
     );
-    return "⚠ data formatting issue in source sheet — verify against the original record";
+    return "⚠ data formatting issue in source sheet - verify against the original record";
   }
   return v;
 }

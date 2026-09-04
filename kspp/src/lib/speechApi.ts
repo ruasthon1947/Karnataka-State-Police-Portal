@@ -40,14 +40,14 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
       headers["Authorization"] = `Bearer ${token}`;
     }
   } catch {
-    // Proceed without auth header — the session cookie may still work.
+    // Proceed without auth header - the session cookie may still work.
   }
 
   return headers;
 }
 
 // ---------------------------------------------------------------------------
-// Audio capture — records a short clip from the microphone using MediaRecorder
+// Audio capture - records a short clip from the microphone using MediaRecorder
 // ---------------------------------------------------------------------------
 
 /**
@@ -186,7 +186,7 @@ export async function listenViaServer(
 }
 
 // ---------------------------------------------------------------------------
-// Streaming STT — real-time captions via PCM → WAV chunked recording
+// Streaming STT - real-time captions via PCM → WAV chunked recording
 // ---------------------------------------------------------------------------
 
 /**
@@ -243,7 +243,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
  * Start streaming STT: captures raw PCM via Web Audio API, encodes as WAV,
  * sends chunks to the server every ~2 seconds for real-time captions.
  *
- * WAV is always valid — no malformed container issues like WebM chunks.
+ * WAV is always valid - no malformed container issues like WebM chunks.
  */
 export function startStreamingSTT(
   lang: SttLanguage = "en",

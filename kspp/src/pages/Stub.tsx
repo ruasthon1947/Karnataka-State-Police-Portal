@@ -41,7 +41,7 @@ const Stub: React.FC<Props> = ({ title, description }) => {
       </div>
 
       <div className="bg-shell border border-line rounded-xl p-6 text-muted text-sm">
-        {tr("Preview space - content for this screen lives in its page component.", "ಮುನ್ನೋಟ ಸ್ಥಳ — ಈ ಪರದೆಯ ವಿಷಯವು ಅದರ ಪುಟ ಘಟಕದಲ್ಲಿದೆ.")}
+        {tr("Preview space - content for this screen lives in its page component.", "ಮುನ್ನೋಟ ಸ್ಥಳ - ಈ ಪರದೆಯ ವಿಷಯವು ಅದರ ಪುಟ ಘಟಕದಲ್ಲಿದೆ.")}
       </div>
     </div>
   );

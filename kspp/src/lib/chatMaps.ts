@@ -84,11 +84,11 @@ const SMALL_TALK = /^(hi|hello|hey|thanks?|thank you|ok(?:ay)?|bye|good\s*(?:mor
 // MAP_WORTHY treats the bare word "case"/"cases" as enough to consider a map,
 // which means an ordinary follow-up like "give the details of complainant in
 // this case" or "give me the officer details" passes that gate purely
-// because it says "case" — even though the officer is asking about a person
+// because it says "case" - even though the officer is asking about a person
 // or a specific record field, not a place. That was attaching a route/map
 // card to the reply instead of (or alongside) the actual text answer.
 // This guard skips map resolution for that narrow class of question, unless
-// the question also carries genuine location/navigation wording — so real
+// the question also carries genuine location/navigation wording - so real
 // requests like "show the route to this case's location" or "where did the
 // incident happen" still get a map exactly as before.
 const PERSON_OR_FIELD_DETAIL_ONLY =

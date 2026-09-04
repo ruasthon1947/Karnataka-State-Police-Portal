@@ -68,7 +68,7 @@ type SpeechRecognitionLike = {
   onend: (() => void) | null;
 };
 
-// AudioContext is created lazily — browsers refuse to construct it before the
+// AudioContext is created lazily - browsers refuse to construct it before the
 // first user gesture, so we wait until `speak` is actually called.
 let audioContext: AudioContext | null = null;
 function getAudioContext(): AudioContext {
@@ -92,7 +92,7 @@ let vexylPlayingFlag = false;
 // The component sets this so the audio playback can re-render the UI when
 // playback starts/ends. Calling a setter from a module-level helper avoids
 // stale-closure problems that come with hooks.
-let vexylStateSetter: (v: boolean) => void = () => {};
+let vexylStateSetter: (v: boolean) => void = () => { };
 
 async function playVexylAudio(audioBuffer: ArrayBuffer): Promise<void> {
   const ctx = getAudioContext();
@@ -211,7 +211,7 @@ async function vexylViaRest(
         }
       }
 
-      // Still processing — wait before next poll
+      // Still processing - wait before next poll
       await new Promise((r) => setTimeout(r, VEXYL_POLL_INTERVAL_MS));
     }
   } finally {
@@ -424,7 +424,7 @@ function sanitizeForTts(text: string): string {
     )
     .replace(/[•▪▸►✔︎✗︎✘︎📌👤🚨⚠️]/g, "")
     .replace(/[।॥]/g, ".")
-    .replace(/[–—―]/g, " ")
+    .replace(/[–-―]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -479,7 +479,7 @@ function transliterateEnToKn(text: string): string {
 }
 
 function getTranscriptLabel(text: string, _lang: SpokenLang): { primary: string; secondary: string; primaryLang: 'kn' | 'en'; secondaryLang: 'kn' | 'en' } {
-  // Always show the original text as primary — no garbled transliteration.
+  // Always show the original text as primary - no garbled transliteration.
   const isKannada = KANNADA_SCRIPT_RE.test(text);
   if (isKannada) {
     return {
@@ -593,7 +593,7 @@ export const FloatingCopilot: React.FC = () => {
   const textInputRef = useRef<HTMLInputElement | null>(null);
   // Flag to prevent onend from resetting state while server STT fallback is active.
   const serverSttActiveRef = useRef(false);
-  // Streaming STT stop function — called when user clicks mic to stop.
+  // Streaming STT stop function - called when user clicks mic to stop.
   const streamingSttStopRef = useRef<((discard?: boolean) => void) | null>(null);
 
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -628,11 +628,11 @@ export const FloatingCopilot: React.FC = () => {
         lang === "kn"
           ? [/sapna/i, /kannada/i, /google.*ಕನ್ನಡ/i, /ಕನ್ನಡ/]
           : [
-              /neerja/i,
-              /google.*english.*india/i,
-              /english.*india/i,
-              /india.*english/i,
-            ];
+            /neerja/i,
+            /google.*english.*india/i,
+            /english.*india/i,
+            /india.*english/i,
+          ];
 
       return (
         voiceList.find(
@@ -677,7 +677,7 @@ export const FloatingCopilot: React.FC = () => {
       try {
         vexylAudioSource.stop();
       } catch {
-        // ignore — already stopped
+        // ignore - already stopped
       }
       vexylAudioSource = null;
     }
@@ -935,7 +935,7 @@ export const FloatingCopilot: React.FC = () => {
       const trimmed = question.trim();
       if (!trimmed) return;
 
-      // When KN mode is selected, always reply in Kannada — even if the
+      // When KN mode is selected, always reply in Kannada - even if the
       // question was typed in English.  Only auto-detect from script when
       // the user is in EN mode but typed Kannada characters.
       const answerLang: SpokenLang = spokenLang === "kn"
@@ -970,9 +970,9 @@ export const FloatingCopilot: React.FC = () => {
           err instanceof Error
             ? err.message
             : tr(
-                "Something went wrong. Please try again.",
-                "ಏನೋ ತಪ್ಪಾಗಿದೆ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
-              ),
+              "Something went wrong. Please try again.",
+              "ಏನೋ ತಪ್ಪಾಗಿದೆ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+            ),
         );
         setState("idle");
       }
@@ -980,7 +980,7 @@ export const FloatingCopilot: React.FC = () => {
     [speak, spokenLang, stopSpeaking, tr],
   );
 
-  // Server-side STT fallback — streaming with real-time captions.
+  // Server-side STT fallback - streaming with real-time captions.
   // Used when the browser Web Speech API is unavailable (Brave, Electron, etc.).
   const serverListenFallback = useCallback(() => {
     stopSpeaking();
@@ -1008,7 +1008,7 @@ export const FloatingCopilot: React.FC = () => {
 
     const { stop } = startStreamingSTT(
       lang,
-      // onTranscript — called every ~3 seconds with live captions.
+      // onTranscript - called every ~3 seconds with live captions.
       // Keep interimTranscript updated so the user sees captions.
       // Only set askedQuestion on final submission.
       (text, isFinal) => {
@@ -1042,13 +1042,13 @@ export const FloatingCopilot: React.FC = () => {
         setErrorMsg(
           errorMsg.includes("Microphone")
             ? tr(
-                "Microphone is not available. Please allow microphone access and try again.",
-                "ಮೈಕ್ರೊಫೋನ್ ಲಭ್ಯವಿಲ್ಲ. ದಯವಿಟ್ಟು ಮೈಕ್ರೊಫೋನ್ ಪ್ರವೇಶವನ್ನು ಅನುಮತಿಸಿ.",
-              )
+              "Microphone is not available. Please allow microphone access and try again.",
+              "ಮೈಕ್ರೊಫೋನ್ ಲಭ್ಯವಿಲ್ಲ. ದಯವಿಟ್ಟು ಮೈಕ್ರೊಫೋನ್ ಪ್ರವೇಶವನ್ನು ಅನುಮತಿಸಿ.",
+            )
             : tr(
-                "Live captions are temporarily unavailable; recording is still active.",
-                "ಲೈವ್ ಶೀರ್ಷಿಕೆಗಳು ತಾತ್ಕಾಲಿಕವಾಗಿ ಲಭ್ಯವಿಲ್ಲ; ರೆಕಾರ್ಡಿಂಗ್ ಇನ್ನೂ ಸಕ್ರಿಯವಾಗಿದೆ.",
-              ),
+              "Live captions are temporarily unavailable; recording is still active.",
+              "ಲೈವ್ ಶೀರ್ಷಿಕೆಗಳು ತಾತ್ಕಾಲಿಕವಾಗಿ ಲಭ್ಯವಿಲ್ಲ; ರೆಕಾರ್ಡಿಂಗ್ ಇನ್ನೂ ಸಕ್ರಿಯವಾಗಿದೆ.",
+            ),
         );
         if (errorMsg.includes("Microphone") || errorMsg.includes("supported")) {
           stopped = true;
@@ -1170,7 +1170,7 @@ export const FloatingCopilot: React.FC = () => {
     // the React state when playback starts/ends.
     vexylStateSetter = setVexylPlayingState;
     return () => {
-      vexylStateSetter = () => {};
+      vexylStateSetter = () => { };
     };
   }, []);
 
@@ -1202,9 +1202,9 @@ export const FloatingCopilot: React.FC = () => {
       ? tr("Checking records...", "ದಾಖಲೆಗಳನ್ನು ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ...")
       : isPreparingSpeech
         ? tr("Preparing natural voice...", "ನೈಸರ್ಗಿಕ ಧ್ವನಿಯನ್ನು ಸಿದ್ಧಪಡಿಸಲಾಗುತ್ತಿದೆ...")
-      : isResponding
-        ? tr("Secure response", "ಸುರಕ್ಷಿತ ಉತ್ತರ")
-        : tr("Voice ready", "ಧ್ವನಿ ಸಿದ್ಧ");
+        : isResponding
+          ? tr("Secure response", "ಸುರಕ್ಷಿತ ಉತ್ತರ")
+          : tr("Voice ready", "ಧ್ವನಿ ಸಿದ್ಧ");
 
   const responseLanguage = KANNADA_SCRIPT_RE.test(answer || "")
     ? "kn"
@@ -1281,11 +1281,10 @@ export const FloatingCopilot: React.FC = () => {
                 type="button"
                 onClick={() => announceVoiceLanguage("en")}
                 onPointerDown={(e) => e.stopPropagation()}
-                className={`flex-1 rounded-full px-4 py-1.5 text-[11px] font-semibold transition ${
-                  spokenLang === "en"
+                className={`flex-1 rounded-full px-4 py-1.5 text-[11px] font-semibold transition ${spokenLang === "en"
                     ? "bg-[#1264e6] text-white shadow-[0_4px_12px_rgba(18,100,230,0.35)]"
                     : "text-white/50 hover:text-white/80"
-                }`}
+                  }`}
               >
                 English
               </button>
@@ -1293,11 +1292,10 @@ export const FloatingCopilot: React.FC = () => {
                 type="button"
                 onClick={() => announceVoiceLanguage("kn")}
                 onPointerDown={(e) => e.stopPropagation()}
-                className={`flex-1 rounded-full px-4 py-1.5 text-[11px] font-semibold transition ${
-                  spokenLang === "kn"
+                className={`flex-1 rounded-full px-4 py-1.5 text-[11px] font-semibold transition ${spokenLang === "kn"
                     ? "bg-[#1264e6] text-white shadow-[0_4px_12px_rgba(18,100,230,0.35)]"
                     : "text-white/50 hover:text-white/80"
-                }`}
+                  }`}
               >
                 ಕನ್ನಡ
               </button>
@@ -1310,9 +1308,8 @@ export const FloatingCopilot: React.FC = () => {
               {WAVE_BARS.map((height, index) => (
                 <span
                   key={`${height}-${index}`}
-                  className={`w-[3px] rounded-full bg-[#2379e8]/75 ${
-                    isListening ? "animate-pulse" : ""
-                  }`}
+                  className={`w-[3px] rounded-full bg-[#2379e8]/75 ${isListening ? "animate-pulse" : ""
+                    }`}
                   style={{
                     height: `${height}px`,
                     animationDelay: `${index * 55}ms`,
@@ -1325,11 +1322,10 @@ export const FloatingCopilot: React.FC = () => {
             <div className="absolute h-28 w-28 rounded-full border border-[#d6a53a]/45 shadow-[0_0_35px_rgba(214,165,58,0.16)]" />
 
             <div
-              className={`absolute h-24 w-24 rounded-full border border-[#d6a53a] transition-all ${
-                isListening
+              className={`absolute h-24 w-24 rounded-full border border-[#d6a53a] transition-all ${isListening
                   ? "animate-pulse shadow-[0_0_0_7px_rgba(214,165,58,0.10),0_0_38px_rgba(214,165,58,0.38)]"
                   : "shadow-[0_0_0_5px_rgba(214,165,58,0.07),0_0_28px_rgba(214,165,58,0.20)]"
-              }`}
+                }`}
             />
 
             <button
@@ -1337,9 +1333,8 @@ export const FloatingCopilot: React.FC = () => {
               onClick={toggleListening}
               onPointerDown={(e) => e.stopPropagation()}
               disabled={isThinking}
-              className={`relative z-10 grid h-[72px] w-[72px] place-items-center rounded-full border border-[#3e8df7] bg-[#0b4fae] text-white shadow-[inset_0_1px_10px_rgba(255,255,255,0.12),0_10px_28px_rgba(0,0,0,0.28)] transition hover:bg-[#1264d1] disabled:cursor-not-allowed disabled:opacity-70 ${
-                isListening ? "scale-105 bg-[#0a57c1]" : ""
-              }`}
+              className={`relative z-10 grid h-[72px] w-[72px] place-items-center rounded-full border border-[#3e8df7] bg-[#0b4fae] text-white shadow-[inset_0_1px_10px_rgba(255,255,255,0.12),0_10px_28px_rgba(0,0,0,0.28)] transition hover:bg-[#1264d1] disabled:cursor-not-allowed disabled:opacity-70 ${isListening ? "scale-105 bg-[#0a57c1]" : ""
+                }`}
               title={
                 isListening
                   ? tr("Tap to stop", "ನಿಲ್ಲಿಸಲು ಟ್ಯಾಪ್ ಮಾಡಿ")
@@ -1359,7 +1354,7 @@ export const FloatingCopilot: React.FC = () => {
             </button>
           </div>
 
-          {/* Live transcript bubble — hidden once askedQuestion is shown to avoid duplicate */}
+          {/* Live transcript bubble - hidden once askedQuestion is shown to avoid duplicate */}
           {isListening && interimTranscript && !askedQuestion && (
             <div className="flex items-center gap-2 bg-slate-800/80 border border-slate-700/60 rounded-full px-4 py-2 text-xs text-white my-3">
               <span className="text-blue-400">👤</span>
@@ -1381,11 +1376,10 @@ export const FloatingCopilot: React.FC = () => {
                   role="tab"
                   aria-selected={bilingualMode === "kn"}
                   onClick={() => setBilingualMode("kn")}
-                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition ${
-                    bilingualMode === "kn"
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition ${bilingualMode === "kn"
                       ? "bg-[#1264e6] text-white"
                       : "text-white/60 hover:text-white"
-                  }`}
+                    }`}
                 >
                   KN
                 </button>
@@ -1394,16 +1388,15 @@ export const FloatingCopilot: React.FC = () => {
                   role="tab"
                   aria-selected={bilingualMode === "en"}
                   onClick={() => setBilingualMode("en")}
-                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition ${
-                    bilingualMode === "en"
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition ${bilingualMode === "en"
                       ? "bg-[#1264e6] text-white"
                       : "text-white/60 hover:text-white"
-                  }`}
+                    }`}
                 >
                   EN
                 </button>
               </div>
-              {/* Send icon — submit what you've said so far */}
+              {/* Send icon - submit what you've said so far */}
               <button
                 type="button"
                 onClick={() => {
@@ -1453,11 +1446,10 @@ export const FloatingCopilot: React.FC = () => {
                   role="tab"
                   aria-selected={bilingualMode === "kn"}
                   onClick={() => setBilingualMode("kn")}
-                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition ${
-                    bilingualMode === "kn"
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition ${bilingualMode === "kn"
                       ? "bg-[#1264e6] text-white"
                       : "text-white/60 hover:text-white"
-                  }`}
+                    }`}
                 >
                   KN
                 </button>
@@ -1466,11 +1458,10 @@ export const FloatingCopilot: React.FC = () => {
                   role="tab"
                   aria-selected={bilingualMode === "en"}
                   onClick={() => setBilingualMode("en")}
-                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition ${
-                    bilingualMode === "en"
+                  className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition ${bilingualMode === "en"
                       ? "bg-[#1264e6] text-white"
                       : "text-white/60 hover:text-white"
-                  }`}
+                    }`}
                 >
                   EN
                 </button>
@@ -1594,11 +1585,11 @@ export const FloatingCopilot: React.FC = () => {
                   className="absolute right-1.5 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full text-white/40 transition hover:text-[#2173f0] disabled:cursor-not-allowed disabled:opacity-30"
                   title={tr("Send", "ಕಳುಹಿಸಿ")}
                 >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13" />
-                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                </svg>
-              </button>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                </button>
               </div>
             </form>
           )}
@@ -1627,7 +1618,7 @@ export const FloatingCopilot: React.FC = () => {
                 {/* When listening with captions, show Retry + Send; otherwise Mic/Stop */}
                 {isListening && interimTranscript ? (
                   <div className="flex items-center gap-3">
-                    {/* Retry — discard current captions and re-record */}
+                    {/* Retry - discard current captions and re-record */}
                     <button
                       type="button"
                       onClick={() => {
@@ -1654,7 +1645,7 @@ export const FloatingCopilot: React.FC = () => {
                       </svg>
                     </button>
 
-                    {/* Send — submit what was said */}
+                    {/* Send - submit what was said */}
                     <button
                       type="button"
                       onClick={() => {
@@ -1686,9 +1677,8 @@ export const FloatingCopilot: React.FC = () => {
                     onClick={toggleListening}
                     onPointerDown={(e) => e.stopPropagation()}
                     disabled={isThinking}
-                    className={`grid h-14 w-14 place-items-center rounded-full border border-[#378af1] bg-[#075bc9] text-white shadow-[0_7px_20px_rgba(0,87,201,0.32)] transition hover:bg-[#126bdf] disabled:cursor-not-allowed disabled:opacity-50 ${
-                      isListening ? "animate-pulse" : ""
-                    }`}
+                    className={`grid h-14 w-14 place-items-center rounded-full border border-[#378af1] bg-[#075bc9] text-white shadow-[0_7px_20px_rgba(0,87,201,0.32)] transition hover:bg-[#126bdf] disabled:cursor-not-allowed disabled:opacity-50 ${isListening ? "animate-pulse" : ""
+                      }`}
                     title={
                       isListening
                         ? tr("Stop listening", "ಆಲಿಸುವುದನ್ನು ನಿಲ್ಲಿಸಿ")
@@ -1720,11 +1710,10 @@ export const FloatingCopilot: React.FC = () => {
                 type="button"
                 onClick={toggleMute}
                 onPointerDown={(e) => e.stopPropagation()}
-                className={`grid h-11 w-11 place-items-center rounded-full border transition ${
-                  isMuted
+                className={`grid h-11 w-11 place-items-center rounded-full border transition ${isMuted
                     ? "border-red-300/20 bg-red-400/10 text-red-200"
                     : "border-white/10 bg-white/5 text-white/65 hover:bg-white/10 hover:text-white"
-                }`}
+                  }`}
                 title={tr(
                   "Mute voice responses",
                   "ಧ್ವನಿ ಪ್ರತಿಕ್ರಿಯೆಗಳನ್ನು ಮ್ಯೂಟ್ ಮಾಡಿ",
@@ -1760,9 +1749,8 @@ export const FloatingCopilot: React.FC = () => {
           onPointerDown={onDragPointerDown}
           onPointerMove={onDragPointerMove}
           onPointerUp={onDragPointerUp}
-          className={`group relative grid h-[72px] w-[72px] touch-none place-items-center rounded-full border border-white/20 bg-[#06234b] shadow-[0_16px_40px_rgba(0,0,0,0.35)] ring-1 ring-[#1b75dd]/30 transition hover:scale-[1.03] hover:bg-[#092c5c] ${
-            isListening ? "ring-4 ring-red-400/20" : ""
-          }`}
+          className={`group relative grid h-[72px] w-[72px] touch-none place-items-center rounded-full border border-white/20 bg-[#06234b] shadow-[0_16px_40px_rgba(0,0,0,0.35)] ring-1 ring-[#1b75dd]/30 transition hover:scale-[1.03] hover:bg-[#092c5c] ${isListening ? "ring-4 ring-red-400/20" : ""
+            }`}
           title={tr("Open KSPP Voice Console", "ಕೆಎಸ್‌ಪಿಪಿ ಧ್ವನಿ ಕನ್ಸೋಲ್ ತೆರೆಯಿರಿ")}
           aria-label={tr(
             "Open KSPP Voice Console",
