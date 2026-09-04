@@ -57,24 +57,33 @@ export const VoiceButton: React.FC<Props> = ({
         aria-pressed={active}
         aria-label={active ? "Stop listening" : "Start voice input"}
         title={active ? "Stop listening" : "Speak your question"}
-        className={`h-8 w-8 shrink-0 grid place-items-center rounded-md transition disabled:opacity-40 ${
-          active
+        className={`h-8 w-8 shrink-0 grid place-items-center rounded-md transition disabled:opacity-40 ${active
             ? "bg-red-500 text-white animate-pulse ring-2 ring-red-400/40"
             : "text-muted hover:text-white hover:bg-panel"
-        }`}
+          }`}
       >
         🎤
       </button>
       {active && (
-        <span className="max-w-56 truncate text-xs font-medium text-red-300" role="status">
+        <span className="max-w-56 truncate text-xs font-semibold text-slate-900 dark:text-slate-100" role="status">
           {starting
             ? "Starting microphone…"
             : captionText || "Listening…"}
         </span>
       )}
       {!active && error && (
-        <span className="max-w-56 text-xs text-red-300" role="alert">{error}</span>
+        <span className="max-w-56 text-xs text-red-600 dark:text-red-400" role="alert">{error}</span>
       )}
     </div>
   );
 };
+
+
+
+
+
+
+
+
+
+

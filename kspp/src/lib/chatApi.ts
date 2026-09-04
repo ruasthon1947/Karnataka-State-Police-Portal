@@ -97,7 +97,11 @@ async function directIdentityAnswer(
   language: "en" | "kn",
   spoken = false,
 ): Promise<string | null> {
-  if (!/\bcomplainant\b/i.test(question) && !/\baccused\b/i.test(question)) {
+  const isKannada = language === "kn";
+  if (!isKannada && !/\bcomplainant\b/i.test(question) && !/\baccused\b/i.test(question)) {
+    return null;
+  }
+  if (isKannada && !/\b(ದೂರುದಾರ|ಆರೋಪಿ)\b/i.test(question)) {
     return null;
   }
 

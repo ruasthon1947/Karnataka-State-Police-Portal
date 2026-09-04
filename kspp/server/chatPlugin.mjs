@@ -3,6 +3,7 @@ import dns from "node:dns";
 import { findMatchingCases, generateFirDraft, handleChatQuery } from "./geminiService.mjs";
 import { casesFromGoogle } from "./googleSheets.mjs";
 import { checkChatRateLimit, filterCasesForSession, requireSession } from "./security.mjs";
+
 dns.setDefaultResultOrder("ipv4first");
 
 const MAX_BODY_BYTES = 3_000_000;
@@ -187,11 +188,20 @@ export async function handleChatApi(req, res, next) {
       if (matches.length === 1) {
         const record = matches[0];
         const reference = record.CrimeNo || record.CaseNo || record.CaseMasterID || "Matched case";
+        const isKn = language === "kn";
+        const notRecorded = isKn ? "ದಾಖಲಾಗಿಲ್ಲ" : "not recorded";
+        const notRecordedCap = isKn ? "ದಾಖಲಾಗಿಲ್ಲ" : "Not recorded";
+        const complainant = record.Complainant || notRecordedCap;
+        const accused = record.AccusedNames || notRecordedCap;
         sendJson(res, 200, {
           ok: true,
           answer: spoken
-            ? `For case ${reference}, the complainant is ${record.Complainant || "not recorded"}. The accused is ${record.AccusedNames || "not recorded"}.`
-            : `📌 **Case:** ${reference}\n👤 **Complainant:** ${record.Complainant || "Not recorded"}\n🚨 **Accused:** ${record.AccusedNames || "Not recorded"}`,
+            ? isKn
+              ? `ಪ್ರಕರಣ ${reference} ರ ದೂರುದಾರರು ${complainant}. ಆರೋಪಿಗಳು ${accused}.`
+              : `For case ${reference}, the complainant is ${record.Complainant || notRecorded}. The accused is ${record.AccusedNames || notRecorded}.`
+            : isKn
+              ? `📌 **ಪ್ರಕರಣ:** ${reference}\n👤 **ದೂರುದಾರ:** ${complainant}\n🚨 **ಆರೋಪಿ:** ${accused}`
+              : `📌 **Case:** ${reference}\n👤 **Complainant:** ${complainant}\n🚨 **Accused:** ${accused}`,
         });
         return;
       }

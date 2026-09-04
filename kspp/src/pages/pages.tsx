@@ -22,7 +22,6 @@ import { displayKnownValue } from "../lib/kannadaValues";
 import { displayPlaceName } from "../lib/kannadaPlaces";
 import CasePassQR from "../components/CasePassQR";
 import { CriminalNetworkGraph } from "../components/search/CriminalNetworkGraph";
-import { AuditTrailPanel } from "../components/reports/AuditTrailPanel";
 import { buildCriminalNetwork } from "../lib/criminalNetwork";
 import { recordAuditEvent } from "../lib/audit";
 import {
@@ -116,9 +115,9 @@ const ReferenceHeader: React.FC<{
           {loading
             ? tr("Loading...", "ಲೋಡ್ ಆಗುತ್ತಿದೆ...")
             : tr(
-                `${count.toLocaleString("en-IN")} records loaded`,
-                `${count.toLocaleString("kn-IN")} ದಾಖಲೆಗಳು ಲೋಡ್ ಆಗಿವೆ`,
-              )}
+              `${count.toLocaleString("en-IN")} records loaded`,
+              `${count.toLocaleString("kn-IN")} ದಾಖಲೆಗಳು ಲೋಡ್ ಆಗಿವೆ`,
+            )}
         </span>
         {error && (
           <span className="rounded-full border border-rose/30 bg-rose/10 px-3 py-1 text-rose">
@@ -880,38 +879,38 @@ export const FIRDetail: React.FC = () => {
   const liveTimeline = [
     r.raw.CrimeRegisteredDate
       ? [
-          t("FIR Registered", "ಎಫ್‌ಐಆರ್ ನೋಂದಾಯಿಸಲಾಗಿದೆ"),
-          r.raw.CrimeRegisteredDate,
-          r.raw.FiledBy ? t(`Filed by ${r.raw.FiledBy}`, `${r.raw.FiledBy} ಸಲ್ಲಿಸಿದ್ದಾರೆ`) : t("Registration recorded", "ನೋಂದಣಿ ದಾಖಲಿಸಲಾಗಿದೆ"),
-        ]
+        t("FIR Registered", "ಎಫ್‌ಐಆರ್ ನೋಂದಾಯಿಸಲಾಗಿದೆ"),
+        r.raw.CrimeRegisteredDate,
+        r.raw.FiledBy ? t(`Filed by ${r.raw.FiledBy}`, `${r.raw.FiledBy} ಸಲ್ಲಿಸಿದ್ದಾರೆ`) : t("Registration recorded", "ನೋಂದಣಿ ದಾಖಲಿಸಲಾಗಿದೆ"),
+      ]
       : null,
     r.raw.InfoReceivedPSDate
       ? [
-          t("Information received", "ಮಾಹಿತಿ ಸ್ವೀಕರಿಸಲಾಗಿದೆ"),
-          r.raw.InfoReceivedPSDate,
-          r.station || t("Police station", "ಪೊಲೀಸ್ ಠಾಣೆ"),
-        ]
+        t("Information received", "ಮಾಹಿತಿ ಸ್ವೀಕರಿಸಲಾಗಿದೆ"),
+        r.raw.InfoReceivedPSDate,
+        r.station || t("Police station", "ಪೊಲೀಸ್ ಠಾಣೆ"),
+      ]
       : null,
     r.raw.IncidentFromDate
       ? [
-          t("Incident period", "ಘಟನೆಯ ಅವಧಿ"),
-          [r.raw.IncidentFromDate, r.raw.IncidentToDate].filter(Boolean).join(" – "),
-          r.raw.BriefFacts || t("Incident details recorded", "ಘಟನೆಯ ವಿವರಗಳು ದಾಖಲಾಗಿವೆ"),
-        ]
+        t("Incident period", "ಘಟನೆಯ ಅವಧಿ"),
+        [r.raw.IncidentFromDate, r.raw.IncidentToDate].filter(Boolean).join(" – "),
+        r.raw.BriefFacts || t("Incident details recorded", "ಘಟನೆಯ ವಿವರಗಳು ದಾಖಲಾಗಿವೆ"),
+      ]
       : null,
     r.io
       ? [
-          t("Investigating officer assigned", "ತನಿಖಾಧಿಕಾರಿ ನಿಯೋಜಿಸಲಾಗಿದೆ"),
-          r.raw.CrimeRegisteredDate || t("Date not recorded", "ದಿನಾಂಕ ದಾಖಲಾಗಿಲ್ಲ"),
-          r.io,
-        ]
+        t("Investigating officer assigned", "ತನಿಖಾಧಿಕಾರಿ ನಿಯೋಜಿಸಲಾಗಿದೆ"),
+        r.raw.CrimeRegisteredDate || t("Date not recorded", "ದಿನಾಂಕ ದಾಖಲಾಗಿಲ್ಲ"),
+        r.io,
+      ]
       : null,
     r.raw.LatestChargesheetDate || r.raw.ChargesheetStatus
       ? [
-          t("Chargesheet status", "ಆರೋಪಪಟ್ಟಿ ಸ್ಥಿತಿ"),
-          r.raw.LatestChargesheetDate || t("Date not recorded", "ದಿನಾಂಕ ದಾಖಲಾಗಿಲ್ಲ"),
-          r.raw.ChargesheetStatus || t("Status not recorded", "ಸ್ಥಿತಿ ದಾಖಲಾಗಿಲ್ಲ"),
-        ]
+        t("Chargesheet status", "ಆರೋಪಪಟ್ಟಿ ಸ್ಥಿತಿ"),
+        r.raw.LatestChargesheetDate || t("Date not recorded", "ದಿನಾಂಕ ದಾಖಲಾಗಿಲ್ಲ"),
+        r.raw.ChargesheetStatus || t("Status not recorded", "ಸ್ಥಿತಿ ದಾಖಲಾಗಿಲ್ಲ"),
+      ]
       : null,
   ].filter((item): item is string[] => Boolean(item));
 
@@ -1669,13 +1668,13 @@ export const Reports: React.FC = () => {
           <p className="text-sm text-muted mt-1">
             {activeView === "reports"
               ? t(
-                  "Operational trends, workload and disposal performance.",
-                  "ಕಾರ್ಯಾಚರಣಾ ಪ್ರವೃತ್ತಿ, ಕೆಲಸದ ಹೊರೆ ಮತ್ತು ವಿಲೇವಾರಿ ಕಾರ್ಯಕ್ಷಮತೆ."
-                )
+                "Operational trends, workload and disposal performance.",
+                "ಕಾರ್ಯಾಚರಣಾ ಪ್ರವೃತ್ತಿ, ಕೆಲಸದ ಹೊರೆ ಮತ್ತು ವಿಲೇವಾರಿ ಕಾರ್ಯಕ್ಷಮತೆ."
+              )
               : t(
-                  "Who did what, when, where and whether it succeeded.",
-                  "ಯಾರು ಏನು, ಯಾವಾಗ, ಎಲ್ಲಿ ಮಾಡಿದರು ಮತ್ತು ಅದು ಯಶಸ್ವಿಯಾಗಿದೆಯೇ."
-                )}
+                "Who did what, when, where and whether it succeeded.",
+                "ಯಾರು ಏನು, ಯಾವಾಗ, ಎಲ್ಲಿ ಮಾಡಿದರು ಮತ್ತು ಅದು ಯಶಸ್ವಿಯಾಗಿದೆಯೇ."
+              )}
           </p>
         </div>
 
@@ -1724,243 +1723,243 @@ export const Reports: React.FC = () => {
       </div>
 
       {activeView === "audit" ? <AuditTrailPanel /> : <>
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        {[
-          [
-            t(
-              "Disposal rate",
-              "ವಿಲೇವಾರಿ ದರ"
-            ),
-            loading ? "..." : `${disposalRate}%`,
-          ],
-          [
-            t(
-              "Avg. investigation",
-              "ಸರಾಸರಿ ತನಿಖೆ"
-            ),
-            loading ? "..." : t(`${avgInvestigationDays} days`, `${avgInvestigationDays} ದಿನಗಳು`),
-          ],
-          [
-            t(
-              "Cases this month",
-              "ಈ ತಿಂಗಳ ಪ್ರಕರಣಗಳು"
-            ),
-            loading ? "..." : casesThisMonth.toLocaleString("en-IN"),
-          ],
-          [
-            t("Overdue", "ಬಾಕಿ"),
-            loading ? "..." : overdueCases.toLocaleString("en-IN"),
-          ],
-        ].map((x) => (
-          <Card
-            className="p-4"
-            key={x[0]}
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          {[
+            [
+              t(
+                "Disposal rate",
+                "ವಿಲೇವಾರಿ ದರ"
+              ),
+              loading ? "..." : `${disposalRate}%`,
+            ],
+            [
+              t(
+                "Avg. investigation",
+                "ಸರಾಸರಿ ತನಿಖೆ"
+              ),
+              loading ? "..." : t(`${avgInvestigationDays} days`, `${avgInvestigationDays} ದಿನಗಳು`),
+            ],
+            [
+              t(
+                "Cases this month",
+                "ಈ ತಿಂಗಳ ಪ್ರಕರಣಗಳು"
+              ),
+              loading ? "..." : casesThisMonth.toLocaleString("en-IN"),
+            ],
+            [
+              t("Overdue", "ಬಾಕಿ"),
+              loading ? "..." : overdueCases.toLocaleString("en-IN"),
+            ],
+          ].map((x) => (
+            <Card
+              className="p-4"
+              key={x[0]}
+            >
+              <div className="text-[11px] text-muted uppercase">
+                {x[0]}
+              </div>
+
+              <div className="text-2xl font-semibold mt-2">
+                {x[1]}
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        <div className="grid xl:grid-cols-2 gap-4">
+          <ChartCard
+            title={t(
+              "FIR and disposal trend",
+              "ಎಫ್‌ಐಆರ್ ಮತ್ತು ವಿಲೇವಾರಿ ಪ್ರವೃತ್ತಿ"
+            )}
+            action={
+              <div className="flex gap-2">
+                <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="h-8 px-2 bg-panel border border-line rounded text-xs outline-none focus:border-brand" />
+                <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="h-8 px-2 bg-panel border border-line rounded text-xs outline-none focus:border-brand" />
+              </div>
+            }
           >
-            <div className="text-[11px] text-muted uppercase">
-              {x[0]}
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+            >
+              <LineChart data={monthly}>
+                <CartesianGrid
+                  stroke="currentColor"
+                  strokeOpacity={0.15}
+                  strokeDasharray="3 3"
+                />
+
+                <XAxis
+                  dataKey="m"
+                  fontSize={11}
+                  stroke="currentColor"
+                  opacity={0.65}
+                  label={{ value: t("Month / Year", "ತಿಂಗಳು / ವರ್ಷ"), position: "insideBottomRight", offset: -5, fontSize: 10, fill: "var(--muted)" }}
+                />
+
+                <YAxis
+                  fontSize={11}
+                  stroke="currentColor"
+                  opacity={0.65}
+                  label={{ value: t("Number of FIRs", "ಎಫ್‌ಐಆರ್‌ಗಳ ಸಂಖ್ಯೆ"), angle: -90, position: "insideLeft", fontSize: 10, fill: "var(--muted)" }}
+                />
+
+                <Tooltip content={<ChartTooltip />} />
+
+                <Line
+                  dataKey="fir"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                />
+
+                <Line
+                  dataKey="closed"
+                  stroke="currentColor"
+                  strokeDasharray="5 4"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard
+            title={t(
+              "Station workload",
+              "ಠಾಣೆ ಕೆಲಸದ ಹೊರೆ"
+            )}
+          >
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+            >
+              <BarChart data={station}>
+                <CartesianGrid
+                  stroke="currentColor"
+                  strokeOpacity={0.15}
+                  strokeDasharray="3 3"
+                />
+
+                <XAxis
+                  dataKey="n"
+                  fontSize={10}
+                  stroke="currentColor"
+                  opacity={0.65}
+                  label={{ value: t("Station", "ಠಾಣೆ"), position: "insideBottomRight", offset: -5, fontSize: 10, fill: "var(--muted)" }}
+                />
+
+                <YAxis
+                  fontSize={11}
+                  stroke="currentColor"
+                  opacity={0.65}
+                  label={{ value: t("Workload (FIRs)", "ಕೆಲಸದ ಹೊರೆ (ಎಫ್‌ಐಆರ್‌ಗಳು)"), angle: -90, position: "insideLeft", fontSize: 10, fill: "var(--muted)" }}
+                />
+
+                <Tooltip content={<ChartTooltip />} />
+
+                <Bar
+                  dataKey="v"
+                  fill="currentColor"
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard
+            title={t(
+              "Crime category breakdown",
+              "ಅಪರಾಧ ವರ್ಗ ವಿಭಾಗ"
+            )}
+          >
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+            >
+              <PieChart>
+                <Pie
+                  data={pie}
+                  dataKey="value"
+                  nameKey="name"
+                  outerRadius={90}
+                  label
+                >
+                  {pie.map((_, i) => (
+                    <Cell
+                      key={i}
+                      fill="currentColor"
+                      opacity={1 - i * 0.12}
+                    />
+                  ))}
+                </Pie>
+
+                <Tooltip content={<ChartTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <Card className="p-4">
+            <div className="text-sm font-semibold">
+              {t(
+                "Performance summary",
+                "ಕಾರ್ಯಕ್ಷಮತೆ ಸಾರಾಂಶ"
+              )}
             </div>
 
-            <div className="text-2xl font-semibold mt-2">
-              {x[1]}
+            <div className="mt-4 space-y-4">
+              {[
+                [
+                  t(
+                    "Cases disposed within 30 days",
+                    "30 ದಿನಗಳಲ್ಲಿ ವಿಲೇವಾರಿ"
+                  ),
+                  disposedWithin30,
+                ],
+                [
+                  t(
+                    "Charge sheets filed on time",
+                    "ಸಮಯಕ್ಕೆ ಚಾರ್ಜ್‌ಶೀಟ್"
+                  ),
+                  chargeSheetFiledRate,
+                ],
+                [
+                  t(
+                    "Investigation updates current",
+                    "ತನಿಖಾ ನವೀಕರಣ ಪ್ರಸ್ತುತ"
+                  ),
+                  investigationCurrentRate,
+                ],
+              ].map((x) => (
+                <div key={String(x[0])}>
+                  <div className="flex justify-between text-xs">
+                    <span>{x[0]}</span>
+                    <span>{x[1]}%</span>
+                  </div>
+
+                  <div className="h-2 bg-panel rounded-full mt-2">
+                    <div
+                      className="h-full bg-brand rounded-full"
+                      style={{
+                        width: `${x[1]}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
           </Card>
-        ))}
-      </div>
+        </div>
 
-      <div className="grid xl:grid-cols-2 gap-4">
-        <ChartCard
-          title={t(
-            "FIR and disposal trend",
-            "ಎಫ್‌ಐಆರ್ ಮತ್ತು ವಿಲೇವಾರಿ ಪ್ರವೃತ್ತಿ"
-          )}
-          action={
-            <div className="flex gap-2">
-              <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="h-8 px-2 bg-panel border border-line rounded text-xs outline-none focus:border-brand" />
-              <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="h-8 px-2 bg-panel border border-line rounded text-xs outline-none focus:border-brand" />
-            </div>
-          }
-        >
-          <ResponsiveContainer
-            width="100%"
-            height="100%"
-          >
-            <LineChart data={monthly}>
-              <CartesianGrid
-                stroke="currentColor"
-                strokeOpacity={0.15}
-                strokeDasharray="3 3"
-              />
-
-              <XAxis
-                dataKey="m"
-                fontSize={11}
-                stroke="currentColor"
-                opacity={0.65}
-                label={{ value: t("Month / Year", "ತಿಂಗಳು / ವರ್ಷ"), position: "insideBottomRight", offset: -5, fontSize: 10, fill: "var(--muted)" }}
-              />
-
-              <YAxis
-                fontSize={11}
-                stroke="currentColor"
-                opacity={0.65}
-                label={{ value: t("Number of FIRs", "ಎಫ್‌ಐಆರ್‌ಗಳ ಸಂಖ್ಯೆ"), angle: -90, position: "insideLeft", fontSize: 10, fill: "var(--muted)" }}
-              />
-
-              <Tooltip content={<ChartTooltip />} />
-
-              <Line
-                dataKey="fir"
-                stroke="currentColor"
-                strokeWidth={2}
-              />
-
-              <Line
-                dataKey="closed"
-                stroke="currentColor"
-                strokeDasharray="5 4"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard
-          title={t(
-            "Station workload",
-            "ಠಾಣೆ ಕೆಲಸದ ಹೊರೆ"
-          )}
-        >
-          <ResponsiveContainer
-            width="100%"
-            height="100%"
-          >
-            <BarChart data={station}>
-              <CartesianGrid
-                stroke="currentColor"
-                strokeOpacity={0.15}
-                strokeDasharray="3 3"
-              />
-
-              <XAxis
-                dataKey="n"
-                fontSize={10}
-                stroke="currentColor"
-                opacity={0.65}
-                label={{ value: t("Station", "ಠಾಣೆ"), position: "insideBottomRight", offset: -5, fontSize: 10, fill: "var(--muted)" }}
-              />
-
-              <YAxis
-                fontSize={11}
-                stroke="currentColor"
-                opacity={0.65}
-                label={{ value: t("Workload (FIRs)", "ಕೆಲಸದ ಹೊರೆ (ಎಫ್‌ಐಆರ್‌ಗಳು)"), angle: -90, position: "insideLeft", fontSize: 10, fill: "var(--muted)" }}
-              />
-
-              <Tooltip content={<ChartTooltip />} />
-
-              <Bar
-                dataKey="v"
-                fill="currentColor"
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard
-          title={t(
-            "Crime category breakdown",
-            "ಅಪರಾಧ ವರ್ಗ ವಿಭಾಗ"
-          )}
-        >
-          <ResponsiveContainer
-            width="100%"
-            height="100%"
-          >
-            <PieChart>
-              <Pie
-                data={pie}
-                dataKey="value"
-                nameKey="name"
-                outerRadius={90}
-                label
-              >
-                {pie.map((_, i) => (
-                  <Cell
-                    key={i}
-                    fill="currentColor"
-                    opacity={1 - i * 0.12}
-                  />
-                ))}
-              </Pie>
-
-              <Tooltip content={<ChartTooltip />} />
-            </PieChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <Card className="p-4">
-          <div className="text-sm font-semibold">
-            {t(
-              "Performance summary",
-              "ಕಾರ್ಯಕ್ಷಮತೆ ಸಾರಾಂಶ"
-            )}
-          </div>
-
-          <div className="mt-4 space-y-4">
-            {[
-              [
-                t(
-                  "Cases disposed within 30 days",
-                  "30 ದಿನಗಳಲ್ಲಿ ವಿಲೇವಾರಿ"
-                ),
-                disposedWithin30,
-              ],
-              [
-                t(
-                  "Charge sheets filed on time",
-                  "ಸಮಯಕ್ಕೆ ಚಾರ್ಜ್‌ಶೀಟ್"
-                ),
-                chargeSheetFiledRate,
-              ],
-              [
-                t(
-                  "Investigation updates current",
-                  "ತನಿಖಾ ನವೀಕರಣ ಪ್ರಸ್ತುತ"
-                ),
-                investigationCurrentRate,
-              ],
-            ].map((x) => (
-              <div key={String(x[0])}>
-                <div className="flex justify-between text-xs">
-                  <span>{x[0]}</span>
-                  <span>{x[1]}%</span>
-                </div>
-
-                <div className="h-2 bg-panel rounded-full mt-2">
-                  <div
-                    className="h-full bg-brand rounded-full"
-                    style={{
-                      width: `${x[1]}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid xl:grid-cols-2 gap-4">
-        <ReferenceTable
-          columns={[t("Status", "ಸ್ಥಿತಿ"), t("Cases", "ಪ್ರಕರಣಗಳು"), t("Share", "ಪಾಲು")]}
-          rows={statusRows}
-          emptyText={t("No status data available.", "ಸ್ಥಿತಿ ದತ್ತಾಂಶ ಲಭ್ಯವಿಲ್ಲ.")}
-        />
-        <ReferenceTable
-          columns={[t("Top Station", "ಪ್ರಮುಖ ಠಾಣೆ"), t("Cases", "ಪ್ರಕರಣಗಳು"), t("Share", "ಪಾಲು")]}
-          rows={stationRows}
-          emptyText={t("No station workload data available.", "ಠಾಣೆಯ ಕೆಲಸದ ಹೊರೆ ದತ್ತಾಂಶ ಲಭ್ಯವಿಲ್ಲ.")}
-        />
-      </div>
+        <div className="grid xl:grid-cols-2 gap-4">
+          <ReferenceTable
+            columns={[t("Status", "ಸ್ಥಿತಿ"), t("Cases", "ಪ್ರಕರಣಗಳು"), t("Share", "ಪಾಲು")]}
+            rows={statusRows}
+            emptyText={t("No status data available.", "ಸ್ಥಿತಿ ದತ್ತಾಂಶ ಲಭ್ಯವಿಲ್ಲ.")}
+          />
+          <ReferenceTable
+            columns={[t("Top Station", "ಪ್ರಮುಖ ಠಾಣೆ"), t("Cases", "ಪ್ರಕರಣಗಳು"), t("Share", "ಪಾಲು")]}
+            rows={stationRows}
+            emptyText={t("No station workload data available.", "ಠಾಣೆಯ ಕೆಲಸದ ಹೊರೆ ದತ್ತಾಂಶ ಲಭ್ಯವಿಲ್ಲ.")}
+          />
+        </div>
       </>}
     </div>
   );
@@ -2096,7 +2095,7 @@ export const Units: React.FC = () => {
     .filter((item) => district === "all" || item.district === district)
     .filter((item) => `${item.name} ${item.district} ${item.type} ${item.courts.join(" ")}`.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => sort === "name" ? a.displayName.localeCompare(b.displayName) : b[sort] - a[sort]),
-  [stations, district, query, sort]);
+    [stations, district, query, sort]);
   const topStations = useMemo(() => [...stations].sort((a, b) => b.cases - a.cases).slice(0, 8), [stations]);
   const districtData = useMemo(() => countByValue(records, "District").slice(0, 6), [records]);
   const activeTotal = stations.reduce((sum, station) => sum + station.active, 0);
@@ -2246,8 +2245,8 @@ export const Courts: React.FC = () => {
         <Card className="relative overflow-hidden p-5">
           <div className="absolute -right-14 -top-14 h-44 w-44 rounded-full border-[26px] border-brand/5" />
           <div className="relative"><span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-brand"><Gavel size={15} />{t("Workload leader", "ಕೆಲಸದ ಹೊರೆ ಮುಂಚೂಣಿ")}</span><h2 className="mt-4 text-lg font-semibold leading-7">{busiestCourt?.court || "-"}</h2><p className="mt-1 text-xs text-muted">{busiestCourt?.districts.join(", ") || "-"}</p>
-          <div className="mt-6 grid grid-cols-3 divide-x divide-line rounded-xl border border-line bg-panel/50 py-3 text-center">{[[t("Cases", "ಪ್ರಕರಣಗಳು"), busiestCourt?.cases || 0], [t("Stations", "ಠಾಣೆಗಳು"), busiestCourt?.stations.length || 0], [t("Pending", "ಬಾಕಿ"), busiestCourt?.pendingTrial || 0]].map(([label, value]) => <div key={String(label)}><strong className="num block text-xl">{Number(value).toLocaleString(locale)}</strong><span className="text-[10px] text-muted">{label}</span></div>)}</div>
-          <div className="mt-5"><div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted">{t("Station → court flow", "ಠಾಣೆ → ನ್ಯಾಯಾಲಯ ಹರಿವು")}</div>{busiestCourt?.stations.slice(0, 4).map((station) => <div key={station} className="mt-2 flex items-center gap-2 text-xs"><span className="min-w-0 flex-1 truncate rounded-lg border border-line bg-panel px-2.5 py-2">{station}</span><ArrowRight size={13} className="shrink-0 text-brand" /><Scale size={14} className="shrink-0 text-brand" /></div>)}</div></div>
+            <div className="mt-6 grid grid-cols-3 divide-x divide-line rounded-xl border border-line bg-panel/50 py-3 text-center">{[[t("Cases", "ಪ್ರಕರಣಗಳು"), busiestCourt?.cases || 0], [t("Stations", "ಠಾಣೆಗಳು"), busiestCourt?.stations.length || 0], [t("Pending", "ಬಾಕಿ"), busiestCourt?.pendingTrial || 0]].map(([label, value]) => <div key={String(label)}><strong className="num block text-xl">{Number(value).toLocaleString(locale)}</strong><span className="text-[10px] text-muted">{label}</span></div>)}</div>
+            <div className="mt-5"><div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted">{t("Station → court flow", "ಠಾಣೆ → ನ್ಯಾಯಾಲಯ ಹರಿವು")}</div>{busiestCourt?.stations.slice(0, 4).map((station) => <div key={station} className="mt-2 flex items-center gap-2 text-xs"><span className="min-w-0 flex-1 truncate rounded-lg border border-line bg-panel px-2.5 py-2">{station}</span><ArrowRight size={13} className="shrink-0 text-brand" /><Scale size={14} className="shrink-0 text-brand" /></div>)}</div></div>
         </Card>
       </div>
 
@@ -2798,8 +2797,8 @@ export const Settings: React.FC = () => {
               <div
                 role={smsConfigured ? "status" : "alert"}
                 className={`my-3 rounded-lg border px-3 py-2 text-[11px] ${smsConfigured
-                    ? "border-sage/30 bg-sage/10 text-sage"
-                    : "border-rose/30 bg-rose/10 text-rose"
+                  ? "border-sage/30 bg-sage/10 text-sage"
+                  : "border-rose/30 bg-rose/10 text-rose"
                   }`}
               >
                 {smsConfigured
@@ -2894,10 +2893,10 @@ export const Settings: React.FC = () => {
           {pullState.message && (
             <div
               className={`mt-4 rounded-lg border px-3 py-2 text-xs ${pullState.status === "error"
-                  ? "border-red-200 bg-red-50 text-red-700"
-                  : pullState.status === "success"
-                    ? "border-green-200 bg-green-50 text-green-700"
-                    : "border-line bg-panel text-muted"
+                ? "border-red-200 bg-red-50 text-red-700"
+                : pullState.status === "success"
+                  ? "border-green-200 bg-green-50 text-green-700"
+                  : "border-line bg-panel text-muted"
                 }`}
             >
               {pullState.message}
