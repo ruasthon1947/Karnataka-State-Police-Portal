@@ -21,6 +21,7 @@ import { useLanguage } from "../context/LanguageContext";
 import { displayKnownValue } from "../lib/kannadaValues";
 import { displayPlaceName } from "../lib/kannadaPlaces";
 import CasePassQR from "../components/CasePassQR";
+import { AuditTrailPanel } from "../components/reports/AuditTrailPanel";
 import { CriminalNetworkGraph } from "../components/search/CriminalNetworkGraph";
 import { buildCriminalNetwork } from "../lib/criminalNetwork";
 import { recordAuditEvent } from "../lib/audit";
