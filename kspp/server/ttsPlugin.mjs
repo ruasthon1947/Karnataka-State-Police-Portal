@@ -1,6 +1,6 @@
 import "./env.mjs";
 import { checkTtsRateLimit, requireSession } from "./security.mjs";
-import { prewarmNaturalSpeech, synthesizeNaturalSpeech } from "./ttsService.mjs";
+import { synthesizeNaturalSpeech } from "./ttsService.mjs";
 
 const MAX_BODY_BYTES = 12_000;
 const MAX_TEXT_CHARS = 2_500;
@@ -93,37 +93,14 @@ export async function handleTtsRequest(req, res, next) {
 }
 
 function ttsPlugin() {
-  let prewarmStarted = false;
-  let retryTimer = null;
-  const warmVoices = async () => {
-    const results = await prewarmNaturalSpeech();
-    if (results.some((result) => result.status === "rejected") && !retryTimer) {
-      const retryMs = Math.max(
-        30_000,
-        Number(process.env.TTS_PREWARM_RETRY_MS || 60_000),
-      );
-      retryTimer = setTimeout(() => {
-        retryTimer = null;
-        void warmVoices();
-      }, retryMs);
-      retryTimer.unref?.();
-    }
-  };
-  const prewarm = () => {
-    if (prewarmStarted) return;
-    prewarmStarted = true;
-    if (String(process.env.TTS_PREWARM || "true").toLowerCase() !== "false") {
-      void warmVoices();
-    }
-  };
+  // Speech is requested only through the authenticated endpoint after a user
+  // opens voice or asks for playback. No startup synthesis or retry timers.
   return {
     name: "kspp-natural-text-to-speech",
     configureServer(server) {
-      prewarm();
       server.middlewares.use(handleTtsRequest);
     },
     configurePreviewServer(server) {
-      prewarm();
       server.middlewares.use(handleTtsRequest);
     },
   };

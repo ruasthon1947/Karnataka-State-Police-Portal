@@ -1159,13 +1159,6 @@ export const FloatingCopilot: React.FC = () => {
   useEffect(() => stopSpeaking, [stopSpeaking]);
 
   useEffect(() => {
-    if (!user) return;
-    void synthesizeWithPortal(VOICE_GREETINGS[spokenLang], spokenLang).catch(() => {
-      // The normal speech fallback will handle a provider outage on open.
-    });
-  }, [spokenLang, user]);
-
-  useEffect(() => {
     // Register the state setter so the module-level playVexylAudio can flip
     // the React state when playback starts/ends.
     vexylStateSetter = setVexylPlayingState;

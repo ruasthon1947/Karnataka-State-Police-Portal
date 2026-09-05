@@ -24,11 +24,7 @@ const TTS_CACHE_MAX_ENTRIES = Math.max(
 const speechCache = new Map();
 let geminiUnavailableUntil = 0;
 let cloudTtsUnavailableUntil = 0;
-
-export const PREWARM_GREETINGS = {
-  en: "Hello. I'm the KSPP Copilot. How can I help you today?",
-  kn: "ನಮಸ್ಕಾರ. ನಾನು ಕೆಎಸ್‌ಪಿಪಿ ಸಹಾಯಕಿ. ಇಂದು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಲಿ?",
-};
+let lastFallbackWarningAt = 0;
 
 const VOICES = {
   en: {
@@ -320,7 +316,14 @@ async function synthesizeWithGemini(text, language) {
             : 60_000;
           geminiUnavailableUntil = Date.now() + Math.max(5_000, retryMs);
         }
-        throw new Error(data.error?.message || `Gemini TTS failed with HTTP ${response.status}`);
+        const error = new Error(`Gemini TTS failed with HTTP ${response.status}`);
+        // Keys can share one project quota. Do not retry a quota failure with
+        // another key during the same request; use the alternate voice provider.
+        if (response.status === 429) {
+          lastError = error;
+          break;
+        }
+        throw error;
       }
       const audioBlock = (data.steps || [])
         .flatMap((step) => step?.content || [])
@@ -347,12 +350,14 @@ async function synthesizeWithGemini(text, language) {
 }
 
 async function createNaturalSpeech(text, language) {
+  const alreadyCoolingDown = geminiUnavailableUntil > Date.now();
   try {
     return await synthesizeWithGemini(text, language);
   } catch (geminiError) {
-    console.warn("[TTS] Gemini voice unavailable; trying Cloud TTS.", {
-      message: geminiError?.message || String(geminiError),
-    });
+    if (!alreadyCoolingDown && Date.now() - lastFallbackWarningAt >= 60_000) {
+      lastFallbackWarningAt = Date.now();
+      console.warn("[TTS] Primary voice unavailable; using the alternate voice provider.");
+    }
     try {
       return await synthesizeWithCloudTts(text, language);
     } catch (cloudError) {
@@ -395,11 +400,4 @@ export async function synthesizeNaturalSpeech(text, language) {
     speechCache.delete(key);
     throw error;
   }
-}
-
-export async function prewarmNaturalSpeech() {
-  return Promise.allSettled([
-    synthesizeNaturalSpeech(PREWARM_GREETINGS.en, "en"),
-    synthesizeNaturalSpeech(PREWARM_GREETINGS.kn, "kn"),
-  ]);
 }
